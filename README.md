@@ -13,9 +13,6 @@ question -> keyword + vector search -> reranking -> local LLM
          -> quote, number and regulation checks -> answer with sources
 ```
 
-The [three-slide presentation](presentation/Lime-Green-Assistant-Presentation.pptx)
-includes speaker notes paced for approximately 6 minutes 35 seconds.
-
 ## Example answers
 
 Real output from the shipped setup (Qwen3.6-35B-A3B on an 8 GB laptop GPU), one
