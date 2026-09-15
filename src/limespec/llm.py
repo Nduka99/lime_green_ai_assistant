@@ -26,8 +26,32 @@ def embed(texts: list[str]) -> list[list[float]]:
         raise ModelServerError(
             f"embedding server at {config.EMBEDDING_URL} failed: {error}"
         ) from error
-    items = sorted(response.json()["data"], key=lambda item: item["index"])
-    return [item["embedding"] for item in items]
+    try:
+        items = response.json()["data"]
+        if not isinstance(items, list):
+            raise TypeError
+        indices = [item["index"] for item in items]
+        if any(type(index) is not int for index in indices):
+            raise TypeError
+        if sorted(indices) != list(range(len(texts))):
+            raise ValueError
+        vectors = [item["embedding"] for item in items]
+        for vector in vectors:
+            if not isinstance(vector, list) or not vector:
+                raise TypeError
+            if any(
+                type(value) not in (int, float) or not math.isfinite(value)
+                for value in vector
+            ):
+                raise ValueError
+        if len({len(vector) for vector in vectors}) > 1:
+            raise ValueError
+    except (ValueError, KeyError, TypeError, OverflowError) as error:
+        raise ModelServerError(
+            "the embedding server returned a malformed response"
+        ) from error
+    # Match by index, never response order, so vectors stay attached to their text.
+    return [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
 
 
 def rerank(query: str, documents: list[str]) -> list[float]:

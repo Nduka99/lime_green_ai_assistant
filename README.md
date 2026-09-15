@@ -1,13 +1,20 @@
 # Lime Green Assistant
 
 A local LLM assistant that answers questions from Lime Green website pages,
-shows the exact quote and page behind every factual claim the model writes, and
-says clearly when the pages do not contain enough information to answer.
+shows a checked quotation and page for every displayed model-written claim, and
+uses a fixed refusal when no claim has sufficient evidence to pass its checks.
+
+Quotation checks establish where the words came from. They do not prove that a
+claim interprets them correctly or answers every part of a question. The results
+below show both successes and remaining failures.
 
 ```text
 question -> keyword + vector search -> reranking -> local LLM
          -> quote, number and regulation checks -> answer with sources
 ```
+
+The [three-slide presentation](presentation/Lime-Green-Assistant-Presentation.pptx)
+includes speaker notes paced for approximately 6 minutes 35 seconds.
 
 ## Example answers
 
@@ -84,9 +91,9 @@ application is about 1,400 lines in `src/limespec/`.
 
 ## Design decisions
 
-- **Local only.** llama.cpp runs the generator, the embedding model and the
-  reranker as three local servers; after the pages are fetched, nothing leaves
-  the machine.
+- **Local inference.** llama.cpp runs the generator, the embedding model and the
+  reranker as three local servers. Questions and model requests stay on the
+  machine. Fetching pages and opening source links access the website.
 - **Qwen3.6-35B-A3B writes the answers.** It was the best of three local models on
   the frozen evaluation: 77 of 90 answers sound, against 74 for Gemma 4 26B-A4B and
   36 for Nemotron 3 Nano 4B, the small model deployed first. On 60 held-out
@@ -122,6 +129,11 @@ application is about 1,400 lines in `src/limespec/`.
   knowledge base.
 - A time-limited exercise: a working, tested prototype, not a production service,
   and not a substitute for professional building or medical advice.
+- The model decides whether an answer is complete and whether a question
+  describes an exposure. These decisions can fail even when quotation checks pass.
+- A fresh ingest reads the current website. Page counts, passage counts and
+  answers can change if the site changes; the saved evaluation describes the
+  September 2026 snapshot, whose fingerprints are recorded in the notebook.
 
 ## Install
 
@@ -207,21 +219,22 @@ uv run limespec ask      # prompts "Ask a question:"
 uv run limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
 ```
 
-The command line and the page call the same `assistant.ask()`, so they give the
-same answer; the page's JSON endpoint, `/api/answer?q=...`, returns it too.
+The command line, page and JSON endpoint (`/api/answer?q=...`) call the same
+`assistant.ask()` and use the same checks and presentation data. Separate model
+requests can still produce different wording, even with a fixed seed.
 
 ## Tests
 
 ```powershell
-uv run pytest                  # 133 tests, 100% coverage, no servers or models needed
+uv run pytest                  # 151 tests, 100% coverage, no servers or models needed
 uv run pytest -m live --no-cov # the brief's three kinds of question, with the servers running
 uv run ruff check . ; uv run mypy src tests
 ```
 
 The offline tests use invented pages and a fake model, so they check the rules
 themselves: quote matching, number and regulation checks, refusals, safety
-routing, retrieval fusion and reranking, page parsing, and that the command line
-and web page give the same answer.
+routing, retrieval fusion and reranking, page parsing, malformed server replies,
+and that the command line and web page render the same answer data.
 
 ## Results
 

@@ -159,6 +159,53 @@ def test_rerank_sends_the_query_and_documents_and_returns_scores_in_input_order(
 @pytest.mark.parametrize(
     "body",
     [
+        None,
+        {},
+        {"data": {}},
+        {"data": [None]},
+        {"data": [{}]},
+        {"data": [{"index": "0", "embedding": [1.0]}]},
+        {"data": [{"index": False, "embedding": [1.0]}]},
+        {"data": []},
+        {"data": [{"index": 1, "embedding": [1.0]}]},
+        {"data": [{"index": 0}, {"index": 1, "embedding": [1.0]}]},
+        {"data": [{"index": 0, "embedding": [1.0]}] * 2},
+        {
+            "data": [
+                {"index": 0, "embedding": [1.0]},
+                {"index": 1, "embedding": [1.0, 0.0]},
+            ]
+        },
+        *[
+            {
+                "data": [
+                    {"index": 0, "embedding": vector},
+                    {"index": 1, "embedding": [1.0]},
+                ]
+            }
+            for vector in (None, [], "1.0", [True], ["nan"], [float("inf")])
+        ],
+    ],
+)
+def test_malformed_embeddings_fail_before_retrieval_or_indexing(
+    monkeypatch: pytest.MonkeyPatch, body: object
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text="not json" if body is None else json.dumps(body),
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    with pytest.raises(llm.ModelServerError, match="embedding.*malformed response"):
+        llm.embed(["first passage", "second passage"])
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
         {},
         {"results": {}},
         {"results": [{"index": 0}]},
