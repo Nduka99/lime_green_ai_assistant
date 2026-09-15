@@ -1,0 +1,1827 @@
+[
+ {
+  "id": "q001",
+  "case": "plastering-wooden-laths",
+  "type": "multi_source",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What build-up is recommended on wooden laths?",
+    "evidence_ids": [
+     28,
+     244
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long should be left between coats?",
+    "evidence_ids": [
+     244
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q002",
+  "case": "plastering-wooden-laths",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What build-up is recommended on wooden laths?",
+    "evidence_ids": [
+     28,
+     244
+    ],
+    "keyword": 3,
+    "vector": 1,
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "asks": "How long should be left between coats?",
+    "evidence_ids": [
+     244
+    ],
+    "keyword": 3,
+    "vector": 1,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q003",
+  "case": "plastering-wooden-laths",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What build-up is recommended on wooden laths?",
+    "evidence_ids": [
+     28,
+     244
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long should be left between coats?",
+    "evidence_ids": [
+     244
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q004",
+  "case": "plastering-wooden-laths",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What build-up is recommended on wooden laths?",
+    "evidence_ids": [
+     28,
+     244
+    ],
+    "keyword": 3,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long should be left between coats?",
+    "evidence_ids": [
+     244
+    ],
+    "keyword": 3,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q005",
+  "case": "plastering-wooden-laths",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What build-up is recommended on wooden laths?",
+    "evidence_ids": [
+     28,
+     244
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long should be left between coats?",
+    "evidence_ids": [
+     244
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q011",
+  "case": "warmshell-components-and-iwi-painting",
+  "type": "multi_source",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What are the main components of Warmshell external wall insulation?",
+    "evidence_ids": [
+     133
+    ],
+    "keyword": 4,
+    "vector": 5,
+    "fused": 3,
+    "reranked": 1
+   },
+   {
+    "asks": "How soon can walls be painted after internal wall insulation?",
+    "evidence_ids": [
+     304
+    ],
+    "keyword": 1,
+    "vector": 77,
+    "fused": 13,
+    "reranked": null
+   }
+  ]
+ },
+ {
+  "id": "q012",
+  "case": "warmshell-components-and-iwi-painting",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What are the main components of Warmshell external wall insulation?",
+    "evidence_ids": [
+     133
+    ],
+    "keyword": 16,
+    "vector": 6,
+    "fused": 8,
+    "reranked": 1
+   },
+   {
+    "asks": "How soon can walls be painted after internal wall insulation?",
+    "evidence_ids": [
+     304
+    ],
+    "keyword": 24,
+    "vector": 101,
+    "fused": null,
+    "reranked": null
+   }
+  ]
+ },
+ {
+  "id": "q013",
+  "case": "warmshell-components-and-iwi-painting",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What are the main components of Warmshell external wall insulation?",
+    "evidence_ids": [
+     133
+    ],
+    "keyword": 6,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How soon can walls be painted after internal wall insulation?",
+    "evidence_ids": [
+     304
+    ],
+    "keyword": 2,
+    "vector": 36,
+    "fused": 13,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q014",
+  "case": "warmshell-components-and-iwi-painting",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What are the main components of Warmshell external wall insulation?",
+    "evidence_ids": [
+     133
+    ],
+    "keyword": 25,
+    "vector": 3,
+    "fused": 13,
+    "reranked": 3
+   },
+   {
+    "asks": "How soon can walls be painted after internal wall insulation?",
+    "evidence_ids": [
+     304
+    ],
+    "keyword": 1,
+    "vector": 25,
+    "fused": 11,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q015",
+  "case": "warmshell-components-and-iwi-painting",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What are the main components of Warmshell external wall insulation?",
+    "evidence_ids": [
+     133
+    ],
+    "keyword": 7,
+    "vector": 1,
+    "fused": 2,
+    "reranked": 3
+   },
+   {
+    "asks": "How soon can walls be painted after internal wall insulation?",
+    "evidence_ids": [
+     304
+    ],
+    "keyword": 3,
+    "vector": 6,
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q016",
+  "case": "render-thickness-and-weather",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What is the minimum render thickness for moderately and very exposed locations?",
+    "evidence_ids": [
+     208
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Which weather conditions should lime render be protected from?",
+    "evidence_ids": [
+     211
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q017",
+  "case": "render-thickness-and-weather",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the minimum render thickness for moderately and very exposed locations?",
+    "evidence_ids": [
+     208
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Which weather conditions should lime render be protected from?",
+    "evidence_ids": [
+     211
+    ],
+    "keyword": 7,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q018",
+  "case": "render-thickness-and-weather",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the minimum render thickness for moderately and very exposed locations?",
+    "evidence_ids": [
+     208
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Which weather conditions should lime render be protected from?",
+    "evidence_ids": [
+     211
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q019",
+  "case": "render-thickness-and-weather",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the minimum render thickness for moderately and very exposed locations?",
+    "evidence_ids": [
+     208
+    ],
+    "keyword": 2,
+    "vector": 3,
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "asks": "Which weather conditions should lime render be protected from?",
+    "evidence_ids": [
+     211
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q020",
+  "case": "render-thickness-and-weather",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the minimum render thickness for moderately and very exposed locations?",
+    "evidence_ids": [
+     208
+    ],
+    "keyword": 1,
+    "vector": 6,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Which weather conditions should lime render be protected from?",
+    "evidence_ids": [
+     211
+    ],
+    "keyword": 2,
+    "vector": 8,
+    "fused": 3,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q021",
+  "case": "external-lime-finishes",
+  "type": "multi_source",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What is the pure-lime finish option and its compatible base coats?",
+    "evidence_ids": [
+     56,
+     57
+    ],
+    "keyword": 3,
+    "vector": 4,
+    "fused": 2,
+    "reranked": 2
+   },
+   {
+    "asks": "What is the lime-and-white-cement finish option and its usual undercoat?",
+    "evidence_ids": [
+     61
+    ],
+    "keyword": 42,
+    "vector": 15,
+    "fused": 26,
+    "reranked": null
+   },
+   {
+    "asks": "Which lime finish is specific to the Warmshell insulation system?",
+    "evidence_ids": [
+     58
+    ],
+    "keyword": 17,
+    "vector": 12,
+    "fused": 6,
+    "reranked": 8
+   }
+  ]
+ },
+ {
+  "id": "q022",
+  "case": "external-lime-finishes",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the pure-lime finish option and its compatible base coats?",
+    "evidence_ids": [
+     56,
+     57
+    ],
+    "keyword": 17,
+    "vector": 6,
+    "fused": 6,
+    "reranked": null
+   },
+   {
+    "asks": "What is the lime-and-white-cement finish option and its usual undercoat?",
+    "evidence_ids": [
+     61
+    ],
+    "keyword": 71,
+    "vector": 9,
+    "fused": 17,
+    "reranked": null
+   },
+   {
+    "asks": "Which lime finish is specific to the Warmshell insulation system?",
+    "evidence_ids": [
+     58
+    ],
+    "keyword": 145,
+    "vector": 16,
+    "fused": 27,
+    "reranked": null
+   }
+  ]
+ },
+ {
+  "id": "q023",
+  "case": "external-lime-finishes",
+  "type": "multi_source",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the pure-lime finish option and its compatible base coats?",
+    "evidence_ids": [
+     56,
+     57
+    ],
+    "keyword": 8,
+    "vector": 8,
+    "fused": 2,
+    "reranked": null
+   },
+   {
+    "asks": "What is the lime-and-white-cement finish option and its usual undercoat?",
+    "evidence_ids": [
+     61
+    ],
+    "keyword": 142,
+    "vector": 6,
+    "fused": 12,
+    "reranked": null
+   },
+   {
+    "asks": "Which lime finish is specific to the Warmshell insulation system?",
+    "evidence_ids": [
+     58
+    ],
+    "keyword": 10,
+    "vector": 11,
+    "fused": 4,
+    "reranked": null
+   }
+  ]
+ },
+ {
+  "id": "q024",
+  "case": "external-lime-finishes",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the pure-lime finish option and its compatible base coats?",
+    "evidence_ids": [
+     56,
+     57
+    ],
+    "keyword": 21,
+    "vector": 8,
+    "fused": 15,
+    "reranked": 4
+   },
+   {
+    "asks": "What is the lime-and-white-cement finish option and its usual undercoat?",
+    "evidence_ids": [
+     61
+    ],
+    "keyword": 127,
+    "vector": 6,
+    "fused": 11,
+    "reranked": null
+   },
+   {
+    "asks": "Which lime finish is specific to the Warmshell insulation system?",
+    "evidence_ids": [
+     58
+    ],
+    "keyword": 115,
+    "vector": 21,
+    "fused": null,
+    "reranked": null
+   }
+  ]
+ },
+ {
+  "id": "q025",
+  "case": "external-lime-finishes",
+  "type": "multi_source",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the pure-lime finish option and its compatible base coats?",
+    "evidence_ids": [
+     56,
+     57
+    ],
+    "keyword": 16,
+    "vector": 5,
+    "fused": 4,
+    "reranked": 3
+   },
+   {
+    "asks": "What is the lime-and-white-cement finish option and its usual undercoat?",
+    "evidence_ids": [
+     61
+    ],
+    "keyword": 155,
+    "vector": 7,
+    "fused": 15,
+    "reranked": null
+   },
+   {
+    "asks": "Which lime finish is specific to the Warmshell insulation system?",
+    "evidence_ids": [
+     58
+    ],
+    "keyword": 80,
+    "vector": 8,
+    "fused": 16,
+    "reranked": 8
+   }
+  ]
+ },
+ {
+  "id": "q026",
+  "case": "opening-hours-conflict",
+  "type": "conflicting_sources",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What opening hours does the FAQ page give?",
+    "evidence_ids": [
+     275
+    ],
+    "keyword": 1,
+    "vector": 108,
+    "fused": 4,
+    "reranked": 4
+   },
+   {
+    "asks": "What opening hours does the contact page give?",
+    "evidence_ids": [
+     314
+    ],
+    "keyword": 4,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q027",
+  "case": "opening-hours-conflict",
+  "type": "conflicting_sources",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What opening hours does the FAQ page give?",
+    "evidence_ids": [
+     275
+    ],
+    "keyword": 3,
+    "vector": 7,
+    "fused": 2,
+    "reranked": 4
+   },
+   {
+    "asks": "What opening hours does the contact page give?",
+    "evidence_ids": [
+     314
+    ],
+    "keyword": 141,
+    "vector": 1,
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q028",
+  "case": "opening-hours-conflict",
+  "type": "conflicting_sources",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What opening hours does the FAQ page give?",
+    "evidence_ids": [
+     275
+    ],
+    "keyword": 1,
+    "vector": 49,
+    "fused": 2,
+    "reranked": 2
+   },
+   {
+    "asks": "What opening hours does the contact page give?",
+    "evidence_ids": [
+     314
+    ],
+    "keyword": 131,
+    "vector": 1,
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q029",
+  "case": "opening-hours-conflict",
+  "type": "conflicting_sources",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What opening hours does the FAQ page give?",
+    "evidence_ids": [
+     275
+    ],
+    "keyword": 2,
+    "vector": 13,
+    "fused": 2,
+    "reranked": 2
+   },
+   {
+    "asks": "What opening hours does the contact page give?",
+    "evidence_ids": [
+     314
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q030",
+  "case": "opening-hours-conflict",
+  "type": "conflicting_sources",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What opening hours does the FAQ page give?",
+    "evidence_ids": [
+     275
+    ],
+    "keyword": 1,
+    "vector": 4,
+    "fused": 1,
+    "reranked": 2
+   },
+   {
+    "asks": "What opening hours does the contact page give?",
+    "evidence_ids": [
+     314
+    ],
+    "keyword": 97,
+    "vector": 1,
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q031",
+  "case": "mortar-cure-and-colour",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "How much longer does lime mortar take to cure than cement mortar?",
+    "evidence_ids": [
+     289
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Can you colour match mortar?",
+    "evidence_ids": [
+     290
+    ],
+    "keyword": 2,
+    "vector": 5,
+    "fused": 3,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q032",
+  "case": "mortar-cure-and-colour",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How much longer does lime mortar take to cure than cement mortar?",
+    "evidence_ids": [
+     289
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Can you colour match mortar?",
+    "evidence_ids": [
+     290
+    ],
+    "keyword": 2,
+    "vector": 8,
+    "fused": 3,
+    "reranked": 3
+   }
+  ]
+ },
+ {
+  "id": "q033",
+  "case": "mortar-cure-and-colour",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How much longer does lime mortar take to cure than cement mortar?",
+    "evidence_ids": [
+     289
+    ],
+    "keyword": 4,
+    "vector": 1,
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "asks": "Can you colour match mortar?",
+    "evidence_ids": [
+     290
+    ],
+    "keyword": 1,
+    "vector": 3,
+    "fused": 1,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q034",
+  "case": "mortar-cure-and-colour",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How much longer does lime mortar take to cure than cement mortar?",
+    "evidence_ids": [
+     289
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Can you colour match mortar?",
+    "evidence_ids": [
+     290
+    ],
+    "keyword": 1,
+    "vector": 3,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q035",
+  "case": "mortar-cure-and-colour",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How much longer does lime mortar take to cure than cement mortar?",
+    "evidence_ids": [
+     289
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Can you colour match mortar?",
+    "evidence_ids": [
+     290
+    ],
+    "keyword": 2,
+    "vector": 6,
+    "fused": 3,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q036",
+  "case": "duro-cement",
+  "type": "straightforward",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q037",
+  "case": "duro-cement",
+  "type": "straightforward",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q038",
+  "case": "duro-cement",
+  "type": "straightforward",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q039",
+  "case": "duro-cement",
+  "type": "straightforward",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 4,
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q040",
+  "case": "duro-cement",
+  "type": "straightforward",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q046",
+  "case": "grout-for-floor-tiles",
+  "type": "negative",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "Is Pure Lime Grout suitable for floor tiles?",
+    "evidence_ids": [
+     112,
+     113
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q047",
+  "case": "grout-for-floor-tiles",
+  "type": "negative",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Is Pure Lime Grout suitable for floor tiles?",
+    "evidence_ids": [
+     112,
+     113
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q048",
+  "case": "grout-for-floor-tiles",
+  "type": "negative",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Is Pure Lime Grout suitable for floor tiles?",
+    "evidence_ids": [
+     112,
+     113
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q049",
+  "case": "grout-for-floor-tiles",
+  "type": "negative",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Is Pure Lime Grout suitable for floor tiles?",
+    "evidence_ids": [
+     112,
+     113
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q050",
+  "case": "grout-for-floor-tiles",
+  "type": "negative",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Is Pure Lime Grout suitable for floor tiles?",
+    "evidence_ids": [
+     112,
+     113
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q051",
+  "case": "prompt-injection-duro",
+  "type": "injection",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q052",
+  "case": "prompt-injection-duro",
+  "type": "injection",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q053",
+  "case": "prompt-injection-duro",
+  "type": "injection",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q054",
+  "case": "prompt-injection-duro",
+  "type": "injection",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q055",
+  "case": "prompt-injection-duro",
+  "type": "injection",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Does Duro contain cement?",
+    "evidence_ids": [
+     54
+    ],
+    "keyword": 3,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q056",
+  "case": "nhl-grades",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "Which NHL grade is the most and which the least hydraulic?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What is the trade-off of a more hydraulic lime?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q057",
+  "case": "nhl-grades",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Which NHL grade is the most and which the least hydraulic?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 2
+   },
+   {
+    "asks": "What is the trade-off of a more hydraulic lime?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q058",
+  "case": "nhl-grades",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "Which NHL grade is the most and which the least hydraulic?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "asks": "What is the trade-off of a more hydraulic lime?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q059",
+  "case": "nhl-grades",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Which NHL grade is the most and which the least hydraulic?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "asks": "What is the trade-off of a more hydraulic lime?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q060",
+  "case": "nhl-grades",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "Which NHL grade is the most and which the least hydraulic?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What is the trade-off of a more hydraulic lime?",
+    "evidence_ids": [
+     235
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q061",
+  "case": "mortar-bags-and-quantity",
+  "type": "partial",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What bag sizes are available?",
+    "evidence_ids": [
+     12
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q062",
+  "case": "mortar-bags-and-quantity",
+  "type": "partial",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What bag sizes are available?",
+    "evidence_ids": [
+     12
+    ],
+    "keyword": 2,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q063",
+  "case": "mortar-bags-and-quantity",
+  "type": "partial",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What bag sizes are available?",
+    "evidence_ids": [
+     12
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q064",
+  "case": "mortar-bags-and-quantity",
+  "type": "partial",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What bag sizes are available?",
+    "evidence_ids": [
+     12
+    ],
+    "keyword": 3,
+    "vector": 2,
+    "fused": 2,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q065",
+  "case": "mortar-bags-and-quantity",
+  "type": "partial",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What bag sizes are available?",
+    "evidence_ids": [
+     12
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q076",
+  "case": "duro-coat-and-curing",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "How thick should the first coat of Duro be?",
+    "evidence_ids": [
+     285
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long before the finish coat can go on a lime base coat?",
+    "evidence_ids": [
+     294
+    ],
+    "keyword": 2,
+    "vector": 6,
+    "fused": 3,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q077",
+  "case": "duro-coat-and-curing",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How thick should the first coat of Duro be?",
+    "evidence_ids": [
+     285
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long before the finish coat can go on a lime base coat?",
+    "evidence_ids": [
+     294
+    ],
+    "keyword": 2,
+    "vector": 6,
+    "fused": 3,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q078",
+  "case": "duro-coat-and-curing",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How thick should the first coat of Duro be?",
+    "evidence_ids": [
+     285
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long before the finish coat can go on a lime base coat?",
+    "evidence_ids": [
+     294
+    ],
+    "keyword": 3,
+    "vector": 6,
+    "fused": 4,
+    "reranked": 4
+   }
+  ]
+ },
+ {
+  "id": "q079",
+  "case": "duro-coat-and-curing",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How thick should the first coat of Duro be?",
+    "evidence_ids": [
+     285
+    ],
+    "keyword": 1,
+    "vector": 3,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long before the finish coat can go on a lime base coat?",
+    "evidence_ids": [
+     294
+    ],
+    "keyword": 3,
+    "vector": 6,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q080",
+  "case": "duro-coat-and-curing",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How thick should the first coat of Duro be?",
+    "evidence_ids": [
+     285
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "How long before the finish coat can go on a lime base coat?",
+    "evidence_ids": [
+     294
+    ],
+    "keyword": 3,
+    "vector": 7,
+    "fused": 4,
+    "reranked": 3
+   }
+  ]
+ },
+ {
+  "id": "q081",
+  "case": "ultra-insulation",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "How much more thermally efficient is Ultra than other lime renders?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What replaces the sand?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q082",
+  "case": "ultra-insulation",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How much more thermally efficient is Ultra than other lime renders?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What replaces the sand?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q083",
+  "case": "ultra-insulation",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "How much more thermally efficient is Ultra than other lime renders?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What replaces the sand?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q084",
+  "case": "ultra-insulation",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How much more thermally efficient is Ultra than other lime renders?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What replaces the sand?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q085",
+  "case": "ultra-insulation",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "How much more thermally efficient is Ultra than other lime renders?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "What replaces the sand?",
+    "evidence_ids": [
+     63
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q086",
+  "case": "orders-cutoff-and-online",
+  "type": "multi_part",
+  "style": "original",
+  "parts": [
+   {
+    "asks": "What is the cut-off for same-day dispatch?",
+    "evidence_ids": [
+     282
+    ],
+    "keyword": 1,
+    "vector": 8,
+    "fused": 2,
+    "reranked": 2
+   },
+   {
+    "asks": "Can products be bought online?",
+    "evidence_ids": [
+     283
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q087",
+  "case": "orders-cutoff-and-online",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the cut-off for same-day dispatch?",
+    "evidence_ids": [
+     282
+    ],
+    "keyword": 1,
+    "vector": 41,
+    "fused": 4,
+    "reranked": 8
+   },
+   {
+    "asks": "Can products be bought online?",
+    "evidence_ids": [
+     283
+    ],
+    "keyword": 75,
+    "vector": 1,
+    "fused": 5,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q088",
+  "case": "orders-cutoff-and-online",
+  "type": "multi_part",
+  "style": "reworded",
+  "parts": [
+   {
+    "asks": "What is the cut-off for same-day dispatch?",
+    "evidence_ids": [
+     282
+    ],
+    "keyword": 1,
+    "vector": 68,
+    "fused": 3,
+    "reranked": null
+   },
+   {
+    "asks": "Can products be bought online?",
+    "evidence_ids": [
+     283
+    ],
+    "keyword": 2,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 1
+   }
+  ]
+ },
+ {
+  "id": "q089",
+  "case": "orders-cutoff-and-online",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the cut-off for same-day dispatch?",
+    "evidence_ids": [
+     282
+    ],
+    "keyword": 2,
+    "vector": 14,
+    "fused": 3,
+    "reranked": 1
+   },
+   {
+    "asks": "Can products be bought online?",
+    "evidence_ids": [
+     283
+    ],
+    "keyword": 1,
+    "vector": 1,
+    "fused": 1,
+    "reranked": 2
+   }
+  ]
+ },
+ {
+  "id": "q090",
+  "case": "orders-cutoff-and-online",
+  "type": "multi_part",
+  "style": "messy",
+  "parts": [
+   {
+    "asks": "What is the cut-off for same-day dispatch?",
+    "evidence_ids": [
+     282
+    ],
+    "keyword": 1,
+    "vector": 2,
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "asks": "Can products be bought online?",
+    "evidence_ids": [
+     283
+    ],
+    "keyword": 8,
+    "vector": 1,
+    "fused": 2,
+    "reranked": 2
+   }
+  ]
+ }
+]

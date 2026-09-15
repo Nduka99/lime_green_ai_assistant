@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Tool caches and reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Fetched website pages and the generated SQLite index are built locally, never committed
+data/
+
+# Model weights and the llama.cpp build are downloaded separately (see README)
+models/
+tools/
+*.gguf

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lime Green Assistant</title>
+<style>
+  :root { color-scheme: light dark; --muted: #5f6b5f; --line: #d5dbd5; --accent: #4d7c0f; }
+  @media (prefers-color-scheme: dark) { :root { --muted: #a3ada3; --line: #3a423a; --accent: #a3e635; } }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 1.5rem 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  form { display: flex; gap: .5rem; margin: 1.25rem 0; flex-wrap: wrap; }
+  input[type=text] { flex: 1 1 18rem; padding: .5rem .6rem; font: inherit; }
+  button { padding: .5rem 1rem; font: inherit; cursor: pointer; }
+  .status { font-weight: 600; color: var(--accent); }
+  .notice { border-left: 4px solid var(--accent); padding: .25rem .9rem; margin: 1rem 0; }
+  .notice p, .notice li { margin: .3rem 0; }
+  .notice ul { margin: .3rem 0; padding-left: 1.3rem; }
+  .error { border-left: 4px solid #b91c1c; padding: .25rem .9rem; }
+  ol.sources li { margin-bottom: .9rem; }
+  blockquote { margin: .3rem 0; padding-left: .8rem; border-left: 2px solid var(--line); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>Lime Green Assistant</h1>
+<p class="muted">Answers only from indexed Lime Green website pages, with the exact
+quote behind every claim. A local model writes the answer; the application
+checks every quote before showing it.</p>
+
+<form method="get" action="/">
+  <input type="text" id="q" name="q" value="{{ question }}" aria-label="Question"
+         placeholder="Ask a question about Lime Green products" required>
+  <button type="submit">Ask</button>
+</form>
+<p id="answering" class="muted" hidden>Answering… this can take up to a minute.</p>
+
+{% if error %}
+<div class="error"><p><strong>The assistant is unavailable.</strong> {{ error }}</p></div>
+{% endif %}
+
+{% if answer %}
+<p class="status">
+  {% if answer.status == "answered" %}Answer
+  {% elif answer.status == "insufficient_evidence" %}Not enough information
+  {% else %}Safety referral{% endif %}
+</p>
+
+{% if answer.claims %}
+<ol>
+  {% for claim in answer.claims %}
+  <li>{{ claim.text }}
+    {% for number in claim.sources %} <a href="#source-{{ number }}">[{{ number }}]</a>{% endfor %}
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+{% if answer.notice %}
+<div class="notice">
+  {# Lines starting "- " in the fixed text are steps: show them as a list. #}
+  {% for line in answer.notice.splitlines() %}
+    {% set step = line.startswith("- ") %}
+    {% if step and not (loop.previtem and loop.previtem.startswith("- ")) %}<ul>{% endif %}
+    {% if step %}<li>{{ line[2:] }}</li>{% else %}<p>{{ line }}</p>{% endif %}
+    {% if step and not (loop.nextitem and loop.nextitem.startswith("- ")) %}</ul>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if answer.sources %}
+<h2>Sources</h2>
+<ol class="sources">
+  {% for source in answer.sources %}
+  <li id="source-{{ source.number }}">
+    <a href="{{ source.url }}">{{ source.title }}</a> › {{ source.heading }}
+    <blockquote>“{{ source.quote }}”</blockquote>
+    <span class="muted"><a href="{{ source.link }}">Open the page at this quote</a> ·
+      captured {{ source.captured }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}
+
+{% if answer.closest_pages %}
+<h2>Closest pages</h2>
+<ul>
+  {% for page in answer.closest_pages %}<li><a href="{{ page.url }}">{{ page.title }}</a></li>{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+<script>
+  // The page waits for the whole answer, so show that one is on its way. Without
+  // this script the page works the same, only without the notice.
+  const form = document.querySelector("form");
+  const button = form.querySelector("button");
+  const answering = document.getElementById("answering");
+  form.addEventListener("submit", () => {
+    button.disabled = true;
+    button.textContent = "Answering…";
+    answering.hidden = false;
+  });
+  // A page restored with the Back button starts ready again.
+  window.addEventListener("pageshow", () => {
+    button.disabled = false;
+    button.textContent = "Ask";
+    answering.hidden = true;
+  });
+</script>
+</body>
+</html>

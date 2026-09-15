@@ -1,0 +1,356 @@
+{
+ "about": "Measurements taken while the engine was built, before the frozen evaluation. Practice figures use a separate set of 22 questions, including 19 with an answer passage, plus invented exposure questions. They never use the frozen evaluation set.",
+ "versions": [
+  {
+   "version": "v1",
+   "name": "Hybrid retrieval, top 6",
+   "change": "68 pages chosen by a section rule, 315 passages; keyword (FTS5/BM25) and vector search fused by reciprocal-rank fusion; the model sees the top 6 passages"
+  },
+  {
+   "version": "v2",
+   "name": "Top 8, scored by the answer passage",
+   "change": "retrieval judged by whether the passage holding the answer is retrieved, not just its page; top 6 raised to top 8"
+  },
+  {
+   "version": "v3",
+   "name": "Verified answers",
+   "change": "the model returns claims with exact quotes; deterministic checks remove any claim whose quote, numbers or regulation names are not in its passage; fixed texts for refusals and emergencies"
+  },
+  {
+   "version": "v4",
+   "name": "Model-read emergencies",
+   "change": "a separate first model request decides whether the question describes an exposure (no retrieval if yes); evidence-only verification; only finished, schema-exact replies are used"
+  },
+  {
+   "version": "v5",
+   "name": "Reranked retrieval (deployed)",
+   "change": "a BGE cross-encoder reorders the fused top 20 and the model sees the top 8"
+  }
+ ],
+ "retrieval_practice": {
+  "questions": 19,
+  "note": "An earlier check counted a hit whenever any passage from the right page was retrieved. It showed no difference between the settings and was withdrawn because it scored wrong passages as hits.",
+  "settings": [
+   {
+    "setting": "Fused top 6 (v1)",
+    "answer_passage_retrieved": 17
+   },
+   {
+    "setting": "Fused top 8 (v2)",
+    "answer_passage_retrieved": 18
+   },
+   {
+    "setting": "BGE-reranked top 6",
+    "answer_passage_retrieved": 18,
+    "added_ms": 512
+   }
+  ]
+ },
+ "model_benchmark": {
+  "note": "Practice set, same saved passages for every model; the 18 answerable answers were graded by a frontier LLM judge.",
+  "models": [
+   {
+    "model": "Qwen3.6-35B-A3B",
+    "status_ok": 22,
+    "quoted": 18,
+    "removed": 2,
+    "sound": 17,
+    "partial": 1,
+    "lost": 0,
+    "median_s": 9.0
+   },
+   {
+    "model": "Gemma 4 26B-A4B",
+    "status_ok": 22,
+    "quoted": 18,
+    "removed": 0,
+    "sound": 18,
+    "partial": 0,
+    "lost": 0,
+    "median_s": 10.5
+   },
+   {
+    "model": "gpt-oss 20B",
+    "status_ok": 21,
+    "quoted": 16,
+    "removed": 3,
+    "sound": 12,
+    "partial": 5,
+    "lost": 1,
+    "median_s": 5.7
+   },
+   {
+    "model": "Gemma 4 E4B",
+    "status_ok": 20,
+    "quoted": 15,
+    "removed": 3,
+    "sound": 14,
+    "partial": 3,
+    "lost": 1,
+    "median_s": 13.1
+   },
+   {
+    "model": "Nemotron 3 Nano 4B",
+    "status_ok": 20,
+    "quoted": 15,
+    "removed": 6,
+    "sound": 12,
+    "partial": 4,
+    "lost": 2,
+    "median_s": 3.1
+   }
+  ]
+ },
+ "emergency_detection": {
+  "note": "Exposures: invented questions describing a product swallowed, in the eyes or on the skin. Look-alikes: ordinary building or safety questions that must not be referred. The last 20 + 20 of each were written before step 2 was built and held out.",
+  "phrase_list": "the v3 phrase list missed 7 of 8 realistic exposures and flagged 7 of 8 building questions; widened rules then caught 6 of 12 exposures on questions written afterwards",
+  "steps": [
+   {
+    "step": "Emergency field in the answer request",
+    "model": "Qwen3.6-35B-A3B",
+    "exposures_referred": 58,
+    "exposures": 58,
+    "false_alarms": 1,
+    "look_alikes": 56
+   },
+   {
+    "step": "Emergency field in the answer request",
+    "model": "Gemma 4 26B-A4B",
+    "exposures_referred": 58,
+    "exposures": 58,
+    "false_alarms": 2,
+    "look_alikes": 56
+   },
+   {
+    "step": "Emergency field in the answer request",
+    "model": "Nemotron 3 Nano 4B",
+    "exposures_referred": 58,
+    "exposures": 58,
+    "false_alarms": 19,
+    "look_alikes": 56
+   },
+   {
+    "step": "Separate emergency request (v4)",
+    "model": "Qwen3.6-35B-A3B",
+    "exposures_referred": 77,
+    "exposures": 78,
+    "false_alarms": 2,
+    "look_alikes": 76
+   },
+   {
+    "step": "Separate emergency request (v4)",
+    "model": "Gemma 4 26B-A4B",
+    "exposures_referred": 78,
+    "exposures": 78,
+    "false_alarms": 0,
+    "look_alikes": 76
+   },
+   {
+    "step": "Separate emergency request (v4)",
+    "model": "Nemotron 3 Nano 4B",
+    "exposures_referred": 76,
+    "exposures": 78,
+    "false_alarms": 1,
+    "look_alikes": 76
+   }
+  ],
+  "held_out": "on the 20 + 20 held-out questions all three models referred 20/20 exposures and 0/20 look-alikes"
+ },
+ "reranker_practice": {
+  "note": "Practice set, three models, fused top 8 versus BGE-reranked top 8; 22 answers per run were graded by a frontier LLM judge as sound / partial / wrong.",
+  "models": [
+   {
+    "model": "Qwen3.6-35B-A3B",
+    "before": [
+     19,
+     2,
+     1
+    ],
+    "after": [
+     21,
+     1,
+     0
+    ],
+    "status_before": 21,
+    "status_after": 22
+   },
+   {
+    "model": "Gemma 4 26B-A4B",
+    "before": [
+     22,
+     0,
+     0
+    ],
+    "after": [
+     21,
+     1,
+     0
+    ],
+    "status_before": 22,
+    "status_after": 22
+   },
+   {
+    "model": "Nemotron 3 Nano 4B",
+    "before": [
+     16,
+     4,
+     2
+    ],
+    "after": [
+     18,
+     3,
+     1
+    ],
+    "status_before": 20,
+    "status_after": 21
+   }
+  ],
+  "rerank_ms": {
+   "gpu_median": 528,
+   "cpu_median": 5052
+  }
+ },
+ "reranker_held_out": {
+  "note": "23 questions written before any run to test spelling variants, synonyms, vague and misspelt wording. Rank of the best answering passage in the top 8 the model sees; null = not in the top 8.",
+  "questions": [
+   {
+    "kind": "spelling",
+    "question": "how do i stop mold growing on my bedroom walls",
+    "fused": null,
+    "reranked": 1
+   },
+   {
+    "kind": "spelling",
+    "question": "can your lime plaster go directly on drywall",
+    "fused": null,
+    "reranked": null
+   },
+   {
+    "kind": "spelling",
+    "question": "is there a fiber reinforced lime plaster",
+    "fused": 2,
+    "reranked": 2
+   },
+   {
+    "kind": "spelling",
+    "question": "what color options does your lime mortar come in",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "spelling",
+    "question": "whats a good sealer for a limestone facade that keeps it breathable",
+    "fused": 2,
+    "reranked": 1
+   },
+   {
+    "kind": "spelling",
+    "question": "do you sell stucco for patching crown molding",
+    "fused": 1,
+    "reranked": 2
+   },
+   {
+    "kind": "synonym",
+    "question": "what do i use to fill hollow gaps inside an old rubble stone wall",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "synonym",
+    "question": "old plaster is powdery and crumbling, what hardens it before i skim over",
+    "fused": null,
+    "reranked": null
+   },
+   {
+    "kind": "synonym",
+    "question": "can lime plaster be put on wooden strips on a ceiling",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "synonym",
+    "question": "difference between slaked lime and hydraulic lime",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "synonym",
+    "question": "my solid walls sweat and go damp every winter, would lime help",
+    "fused": null,
+    "reranked": null
+   },
+   {
+    "kind": "synonym",
+    "question": "what goes over the outside insulation boards before the top render",
+    "fused": 6,
+    "reranked": 4
+   },
+   {
+    "kind": "vague",
+    "question": "what should i check before i start rendering my house",
+    "fused": 3,
+    "reranked": 1
+   },
+   {
+    "kind": "vague",
+    "question": "how long do i leave the first coat before the next one",
+    "fused": 1,
+    "reranked": 3
+   },
+   {
+    "kind": "vague",
+    "question": "is it ok to render when its freezing outside",
+    "fused": 3,
+    "reranked": 1
+   },
+   {
+    "kind": "vague",
+    "question": "is there a plaster where i only need to do one coat",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "vague",
+    "question": "how do i know if my wall is too dry or too wet to render",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "vague",
+    "question": "whats the slimmest insulation for a solid wall",
+    "fused": null,
+    "reranked": 1
+   },
+   {
+    "kind": "typo",
+    "question": "wat mortar for poiting old victorian brickwork",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "typo",
+    "question": "plastring onto old laths, how many coats do i need",
+    "fused": 4,
+    "reranked": 1
+   },
+   {
+    "kind": "typo",
+    "question": "can the stiple coat be sprayed by machine",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "typo",
+    "question": "wat is a buter coat",
+    "fused": 1,
+    "reranked": 1
+   },
+   {
+    "kind": "typo",
+    "question": "does lime harden by soaking up carbon dioxde",
+    "fused": 3,
+    "reranked": 1
+   }
+  ]
+ }
+}

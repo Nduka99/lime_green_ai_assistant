@@ -1,0 +1,80 @@
+# Lime Green pages indexed by `limespec ingest`.
+#
+# Selected by rule from https://www.lime-green.co.uk/sitemap.xml on 2026-09-12,
+# never by what the evaluation questions need. Included sections:
+#   products (categories and products), support/knowledgebase, support/faq,
+#   warmshell-natural-insulation, about-lime-green, contact
+# Excluded: news, case studies, colour galleries, inspiration, legal and account
+# pages, and warmshell-natural-insulation/about-warmshell, which redirects to the
+# Warmshell page already listed.
+#
+# 68 pages. One URL per line; lines starting with # are ignored.
+
+https://www.lime-green.co.uk/products
+https://www.lime-green.co.uk/products/lime-mortar
+https://www.lime-green.co.uk/products/lime-mortar/natural-lime-mortar
+https://www.lime-green.co.uk/products/lime-mortar/ashlar-mortar
+https://www.lime-green.co.uk/products/lime-mortar/coloured-cement-mortar
+https://www.lime-green.co.uk/products/lime-plaster
+https://www.lime-green.co.uk/products/lime-plaster/stipple-coat
+https://www.lime-green.co.uk/products/lime-plaster/ultra
+https://www.lime-green.co.uk/products/lime-plaster/duro-plaster
+https://www.lime-green.co.uk/products/lime-plaster/solo-onecoat-plaster
+https://www.lime-green.co.uk/products/lime-plaster/ionic-fine-stuff
+https://www.lime-green.co.uk/products/lime-plaster/fibrelime
+https://www.lime-green.co.uk/products/lime-plaster/solo-filler
+https://www.lime-green.co.uk/products/lime-plaster/solo-mesh
+https://www.lime-green.co.uk/products/lime-render
+https://www.lime-green.co.uk/products/lime-render/duro
+https://www.lime-green.co.uk/products/lime-render/natural-finish
+https://www.lime-green.co.uk/products/lime-render/finish-wp
+https://www.lime-green.co.uk/products/lime-render/roman-stucco
+https://www.lime-green.co.uk/products/lime-render/tradirend
+https://www.lime-green.co.uk/products/lime-render/ultra-render
+https://www.lime-green.co.uk/products/lime-render/silicate-finish-render
+https://www.lime-green.co.uk/products/lime-render/warmshell-meshcoat
+https://www.lime-green.co.uk/products/lime-render/forte-render-base-coat
+https://www.lime-green.co.uk/products/lime-render/grippa
+https://www.lime-green.co.uk/products/lime-render/warmshell-external-mesh-660
+https://www.lime-green.co.uk/products/insulation
+https://www.lime-green.co.uk/products/insulation/woodfibre
+https://www.lime-green.co.uk/products/insulation/aerogel
+https://www.lime-green.co.uk/products/insulation/boardadhesive
+https://www.lime-green.co.uk/products/insulation/hemp-lime-binder
+https://www.lime-green.co.uk/products/primers-and-adhesives
+https://www.lime-green.co.uk/products/primers-and-adhesives/ps2
+https://www.lime-green.co.uk/products/primers-and-adhesives/mpl1
+https://www.lime-green.co.uk/products/primers-and-adhesives/aerogel-adhesive-1
+https://www.lime-green.co.uk/products/primers-and-adhesives/ad2
+https://www.lime-green.co.uk/products/primers-and-adhesives/silguard
+https://www.lime-green.co.uk/products/primers-and-adhesives/penetrating-primer
+https://www.lime-green.co.uk/products/primers-and-adhesives/solo-primer
+https://www.lime-green.co.uk/products/stone-repair
+https://www.lime-green.co.uk/products/stone-repair/pure-lime-grout
+https://www.lime-green.co.uk/products/stone-repair/contour
+https://www.lime-green.co.uk/products/stone-repair/stucco-cast
+https://www.lime-green.co.uk/warmshell-natural-insulation
+https://www.lime-green.co.uk/warmshell-natural-insulation/warmshell-internal-insulation
+https://www.lime-green.co.uk/warmshell-natural-insulation/warmshell-external-insulation
+https://www.lime-green.co.uk/warmshell-natural-insulation/warmshell-roof-insulation
+https://www.lime-green.co.uk/support/knowledgebase
+https://www.lime-green.co.uk/support/knowledgebase/buildingregulationsinternalwallinsulation
+https://www.lime-green.co.uk/support/knowledgebase/glossary-of-terms
+https://www.lime-green.co.uk/support/knowledgebase/healthy-building
+https://www.lime-green.co.uk/support/knowledgebase/lime-composition
+https://www.lime-green.co.uk/support/knowledgebase/the-importance-of-breathability
+https://www.lime-green.co.uk/support/knowledgebase/how-to-videos
+https://www.lime-green.co.uk/support/knowledgebase/why-lime
+https://www.lime-green.co.uk/support/knowledgebase/render-checklist
+https://www.lime-green.co.uk/support/knowledgebase/buildingregsinternalwallinsulation
+https://www.lime-green.co.uk/support/knowledgebase/colour-and-colour-consistency
+https://www.lime-green.co.uk/support/knowledgebase/conservation
+https://www.lime-green.co.uk/support/knowledgebase/lime-for-new-build
+https://www.lime-green.co.uk/support/knowledgebase/lime_buying_guide
+https://www.lime-green.co.uk/support/knowledgebase/hydraulic_or_hydrated_lime
+https://www.lime-green.co.uk/support/knowledgebase/plastering_onto_laths
+https://www.lime-green.co.uk/support/knowledgebase/what-is-lime
+https://www.lime-green.co.uk/support/knowledgebase/background-preparation-for-rendering
+https://www.lime-green.co.uk/support/faq
+https://www.lime-green.co.uk/about-lime-green
+https://www.lime-green.co.uk/contact
