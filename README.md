@@ -261,10 +261,24 @@ strength per model.
 | Nemotron 3 Nano 4B, 8-bit | −0.36 (−0.55 to −0.18) | 11.0 s |
 
 Qwen and Gemma cannot be separated: Bradley-Terry gives each a 50% chance of beating
-the other. The plan was to ship the strongest model. With an exact tie, I kept
-Qwen, the model already shipped, and made that choice after seeing the result.
-Times run from clicking Ask to the answer page; Gemma and Nemotron ran with only
-part of their layers on the 8 GB card.
+the other, so Qwen, already deployed, stayed. Times run from clicking Ask to the
+answer page; Gemma and Nemotron ran with only part of their layers on the 8 GB card.
+
+The held-out questions are harder than the frozen set: 40 of the 60 need several
+pages or several parts, and 15 are answered only outside the indexed pages (image
+descriptions and the sample-order and colour pages). Every held-out answer was also
+graded against the locked key by a blind LLM grader, on the frozen evaluation's
+sound / partial / wrong scale (`evaluation/results/heldout-v2-graded.json`):
+
+| Generator | Sound / partial / wrong, 45 answerable from the indexed pages | All 60 |
+|---|---|---|
+| Qwen3.6-35B-A3B (shipped) | 23 / 21 / 1 | 23 / 21 / 16 |
+| Gemma 4 26B-A4B | 27 / 15 / 3 | 27 / 15 / 18 |
+| Nemotron 3 Nano 4B, 8-bit | 20 / 18 / 7 | 20 / 18 / 22 |
+
+Gemma gave more fully sound answers and Qwen the fewest wrong ones. On the 15
+questions answered outside the index every model was graded wrong, mostly for
+refusing.
 
 **Frozen evaluation (chose the model).** 90 questions (18 cases, each asked five
 ways) whose expected answers were locked before the engine was built. Two blind LLM
@@ -322,7 +336,10 @@ The readable record of these questions and expected answers is
   allow.
 - With Lime Green's own enquiries, fine-tune the embedding model and reranker on
   customers' wording, fine-tune a small model on verified answers for lighter
-  machines, add the PDF data sheets, and have the technical team grade a test set.
+  machines, and add the PDF data sheets.
+- Have Lime Green's domain experts write and grade the evaluation questions and
+  answer keys, instead of synthetic sets drafted by LLMs without that domain
+  context.
 
 ## How this was built
 
@@ -335,8 +352,9 @@ engine was built and were not opened until all 270 answers had been saved; both
 tools then graded every answer without knowing which model wrote it, and I settled
 their disagreements and applied the locked forbidden-answer rules. For the held-out
 comparison, new chats that had never seen the project judged the answers in pairs,
-with Gemini breaking their disagreements. This grading was offline and is not part
-of the running assistant.
+with Gemini breaking their disagreements; each held-out answer was then graded
+against the locked key by a Claude chat that did not know which model wrote it.
+This grading was offline and is not part of the running assistant.
 
 The independent reviews led to concrete corrections in passage scoring, safety
 wording, incomplete model replies and reranker response validation.
