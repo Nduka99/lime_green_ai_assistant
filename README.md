@@ -8,6 +8,10 @@ Quotation checks establish where the words came from. They do not prove that a
 claim interprets them correctly or answers every part of a question. The results
 below show both successes and remaining failures.
 
+> **Status, September 2026.** This repository is being developed into a
+> production platform. The interview submission is tag `submission-v2`; the
+> version every later change is measured against is tag `v5-baseline`.
+
 ```text
 question -> keyword + vector search -> reranking -> local LLM
          -> quote, number and regulation checks -> answer with sources
@@ -223,15 +227,30 @@ requests can still produce different wording, even with a fixed seed.
 ## Tests
 
 ```powershell
-uv run pytest                  # 151 tests, 100% coverage, no servers or models needed
+uv run python scripts/check.py # every check a change must pass, in one command
+uv run pytest                  # 187 tests, 100% coverage, no servers or models needed
 uv run pytest -m live --no-cov # the brief's three kinds of question, with the servers running
-uv run ruff check . ; uv run mypy src tests
+uv run ruff check . ; uv run mypy src tests evaluation
 ```
 
 The offline tests use invented pages and a fake model, so they check the rules
 themselves: quote matching, number and regulation checks, refusals, safety
 routing, retrieval fusion and reranking, page parsing, malformed server replies,
 and that the command line and web page render the same answer data.
+
+### Measurement harness
+
+`evaluation/` scores keyed question sets. Keys and saved runs stay in git-ignored
+`data/eval/`; `evaluation/sets.json` records each file's SHA-256, and every
+command refuses a set whose files have changed. Reports are in
+`evaluation/reports/`.
+
+```powershell
+uv run python -m evaluation verify                        # check every set's hashes
+uv run python -m evaluation retrieval frozen90            # IR measures from saved runs
+uv run python -m evaluation grades heldout-v3 sitting-topk
+uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run v5
+```
 
 ## Results
 
