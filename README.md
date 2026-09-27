@@ -228,7 +228,7 @@ requests can still produce different wording, even with a fixed seed.
 
 ```powershell
 uv run python scripts/check.py # every check a change must pass, in one command
-uv run pytest                  # 187 tests, 100% coverage, no servers or models needed
+uv run pytest                  # 196 tests, 100% coverage; no models, but the dev Postgres
 uv run pytest -m live --no-cov # the brief's three kinds of question, with the servers running
 uv run ruff check . ; uv run mypy src tests evaluation
 ```
@@ -237,6 +237,10 @@ The offline tests use invented pages and a fake model, so they check the rules
 themselves: quote matching, number and regulation checks, refusals, safety
 routing, retrieval fusion and reranking, page parsing, malformed server replies,
 and that the command line and web page render the same answer data.
+
+The Postgres tests (`tests/test_store.py`) use a throwaway database on the
+development server, so start it first, from the repository root inside WSL:
+`docker compose -f deploy/compose.yaml --profile dev up -d`.
 
 ### Measurement harness
 

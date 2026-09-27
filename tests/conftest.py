@@ -1,9 +1,14 @@
 import re
+import uuid
 import zlib
+from collections.abc import Iterator
 from pathlib import Path
 
+import psycopg
 import pytest
+from psycopg import sql
 
+from limespec import store
 from limespec.answer import INSUFFICIENT, PARTIAL, SAFETY_REFERRAL
 from limespec.models import Answer, Claim, Evidence, Passage, Rejection
 from limespec.retrieve import Embed, Rerank
@@ -112,3 +117,60 @@ def referral() -> Answer:
     return Answer(
         "my son swallowed some mortar", "safety_referral", SAFETY_REFERRAL, (), (), ()
     )
+
+
+# Postgres tests run against the development server started with
+# `docker compose -f deploy/compose.yaml --profile dev up -d` (settings in
+# deploy/.env), in a throwaway database, so development data is never touched.
+REPOSITORY = Path(__file__).parent.parent
+MIGRATIONS = REPOSITORY / "db" / "migrations"
+
+
+def server_url(database: str) -> str:
+    settings = {}
+    for line in (
+        (REPOSITORY / "deploy" / ".env").read_text(encoding="utf-8").splitlines()
+    ):
+        if "=" in line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            settings[key] = value
+    user, password = settings["POSTGRES_USER"], settings["POSTGRES_PASSWORD"]
+    return f"postgresql://{user}:{password}@127.0.0.1:5432/{database}"
+
+
+def migration_up(path: Path) -> str:
+    """The SQL between a dbmate migration's `-- migrate:up` and `-- migrate:down`."""
+    text = path.read_text(encoding="utf-8")
+    return text.split("-- migrate:up", 1)[1].split("-- migrate:down", 1)[0]
+
+
+@pytest.fixture(scope="session")
+def postgres_url() -> Iterator[str]:
+    """A fresh database with every migration applied, dropped after the session."""
+    name = f"limespec_test_{uuid.uuid4().hex[:8]}"
+    try:
+        admin = psycopg.connect(server_url("postgres"), autocommit=True)
+    except psycopg.OperationalError as error:
+        pytest.fail(
+            "the development Postgres is not running; start it with "
+            f"`docker compose -f deploy/compose.yaml --profile dev up -d` ({error})"
+        )
+    with admin:
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+    with psycopg.connect(server_url(name)) as conn:
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            conn.execute(migration_up(path).encode())
+    yield server_url(name)
+    with psycopg.connect(server_url("postgres"), autocommit=True) as admin:
+        admin.execute(
+            sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+        )
+
+
+@pytest.fixture
+def pg(postgres_url: str) -> Iterator[store.Connection]:
+    """A connection to the test database, emptied after each test."""
+    with psycopg.connect(postgres_url) as conn:
+        yield conn
+        conn.rollback()
+        conn.execute("TRUNCATE passages, index_versions, documents RESTART IDENTITY")
