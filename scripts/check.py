@@ -25,9 +25,10 @@ ATTRIBUTION = re.compile(
 PYTHON = sys.executable
 STEPS = [
     ("format", [PYTHON, "-m", "ruff", "format", "--check", "src", "tests",
-                "evaluation", "scripts"]),
+                "evaluation", "experiments", "scripts"]),
     ("lint", [PYTHON, "-m", "ruff", "check", "."]),
-    ("types", [PYTHON, "-m", "mypy", "src", "tests", "evaluation", "scripts"]),
+    ("types", [PYTHON, "-m", "mypy", "src", "tests", "evaluation", "experiments",
+               "scripts"]),
     ("tests", [PYTHON, "-m", "pytest", "-q"]),
 ]  # fmt: skip
 
