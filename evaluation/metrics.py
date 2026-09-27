@@ -1,0 +1,109 @@
+"""Standard information-retrieval measures, computed from ranked passage ids.
+
+Relevance is binary and comes from a frozen answer key: a passage is relevant to
+a question part when it contains one of that part's evidence quotes. Each
+function takes one ranked list and the relevant ids, so the same numbers can be
+reproduced from the saved run and qrels files with any IR tool.
+"""
+
+import math
+import random
+from collections.abc import Sequence
+
+
+def first_relevant_rank(ranking: Sequence[int], relevant: set[int]) -> int | None:
+    """1-based rank of the first relevant passage, or None if there is none."""
+    return next((i for i, pid in enumerate(ranking, 1) if pid in relevant), None)
+
+
+def success_at_k(ranking: Sequence[int], relevant: set[int], k: int) -> float:
+    """1.0 when at least one relevant passage is in the top k (hit rate)."""
+    return float(any(pid in relevant for pid in ranking[:k]))
+
+
+def recall_at_k(ranking: Sequence[int], relevant: set[int], k: int) -> float:
+    """Share of the relevant passages that are in the top k."""
+    if not relevant:
+        return 0.0
+    return sum(pid in relevant for pid in ranking[:k]) / len(relevant)
+
+
+def precision_at_k(ranking: Sequence[int], relevant: set[int], k: int) -> float:
+    """Share of the top k that is relevant (low by design: a part has 1-3
+    relevant passages among hundreds)."""
+    return sum(pid in relevant for pid in ranking[:k]) / k if k else 0.0
+
+
+def reciprocal_rank(ranking: Sequence[int], relevant: set[int], k: int) -> float:
+    """1 / rank of the first relevant passage within the top k, else 0."""
+    rank = first_relevant_rank(ranking[:k], relevant)
+    return 1.0 / rank if rank else 0.0
+
+
+def ndcg_at_k(ranking: Sequence[int], relevant: set[int], k: int) -> float:
+    """Discounted cumulative gain at k, normalised by the best possible order."""
+    gains = sum(
+        1 / math.log2(i + 1) for i, pid in enumerate(ranking[:k], 1) if pid in relevant
+    )
+    ideal = sum(1 / math.log2(i + 1) for i in range(1, min(len(relevant), k) + 1))
+    return gains / ideal if ideal else 0.0
+
+
+def mean(values: Sequence[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if not ordered:
+        return 0.0
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def bootstrap_interval(
+    values: Sequence[float], rounds: int = 10000, seed: int = 42
+) -> tuple[float, float]:
+    """95% interval for the mean, by resampling the questions."""
+    if not values:
+        return (0.0, 0.0)
+    rng = random.Random(seed)
+    means = sorted(
+        mean([values[rng.randrange(len(values))] for _ in values])
+        for _ in range(rounds)
+    )
+    return (means[int(0.025 * rounds)], means[int(0.975 * rounds)])
+
+
+def paired_bootstrap(
+    better: Sequence[float],
+    baseline: Sequence[float],
+    rounds: int = 10000,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Difference of means on the same questions, its 95% interval and p value.
+
+    The p value is the share of resamples of the centred differences whose mean
+    is at least as far from zero as the observed difference (two-sided).
+    """
+    differences = [b - a for b, a in zip(better, baseline, strict=True)]
+    observed = mean(differences)
+    rng = random.Random(seed)
+    centred = [d - observed for d in differences]
+    resampled = sorted(
+        mean([differences[rng.randrange(len(differences))] for _ in differences])
+        for _ in range(rounds)
+    )
+    null = [
+        mean([centred[rng.randrange(len(centred))] for _ in centred])
+        for _ in range(rounds)
+    ]
+    extreme = sum(abs(value) >= abs(observed) for value in null)
+    return {
+        "difference": observed,
+        "low": resampled[int(0.025 * rounds)],
+        "high": resampled[int(0.975 * rounds)],
+        "p_value": (extreme + 1) / (rounds + 1),
+    }

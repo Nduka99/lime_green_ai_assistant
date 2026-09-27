@@ -1,0 +1,47 @@
+{
+ "sets": {
+  "frozen90": {
+   "description": "Frozen evaluation (Phase 4): 18 cases x 5 wordings = 90 questions, key locked before the engine was built; retrieval runs of the four methods on the submitted index",
+   "files": {
+    "key.json": "5f17ae98df3577fd3e79f88c3f41f7962bf119039dbfc340d8f71699f7ac5e3a",
+    "questions.json": "c54c3fb8731a15db906fd7f2107b8bc738b4ba36139936d6e27aa8d11d38e706",
+    "retrieval/qrels.txt": "65b065310008a1c3b21d7942a8a8cc3fe35c704911c154a9c505e164456e0b14",
+    "retrieval/run-fused.txt": "4c7ce5ed474e74c533f090a4ffa64d370cbb1f452ba277997c7cb4263d0d0e1b",
+    "retrieval/run-keyword.txt": "8d3e097b948fd5b1cbd18150a9fc960d7f9c6c469d6afd5952f3d8712830c838",
+    "retrieval/run-reranked.txt": "235ce2cc0b4c71711b39056820f36c365e232b32b0402bec89da2661cf56a11f",
+    "retrieval/run-vector.txt": "bbac1b90b8807f6a5ff9145473f23ec8d161c35c91890cb2fd76f4c6b6ae78dd"
+   }
+  },
+  "heldout-v2": {
+   "description": "Held-out v2: 12 cases x 5 wordings = 60 questions asked live; key sealed at 70fa6ce; retrieval runs and the top-k grading sitting (structural index, top 8 and 20)",
+   "files": {
+    "key.json": "4d6941f2dae43ddf90b9f23768a349fd8cf0228d5e6ada6e6703dcc8046c32be",
+    "questions.json": "53adc5e6b38765751a66504a0e2d8fab28df05467483c61bcebf04f626c9f3f1",
+    "retrieval/qrels.txt": "ec1195f52d83ca7a3dbf44b2df26cba58467c6738594be989427425c0d335c75",
+    "retrieval/run-fused.txt": "63771ea948b884fad1f78ae3b0452cc687d9c7c3258f8f58d58fd9798e8ae3dd",
+    "retrieval/run-keyword.txt": "50e2321cb70c12949e24925bf38ff9e8a7d59ee10d65cb54c8e66e04a5c8e22c",
+    "retrieval/run-reranked.txt": "4f5390f4bfe9e6757b66ffec9877f1554acff635fa6f2f21b2629ba6c3d7ccca",
+    "retrieval/run-vector.txt": "b293cab9e56bbe2540fbaeb753a000a66e307708d1308b84e183792a82525cb4",
+    "sitting-topk/answers-cand_k20.json": "e002c432c3951ed8cb7d396463a0bb2ea9ceb19a32eb54a826c4b3baaed78f4a",
+    "sitting-topk/answers-cand_k8.json": "136ac3fc8370e46c3c3fe5c602c3b565a23c57b662deaeb6c244cfaaeb041cc5",
+    "sitting-topk/grades.json": "fc44e1ef4a299eebdb9cfcd515da23d82edcea0bcc4c40811330490b6fc71181"
+   }
+  },
+  "heldout-v3": {
+   "description": "Held-out v3: 15 cases x 5 wordings = 75 questions, key written by a separate browsing model; two grading sittings of the same answers (held-out and top-k)",
+   "files": {
+    "key.json": "37a9da29dcc198a47a8f1e93a2e0971abaf31ce8c396de9348fa721a5089380a",
+    "questions.json": "b7661a74b86f6ddfa32b1d432bbcd9fd0810f1950d92d11ff25c1fd16181dcae",
+    "sitting-heldout/answers-candidate.json": "59306fb3c9ca327d86810f1c3ab9cc10e2293a0c9a3485cda84e74b88b297f72",
+    "sitting-heldout/answers-v5.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
+    "sitting-heldout/grades.json": "b93ea92bab14cbddce1863b8d34dbb67a04e5f2705267c27a8c830d008011043",
+    "sitting-topk/answers-cand_k20.json": "b10c69ec28eeba0af72f90537b768ce47e0f20f73b16c09cd8694358775fa41a",
+    "sitting-topk/answers-cand_k8.json": "59306fb3c9ca327d86810f1c3ab9cc10e2293a0c9a3485cda84e74b88b297f72",
+    "sitting-topk/answers-k12.json": "d463ebdb0c73ab0c150c91d575663c7481497d8bdb850aa4ca2e5f00f1ee1885",
+    "sitting-topk/answers-k20.json": "e428f003f0248912723d38b13b97e5b5b8d2b6665ae8b59fc869b5d4854881c7",
+    "sitting-topk/answers-k8.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
+    "sitting-topk/grades.json": "dbeb1e41970bb3a197ab73e4389f6d3ad799882b9a10f070fbf34370329780dc"
+   }
+  }
+ }
+}

@@ -33,7 +33,7 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=limespec --cov-report=term-missing --cov-fail-under=100 -m 'not live'"
+addopts = "--cov=limespec --cov=evaluation --cov-report=term-missing --cov-fail-under=100 -m 'not live'"
 markers = ["live: needs the running llama.cpp servers and a built index"]
 
 [dependency-groups]
