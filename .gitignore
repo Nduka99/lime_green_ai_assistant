@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Local settings and secrets; each has a committed .env.example
+.env
+
 # Tool caches and reports
 .pytest_cache/
 .mypy_cache/
