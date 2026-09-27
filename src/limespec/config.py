@@ -3,12 +3,18 @@
 Paths are relative to the repository root, where every command is run.
 """
 
+import os
 from pathlib import Path
 
 SITE = "https://www.lime-green.co.uk/"
 SOURCES_FILE = Path("sources.txt")
 PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
 DATABASE = Path("data/limespec.db")  # the local index; never committed
+# The Postgres index (deploy/compose.yaml). It holds a password, so it comes from the
+# environment: copy .env.example to .env and run `uv run --env-file .env ...`.
+DATABASE_URL = os.environ.get("LIMESPEC_DATABASE_URL", "")
+# The database is on this machine; psycopg's own default waits 130 s before failing.
+DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 
 USER_AGENT = "lime-green-assistant/0.1 (technical interview exercise)"
 REQUEST_DELAY_SECONDS = 1.0

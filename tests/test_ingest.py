@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from limespec import config
+from limespec import config, store
 from limespec.ingest import (
     IngestError,
     build_index,
@@ -17,6 +17,7 @@ from limespec.ingest import (
     fetch_missing,
     fetch_page,
     ingest,
+    ingest_postgres,
     page_passages,
     read_sources,
     split_section,
@@ -239,6 +240,21 @@ def test_ingest_reads_settings_when_called_and_builds_from_the_cache(
 
     assert (tmp_path / "index.db").exists()
     assert (manifest["pages"], manifest["passages"]) == ("1", "2")
+
+
+def test_ingest_postgres_makes_a_new_version_live_from_the_cache(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+) -> None:
+    first, _ = ingest_postgres(pg, fake_embed_1024)
+    second, manifest = ingest_postgres(pg, fake_embed_1024)
+
+    assert store.live_version(pg) == (second, config.EMBEDDING_MODEL)
+    assert second != first
+    assert (manifest["pages"], manifest["passages"]) == ("1", "2")
+    found = store.keyword_ranking(pg, second, "Do you deliver on Saturdays?", 5)
+    [top] = store.load_passages(pg, found[:1])
+    assert top.url == "https://example.test/support/faq"
+    assert top.heading == "Do you deliver on Saturdays?"
 
 
 # --- Polite acquisition --------------------------------------------------------

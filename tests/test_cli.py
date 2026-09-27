@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, llm
+from limespec import assistant, cli, config, llm, store
 from limespec.app import app
 from limespec.ingest import build_index
 from limespec.models import Answer
@@ -146,6 +146,47 @@ def test_serve_runs_the_web_page_on_this_machine_only(
         (app, {"host": "127.0.0.1", "port": 8090}),
         (app, {"host": "127.0.0.1", "port": 8123}),
     ]
+
+
+def test_ingest_to_postgres_needs_its_database_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+
+    assert cli.main(["ingest", "--postgres"]) == 1
+    assert "LIMESPEC_DATABASE_URL is not set" in capsys.readouterr().err
+
+
+def test_ingest_to_postgres_writes_a_live_version_and_prints_it(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+
+    assert cli.main(["ingest", "--postgres"]) == 0
+    live = store.live_version(pg)
+    assert live is not None
+    output = capsys.readouterr().out
+    assert output.startswith(f"index version: {live[0]} (live)\n")
+    assert "passages: 2" in output
+
+
+def test_an_unreachable_postgres_is_reported_not_raised(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+) -> None:
+    # Nothing listens on port 9; on Windows the attempt waits out the timeout.
+    monkeypatch.setattr(config, "DATABASE_URL", "postgresql://x:y@127.0.0.1:9/z")
+    monkeypatch.setattr(config, "DATABASE_CONNECT_TIMEOUT_SECONDS", 1)
+
+    assert cli.main(["ingest", "--postgres"]) == 1
+    assert capsys.readouterr().err.startswith("error: connection")
 
 
 def test_model_server_errors_are_reported_not_raised(

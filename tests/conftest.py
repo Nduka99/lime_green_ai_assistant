@@ -8,8 +8,9 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from limespec import store
+from limespec import config, store
 from limespec.answer import INSUFFICIENT, PARTIAL, SAFETY_REFERRAL
+from limespec.ingest import cache_path
 from limespec.models import Answer, Claim, Evidence, Passage, Rejection
 from limespec.retrieve import Embed, Rerank
 from limespec.verify import quote_link
@@ -174,3 +175,22 @@ def pg(postgres_url: str) -> Iterator[store.Connection]:
         yield conn
         conn.rollback()
         conn.execute("TRUNCATE passages, index_versions, documents RESTART IDENTITY")
+
+
+@pytest.fixture
+def fake_embed_1024(fake_embed: Embed) -> Embed:
+    """The word-count stand-in, padded to the Postgres column's 1024 dimensions."""
+    return lambda texts: [v + [0.0] * (1024 - len(v)) for v in fake_embed(texts)]
+
+
+@pytest.fixture
+def cached_faq(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A sources file naming the FAQ fixture, already in a temporary page cache."""
+    url = FIXTURE_URLS["faq.html"]
+    sources = tmp_path / "sources.txt"
+    sources.write_text(f"{url}\n")
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path / "site")
+    monkeypatch.setattr(config, "SOURCES_FILE", sources)
+    cache_path(url).parent.mkdir()
+    cache_path(url).write_bytes((FIXTURES / "faq.html").read_bytes())
+    return sources

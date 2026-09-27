@@ -181,6 +181,11 @@ pages and the index (`data/`) stay on your machine and are never committed.
    uv run limespec ingest
    ```
 
+   To build it in the platform's Postgres instead (started with
+   `docker compose -f deploy/compose.yaml --profile dev up -d`), copy `.env.example`
+   to `.env` and run `uv run --env-file .env limespec ingest --postgres`. Each run adds
+   a new index version and makes it live.
+
 3. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 

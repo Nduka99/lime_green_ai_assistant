@@ -5,17 +5,30 @@ import argparse
 import sys
 from contextlib import closing
 
+import psycopg
 import uvicorn
 
 from limespec import assistant, config, llm
 from limespec.app import app
-from limespec.ingest import IngestError, ingest
+from limespec.ingest import IngestError, ingest, ingest_postgres
 from limespec.retrieve import search
 from limespec.view import AnswerView, view
 
 
-def run_ingest() -> None:
-    manifest = ingest(llm.embed)
+def run_ingest(postgres: bool) -> None:
+    if postgres:
+        if not config.DATABASE_URL:
+            raise IngestError(
+                "LIMESPEC_DATABASE_URL is not set; copy .env.example to .env and run "
+                "`uv run --env-file .env limespec ingest --postgres`"
+            )
+        with psycopg.connect(
+            config.DATABASE_URL, connect_timeout=config.DATABASE_CONNECT_TIMEOUT_SECONDS
+        ) as conn:
+            version, manifest = ingest_postgres(conn, llm.embed)
+        print(f"index version: {version} (live)")
+    else:
+        manifest = ingest(llm.embed)
     for key, value in manifest.items():
         print(f"{key}: {value}")
 
@@ -71,7 +84,14 @@ def run_serve(port: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="limespec", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("ingest", help="fetch the pages in sources.txt and index them")
+    ingest_parser = commands.add_parser(
+        "ingest", help="fetch the pages in sources.txt and index them"
+    )
+    ingest_parser.add_argument(
+        "--postgres",
+        action="store_true",
+        help="write a new live index version to Postgres (LIMESPEC_DATABASE_URL)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -81,14 +101,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "ingest":
-            run_ingest()
+            run_ingest(args.postgres)
         elif args.command == "ask":
             run_ask(args.question)
         elif args.command == "serve":
             run_serve(args.port)
         else:
             run_search(args.question)
-    except (IngestError, llm.ModelServerError) as error:
+    except (IngestError, llm.ModelServerError, psycopg.Error) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

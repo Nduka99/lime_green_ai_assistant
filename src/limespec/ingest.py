@@ -1,7 +1,8 @@
-"""Build the local index from the pages listed in sources.txt.
+"""Build the index from the pages listed in sources.txt.
 
-fetch (politely, cached) → extract sections → split long ones → embed → store in SQLite.
-Pages are cached in data/site/, so a rebuild never downloads a page twice.
+fetch (politely, cached) → extract sections → split long ones → embed → store in
+SQLite, or in Postgres as a new live index version (`ingest_postgres`). Pages are
+cached in data/site/, so a rebuild never downloads a page twice.
 """
 
 import hashlib
@@ -10,6 +11,7 @@ import sqlite3
 import textwrap
 import time
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -18,7 +20,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from bs4 import BeautifulSoup
 
-from limespec import config
+from limespec import config, store
 from limespec.retrieve import Embed, to_blob
 
 HEADINGS = ["h1", "h2", "h3", "h4"]
@@ -66,7 +68,8 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 
 class IngestError(RuntimeError):
-    """A page could not be acquired or read; the message names the URL."""
+    """Ingestion cannot run: a page could not be acquired or read (the message names
+    its URL), or the Postgres target is not configured."""
 
 
 def read_sources(path: Path) -> list[str]:
@@ -240,14 +243,58 @@ def corpus_hash(page_hashes: Sequence[tuple[str, str]]) -> str:
     return hashlib.sha256(lines.encode()).hexdigest()
 
 
+@dataclass(frozen=True)
+class PreparedIndex:
+    """Everything one index holds, ready to be written to either store."""
+
+    pages: list[tuple[str, str, str, str]]  # url, title, fetched_at, sha256
+    passages: list[tuple[str, str, str, str]]  # url, title, heading, text
+    vectors: list[list[float]]  # one per passage
+    manifest: dict[str, str]
+
+
 def build_index(
     database: Path, pages: Sequence[tuple[str, bytes, str]], embed: Embed
 ) -> dict[str, str]:
-    """Rebuild the index from (url, raw_bytes, fetched_at) pages; return its manifest.
+    """Rebuild the SQLite index from (url, raw_bytes, fetched_at) pages; return its
+    manifest.
 
     The new index is written beside the old one and swapped in only when
     complete, so a failed rebuild leaves the previous index untouched.
     """
+    prepared = prepare_index(pages, embed)
+    page_rows, rows = prepared.pages, prepared.passages
+    vectors, manifest = prepared.vectors, prepared.manifest
+    database.parent.mkdir(parents=True, exist_ok=True)
+    building = database.with_suffix(".building")
+    building.unlink(missing_ok=True)
+    conn = sqlite3.connect(building)
+    try:
+        with conn:  # one transaction: commits on success, rolls back on error
+            conn.executescript(SCHEMA)
+            conn.executemany("INSERT INTO pages VALUES (?, ?, ?, ?)", page_rows)
+            for passage_id, ((url, title, heading, text), vector) in enumerate(
+                zip(rows, vectors, strict=True), start=1
+            ):
+                conn.execute(
+                    "INSERT INTO passages VALUES (?, ?, ?, ?, ?)",
+                    (passage_id, url, heading, text, to_blob(vector)),
+                )
+                conn.execute(
+                    "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
+                    (passage_id, title, text),
+                )
+            conn.executemany("INSERT INTO meta VALUES (?, ?)", manifest.items())
+    finally:
+        conn.close()
+    building.replace(database)
+    return manifest
+
+
+def prepare_index(
+    pages: Sequence[tuple[str, bytes, str]], embed: Embed
+) -> PreparedIndex:
+    """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages."""
     page_rows: list[tuple[str, str, str, str]] = []  # url, title, fetched_at, sha256
     rows: list[tuple[str, str, str, str]] = []  # url, title, heading, text
     for url, raw, fetched_at in pages:
@@ -275,30 +322,7 @@ def build_index(
         "pages": str(len(page_rows)),
         "passages": str(len(rows)),
     }
-    database.parent.mkdir(parents=True, exist_ok=True)
-    building = database.with_suffix(".building")
-    building.unlink(missing_ok=True)
-    conn = sqlite3.connect(building)
-    try:
-        with conn:  # one transaction: commits on success, rolls back on error
-            conn.executescript(SCHEMA)
-            conn.executemany("INSERT INTO pages VALUES (?, ?, ?, ?)", page_rows)
-            for passage_id, ((url, title, heading, text), vector) in enumerate(
-                zip(rows, vectors, strict=True), start=1
-            ):
-                conn.execute(
-                    "INSERT INTO passages VALUES (?, ?, ?, ?, ?)",
-                    (passage_id, url, heading, text, to_blob(vector)),
-                )
-                conn.execute(
-                    "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
-                    (passage_id, title, text),
-                )
-            conn.executemany("INSERT INTO meta VALUES (?, ?)", manifest.items())
-    finally:
-        conn.close()
-    building.replace(database)
-    return manifest
+    return PreparedIndex(page_rows, rows, vectors, manifest)
 
 
 def fetched_at(path: Path) -> str:
@@ -307,12 +331,35 @@ def fetched_at(path: Path) -> str:
     return modified.isoformat(timespec="seconds")
 
 
+def cached_pages(urls: Sequence[str]) -> list[tuple[str, bytes, str]]:
+    """(url, raw_bytes, fetched_at) for every source, downloading the missing ones."""
+    fetch_missing(urls)
+    pages = []
+    for url in urls:
+        path = cache_path(url)
+        pages.append((url, path.read_bytes(), fetched_at(path)))
+    return pages
+
+
 def ingest(
     embed: Embed, sources: Path | None = None, database: Path | None = None
 ) -> dict[str, str]:
     urls = read_sources(sources or config.SOURCES_FILE)
-    fetch_missing(urls)
-    pages = [
-        (url, cache_path(url).read_bytes(), fetched_at(cache_path(url))) for url in urls
-    ]
-    return build_index(database or config.DATABASE, pages, embed)
+    return build_index(database or config.DATABASE, cached_pages(urls), embed)
+
+
+def ingest_postgres(
+    conn: store.Connection, embed: Embed, sources: Path | None = None
+) -> tuple[int, dict[str, str]]:
+    """Build a new Postgres index version from the sources and make it live.
+
+    The version is written beside the live one and switched in a single
+    transaction, so a failed build leaves the served index untouched.
+    """
+    urls = read_sources(sources or config.SOURCES_FILE)
+    prepared = prepare_index(cached_pages(urls), embed)
+    version = store.write_version(
+        conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
+    )
+    store.set_live(conn, version)
+    return version, prepared.manifest
