@@ -705,3 +705,43 @@ so the decision goes to the user.
 Docling-only arm's layout flips: they go both ways, lose no text, and leave the selected
 Docling + GLM-OCR configuration unchanged. Label–value pairs are taken up again with
 passages (X9).
+
+## After X8: recovered text placed where it stands (design and gate)
+
+Written on 28 September 2026, before any code.
+
+**Finding.** The first full run (ADR 0027) flagged 16 pages for low coverage. The first idea
+was that Docling drops text inside figures, and it was checked before any code: **none** of
+the missing words lie inside a figure's box. docling-parse extracts no characters at all for
+that text. Examples:
+
+- the title blocks and notes of drawings placed as PDFs in the IWI guides (InDesign
+  `PlacedPDF` content with clipping paths);
+- running headers of some safety data sheets and EPDs.
+
+Over all 573 readable pages, Docling's own reading lacks 1,458 of 159,060 text-layer words
+(0.92%). pdfium, which already draws the pages (D85), extracts 1,398 of them (96%), with
+positions, and holds 99.95% of all text-layer words.
+
+Today the recovery step adds each lost pypdf line at the end of its page, with no section
+and no position, so a drawing's notes are cut off from the drawing.
+
+**Change.** Per page:
+
+1. Each pdfium text segment holding a word missing from the page's elements becomes a
+   `recovered` element with its box. It goes after the element nearest above it that
+   overlaps it horizontally, taking that element's section. With none above, it goes
+   before the nearest one below; with none in its column, at the page end.
+2. Any pypdf text-layer line still missing a word is added at the page end, as today, so
+   the change can only add structure, never lose a word.
+
+**Gate** (baselines: the first full run in `data/elements/` for the corpus, and
+`data/runs/pdfium/` for X8, both at the same parser):
+
+1. On every page of the corpus, the reading's text, recovered lines included, holds no fewer
+   text-layer words than the first run.
+2. On pages with at least one element in a section, ≥ 0.95 of recovered words carry a
+   section.
+3. The `docling` arm on `x8-pages`, `x8-pages-r2` and `x8-pages-r3` is no worse on any
+   measure, page by page.
+4. `scripts/check.py` passes.
