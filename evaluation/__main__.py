@@ -7,6 +7,7 @@
     uv run python -m evaluation grades SET SITTING           # a grading sitting
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
+    uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
@@ -25,7 +26,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from evaluation import ask, grades, keys, pairs, retrieval, sets
+from evaluation import ask, catalogue, grades, keys, pairs, retrieval, sets
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 
@@ -60,6 +61,10 @@ def parser() -> argparse.ArgumentParser:
     scored = commands.add_parser("retrieval", help="score saved retrieval runs")
     scored.add_argument("name")
     scored.add_argument("--json", action="store_true")
+    listed = commands.add_parser(
+        "catalogue", help="label every collected source by format and topic"
+    )
+    listed.add_argument("--out", type=Path, required=True, help="a JSON file to write")
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -126,6 +131,15 @@ def run_retrieval(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=1))
     else:
         print(retrieval.markdown(result, args.name))
+    return 0
+
+
+def run_catalogue(args: argparse.Namespace) -> int:
+    entries = catalogue.catalogue()
+    ask.write_records(args.out, entries)
+    for label, count in catalogue.strata(entries).items():
+        print(f"{count:5}  {label}")
+    print(f"{len(entries)} sources labelled in {args.out}")
     return 0
 
 
@@ -206,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_check_key(args)
         if args.command == "retrieval":
             return run_retrieval(args)
+        if args.command == "catalogue":
+            return run_catalogue(args)
         if args.command == "grades":
             return run_grades(args)
         if args.command == "blind":
