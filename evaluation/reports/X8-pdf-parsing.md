@@ -352,3 +352,5 @@ Exploratory scores on round 1's pages, which the changes came from, so not a gat
 GLM-OCR's lost pair is its own omission (a contents page's "31" is in no cell). The unspelt
 cells are the six tick boxes, plus PaddleOCR-VL's ",0.5%". On these pages neither VLM arm
 improves on Docling alone, and the styled-header tables still score 0. Round 2 decides.
+
+**Code frozen for the round-2 run at `9d9eb35`.**
