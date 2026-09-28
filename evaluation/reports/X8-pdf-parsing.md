@@ -113,3 +113,10 @@ left undiagnosed. Nothing else changes.
 and its value on the next ("pH", then "11.2"), so their relation depends on reading
 order. A pair also counts as kept when its value is in the parsed element that directly
 follows the label's element (for the text layer, the next line).
+
+**Clarifications to the scoring, before the run,** found by the scorer's own tests on
+invented pages: a parsed column header joins the header rows above it ("Performance
+Class i"), so it must *end with* the truth header rather than contain it ("Class i" is
+contained in "Class ii"; this is stricter than registered and can only lower Docling's
+score); and words are compared without punctuation at their edges, on both sides alike,
+because a rebuilt table row adds separators ("A1;").

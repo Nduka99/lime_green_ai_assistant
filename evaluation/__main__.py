@@ -6,6 +6,7 @@
     uv run python -m evaluation retrieval SET                # saved TREC runs
     uv run python -m evaluation grades SET SITTING           # a grading sitting
     uv run python -m evaluation guardrails SET ANSWERS.json  # prices, emergencies
+    uv run --group ingest python -m evaluation parsing x8-pages --out DIR  # X8
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
@@ -24,10 +25,14 @@ DIR/pairs.json, and `unblind`, which reads the verdicts from DIR/verdicts.json.
 import argparse
 import json
 import sys
+import time
+from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from pypdf import PdfReader
 
 from evaluation import (
     ask,
@@ -37,9 +42,11 @@ from evaluation import (
     guardrails,
     keys,
     pairs,
+    parsing,
     retrieval,
     sets,
 )
+from limespec import acquire, pdf
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 
@@ -108,6 +115,14 @@ def parser() -> argparse.ArgumentParser:
     )
     guarded.add_argument("name")
     guarded.add_argument("answers", type=Path, help="a run's answers file")
+    parsed = commands.add_parser(
+        "parsing", help="score the PDF parsers against a page set's truth (X8)"
+    )
+    parsed.add_argument("name")
+    parsed.add_argument(
+        "--out", type=Path, required=True, help="where each parser's output is saved"
+    )
+    parsed.add_argument("--json", action="store_true")
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -242,6 +257,45 @@ def run_guardrails(args: argparse.Namespace) -> int:
     return 0 if guardrails.passed(result) else 1
 
 
+def text_layer(path: Path, page: int) -> str:
+    """One page of the PDF's text layer, as indexed before Docling."""
+    return PdfReader(path).pages[page - 1].extract_text() or ""
+
+
+def run_parsing(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    truth = grades.read_json(folder / "truth.json")["pages"]
+    scores: dict[str, list[dict[str, Any]]] = {"pypdf": [], "docling": []}
+    seconds = []
+    saved = {}
+    for page in truth:
+        path = acquire.store_path(page["entry"].split(":", 1)[1])
+        reference = text_layer(path, page["page"])
+        started = time.perf_counter()
+        found = [
+            element
+            for element in pdf.read_pdf(path, page["page"], page["page"])
+            if element.page == page["page"]
+        ]
+        seconds.append(time.perf_counter() - started)
+        units = [element.text for element in found if element.text]
+        rows = [element.cells for element in found if element.kind == "table_row"]
+        lines = reference.splitlines()
+        scores["pypdf"].append(parsing.score_page(page, lines, [], reference))
+        scores["docling"].append(parsing.score_page(page, units, rows, reference))
+        saved[str(page["number"])] = {
+            "pypdf": lines,
+            "docling": [asdict(element) for element in found],
+        }
+    args.out.mkdir(parents=True, exist_ok=True)
+    for name, data in (("parsed.json", saved), ("scores.json", scores)):
+        text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
+        (args.out / name).write_text(text, encoding="utf-8", newline="\n")
+    result = parsing.summarise(scores, seconds)
+    print(json.dumps(result, indent=1) if args.json else parsing.markdown(result))
+    return 0 if all(result["gate"].values()) else 1
+
+
 def run_grades(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -329,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_grades(args)
         if args.command == "guardrails":
             return run_guardrails(args)
+        if args.command == "parsing":
+            return run_parsing(args)
         if args.command == "blind":
             return run_blind(args)
         if args.command == "unblind":
