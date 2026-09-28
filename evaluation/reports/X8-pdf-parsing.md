@@ -458,3 +458,11 @@ to the user.
 
 **Known limit, measured separately:** docling-parse drops two letters in the One Click LCA
 font. Pages in that font count against every arm, as the text is what they read.
+
+**Clarification before any page was selected** (28 September 2026, after judging candidates
+1 and 2, before any parser read them). Candidate 2 (a safety data sheet's supplier details)
+showed the definition was ambiguous: a list of labels, each with one value, is aligned in two
+columns. Such lists have no header row and are measured by pairs in every round. The grid
+measure targets tables with column headers, where round 2 failed. A table here therefore
+needs a header row (or header column) over at least two data rows and two columns; key–value
+lists do not count, whatever their alignment.
