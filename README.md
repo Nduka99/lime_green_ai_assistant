@@ -180,6 +180,16 @@ pages and the index (`data/`) stay on your machine and are never committed.
    uv run --env-file .env limespec ingest
    ```
 
+   To collect the rest of the site for the knowledge base, with the same politeness:
+   every sitemap page, then the site's own PDFs and images (stored once each by
+   SHA-256 in `data/files/`, with a manifest). `--measure` sizes them first:
+
+   ```powershell
+   uv run limespec acquire pages --measure
+   uv run limespec acquire pages
+   uv run limespec acquire files
+   ```
+
 3. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 
