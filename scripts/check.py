@@ -13,8 +13,7 @@ from pathlib import Path
 
 # Files describing how the work was done may name the AI tools used (Rule 3);
 # no other shipped file may. "Cursor" is left out: psycopg has a Cursor class.
-METHOD_FILES = {"README.md", "notebook/engine_evaluation.ipynb"}
-METHOD_FOLDER = "evaluation/results/"
+METHOD_FILES = {"README.md"}
 # The scanner and its test hold the patterns they search for, so they are skipped.
 SCANNER_FILES = {"scripts/check.py", "tests/test_check_script.py"}
 AGENT_NAME = re.compile(r"\b(claude|codex|gemini|copilot)\b", re.IGNORECASE)
@@ -41,13 +40,9 @@ def attribution_problems(texts: dict[str, str]) -> list[str]:
             continue
         if ATTRIBUTION.search(text):
             problems.append(f"{path}: AI attribution")
-        elif AGENT_NAME.search(text) and not is_method_record(path):
+        elif AGENT_NAME.search(text) and path not in METHOD_FILES:
             problems.append(f"{path}: names an AI tool outside a method section")
     return problems
-
-
-def is_method_record(path: str) -> bool:
-    return path in METHOD_FILES or path.startswith(METHOD_FOLDER)
 
 
 def git_lines(*args: str) -> list[str]:

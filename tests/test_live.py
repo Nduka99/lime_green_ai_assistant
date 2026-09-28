@@ -2,8 +2,8 @@
 the running llama.cpp servers from the built index.
 
 Deselected by default; with the three servers running, run
-`uv run pytest -m live --no-cov`. These questions are separate from the ones in
-the results notebook.
+`uv run pytest -m live --no-cov`. These questions are separate from the evaluation
+sets.
 """
 
 import pytest

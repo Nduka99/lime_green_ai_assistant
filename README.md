@@ -10,7 +10,9 @@ below show both successes and remaining failures.
 
 > **Status, September 2026.** This repository is being developed into a
 > production platform. The interview submission is tag `submission-v2`; the
-> version every later change is measured against is tag `v5-baseline`.
+> version every later change is measured against is tag `v5-baseline`. The
+> submission's evaluation notebook and result files stay at that commit,
+> [`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe).
 
 ```text
 question -> keyword + vector search -> reranking -> local LLM
@@ -134,7 +136,8 @@ application is about 1,400 lines in `src/limespec/`.
   describes an exposure. These decisions can fail even when quotation checks pass.
 - A fresh ingest reads the current website. Page counts, passage counts and
   answers can change if the site changes; the saved evaluation describes the
-  September 2026 snapshot, whose fingerprints are recorded in the notebook.
+  September 2026 snapshot, whose fingerprints are recorded in the submission's
+  notebook (commit `377a4fe`).
 
 ## Install
 
@@ -145,7 +148,7 @@ Put `llama-server` on your `PATH`. The tested setup used Windows, an 8 GB NVIDIA
 GPU and 64 GB of RAM; the Python application itself has no platform-specific
 paths.
 
-One command installs everything: the application, its tests and the notebook.
+One command installs everything: the application and its tests.
 
 ```powershell
 uv sync --all-groups --locked
@@ -221,11 +224,12 @@ The command line, page and JSON endpoint (`/api/answer?q=...`) call the same
 `assistant.ask()` and use the same checks and presentation data. Separate model
 requests can still produce different wording, even with a fixed seed.
 
-To trace answers, start VictoriaTraces inside WSL
+To trace and measure answers, start VictoriaTraces and VictoriaMetrics inside WSL
 (`docker compose -f deploy/compose.yaml --profile observability up -d`) and serve with
 `uv run --env-file .env limespec serve`. Each request is one trace, with a span per
 stage and per model call (token counts, no question or answer text), at
-http://localhost:10428/select/vmui.
+http://localhost:10428/select/vmui. Metrics (model-call durations, tokens, answers by
+status, claims kept and removed, request durations) are at http://localhost:8428/vmui.
 
 ## Tests
 
@@ -261,16 +265,11 @@ uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run 
 
 ## Results
 
-`notebook/engine_evaluation.ipynb` shows the measurement behind each engine change,
-then both evaluations below. It reads the small files in `evaluation/results/`,
-opens on GitHub with its charts, and needs no models or GPU to run:
-
-```powershell
-uv run jupyter lab notebook/engine_evaluation.ipynb
-```
-
-In VS Code, open the notebook and choose the `.venv` Python environment as its
-kernel.
+These are the submission's results. Its notebook, which shows the measurement behind
+each engine change and charts both evaluations below, and the result files it reads
+are at commit
+[`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe)
+(`notebook/engine_evaluation.ipynb`, `evaluation/results/`).
 
 **Held-out comparison (run last).** 60 new questions (12 cases, each asked five ways,
 including rushed and misspelt wordings) were typed into the running web page one at
@@ -294,7 +293,8 @@ The held-out questions are harder than the frozen set: 40 of the 60 need several
 pages or several parts, and 15 are answered only outside the indexed pages (image
 descriptions and the sample-order and colour pages). Every held-out answer was also
 graded against the locked key by a blind LLM grader, on the frozen evaluation's
-sound / partial / wrong scale (`evaluation/results/heldout-v2-graded.json`):
+sound / partial / wrong scale (`evaluation/results/heldout-v2-graded.json` at
+`377a4fe`):
 
 | Generator | Sound / partial / wrong, 45 answerable from the indexed pages | All 60 |
 |---|---|---|
@@ -317,7 +317,7 @@ judges graded every answer, and I settled their disagreements.
 | Nemotron 3 Nano 4B | 36 / 23 / 31 | 5.2 s |
 
 The readable record of these questions and expected answers is
-`evaluation/questions.md`.
+`evaluation/questions.md` at `377a4fe`.
 
 **What worked**
 

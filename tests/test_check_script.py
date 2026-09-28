@@ -6,8 +6,7 @@ from scripts.check import attribution_problems
 
 def test_method_records_may_name_tools_but_not_attribute() -> None:
     texts = {
-        "README.md": "Claude and Codex were used as paired coding tools.",
-        "evaluation/results/heldout-v2-pairwise.json": '"judge_c": "a Gemini chat"',
+        "README.md": "Claude and Codex were coding tools; a Gemini chat judged.",
         "src/limespec/store.py": "cursor = conn.cursor()  # psycopg's Cursor",
     }
 
