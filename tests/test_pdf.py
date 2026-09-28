@@ -259,7 +259,7 @@ ANSWER = (
 )
 
 
-def test_words_inside_a_box_and_docling_s_header_rows() -> None:
+def test_words_inside_a_box_and_docling_s_header_words() -> None:
     doc = datasheet()
     table = next(item for item, _ in doc.iterate_items() if hasattr(item, "data"))
     words = TABLE_WORDS + [OUTSIDE]
@@ -267,7 +267,7 @@ def test_words_inside_a_box_and_docling_s_header_rows() -> None:
     assert pdf.words_inside(pdf.box(table, doc), words, 800) == [
         "Property", "M5", "Strength", "5", "N/mm2", "Fire", "A1",
     ]  # fmt: skip
-    assert pdf.header_rows(table) == {"grade", "propertym5"}
+    assert pdf.header_words(table) == {"grade", "property", "m5"}
 
 
 def test_a_table_is_read_again_from_its_image(
@@ -279,7 +279,7 @@ def test_a_table_is_read_again_from_its_image(
     monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
     monkeypatch.setattr(tables, "recognise", lambda image, url: answers.pop(0))
     stats: Counter[str] = Counter()
-    words = {1: TABLE_WORDS + [OUTSIDE]}
+    words = {1: TABLE_WORDS + [OUTSIDE, word("Mixing", 120, 515)]}
 
     rows = pdf.vlm_table(table, 1, ("Performance",), doc, words, "http://vlm", stats)
     unread = pdf.vlm_table(table, 1, ("Performance",), doc, words, "http://vlm", stats)
@@ -288,6 +288,7 @@ def test_a_table_is_read_again_from_its_image(
         ("table_header", "Property | M5"),
         ("table_row", "Table 1 › Strength — M5: 5 N/mm2"),
         ("table_row", "Table 1 › Fire — M5: A1"),
+        ("recovered", "Mixing"),  # a word in the box that no cell holds
     ]
     assert unread is None
     assert stats == Counter(tables=2, cells=6, unread=1)

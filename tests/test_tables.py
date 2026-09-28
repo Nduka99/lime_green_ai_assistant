@@ -103,6 +103,9 @@ def test_otsl_cells_extend_left_up_or_both() -> None:
         Cell(2, 1, "A1"),
         Cell(2, 2, ""),
     ]
+    # The model writes a line break inside a cell as a backslash and an n.
+    lines = tables.parse_otsl(r"<fcel>Cement\nLime\nSand<fcel>1\n0.25<nl>")
+    assert [cell.text for cell in lines] == ["Cement Lime Sand", "1 0.25"]
     both = tables.parse_otsl("<fcel>a<lcel><nl><ucel><xcel><nl><fcel>b")
     assert both == [Cell(0, 0, "a", rows=2, columns=2), Cell(2, 0, "b")]
     assert tables.parse("Just some text.") == []
@@ -130,33 +133,50 @@ def test_the_structure_takes_headers_from_the_model_and_text_from_the_pdf() -> N
              "days", "5", "N/mm2"]  # fmt: skip
     cells = tables.parse(HTML)
 
-    headers, rows, dropped = tables.structure(cells, words, set())
+    read = tables.structure(cells, words + ["o"], set())
 
-    assert headers == ["Property", "Class › i", "Class › ii"]
-    # "A 2" is spelt by the PDF's "A2"; the value spanning two columns is written once.
-    assert rows == [
+    assert read.headers == ["Property", "Class › i", "Class › ii"]
+    # "A 2" is spelt by the PDF's "A2"; the value spanning two columns applies to both.
+    assert read.rows == [
         (2, ["Fire", "A1", "A2"]),
-        (3, ["Strength 28 days", "5 N/mm2", ""]),
+        (3, ["Strength 28 days", "5 N/mm2", "5 N/mm2"]),
     ]
-    assert dropped == 0
+    assert read.dropped == 0
+    assert read.leftover == ["o"]  # a tick box no cell holds
 
 
 def test_without_marked_headers_docling_s_header_rows_are_used() -> None:
-    words = ["Property", "Class", "i", "ii", "Fire", "A1", "Smoke", "s1"]
+    words = ["Property", "Class", "i", "ii", "Fire", "A1", "Smoke", "s1", "Notes"]
     cells = tables.parse(OTSL) + [Cell(3, 0, "Smoke", rows=2), Cell(3, 1, "s1")]
-    cells += [Cell(4, 1, "s2 invented")]
-    header_rows = {tables.fold("Property Class"), tables.fold("i ii")}
+    cells += [Cell(4, 1, "s2 invented"), Cell(5, 0, "Notes", columns=3)]
+    # Docling flagged "Class" and "Property i ii" as its header rows: the same words,
+    # split differently from the model's rows.
+    header_words = {"class", "property", "i", "ii"}
 
-    headers, rows, dropped = tables.structure(cells, words, header_rows)
+    read = tables.structure(cells, words, header_words)
 
-    assert headers == ["Property", "Class › i", "Class › ii"]
-    # A value spanning rows repeats; a cell the PDF cannot spell is left empty.
-    assert rows == [
+    assert read.headers == ["Property", "Class › i", "Class › ii"]
+    # A value spanning rows repeats; a cell the PDF cannot spell is left empty; a
+    # title spanning the whole width is written once.
+    assert read.rows == [
         (2, ["Fire", "A1", ""]),
         (3, ["Smoke", "s1", ""]),
         (4, ["Smoke", "", ""]),
+        (5, ["Notes", "", ""]),
     ]
-    assert dropped == 1
-    no_headers, _, _ = tables.structure(cells, words, set())
-    assert no_headers == ["", "", ""]
-    assert json.dumps(rows)  # plain, JSON-compatible data
+    assert (read.dropped, read.leftover) == (1, [])
+    assert tables.structure(cells, words, set()).headers == ["", "", ""]
+    assert json.dumps(read.rows)  # plain, JSON-compatible data
+
+
+def test_the_model_s_inline_latex_becomes_the_characters_a_pdf_prints() -> None:
+    assert tables.unlatex("Thermal Conductivity $\lambda$ (90/90)") == (
+        "Thermal Conductivity λ (90/90)"
+    )
+    assert tables.unlatex("5 N/mm$^2$ at 20-30 $^{\circ}$C") == "5 N/mm2 at 20-30 °C"
+    assert tables.unlatex("CO\(_{2}\)e, $\mu$ and <0.1% & A1") == (
+        "CO2e, μ and <0.1% & A1"
+    )
+    # The PDF's micro sign (µ) and the model's Greek mu (μ) fold alike.
+    words = ["Water", "Vapour", "Permeability", "µ"]
+    assert tables.spell(tables.unlatex("Permeability $\mu$"), words, set()) == [2, 3]

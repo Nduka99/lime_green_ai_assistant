@@ -29,6 +29,7 @@ PROMPT = "Table Recognition:"  # both models' prompt for a table
 MAX_TOKENS = 8192  # GLM-OCR's published limit
 TIMEOUT_SECONDS = 600.0  # a large table can take minutes
 OTSL = re.compile(r"(<fcel>|<ecel>|<lcel>|<ucel>|<xcel>|<nl>)")
+MATH = re.compile(r"\$(.+?)\$|\\\((.+?)\\\)")  # inline LaTeX: $...$ or \(...\)
 TYPOGRAPHY = str.maketrans(dict.fromkeys('‘’“”"', "'") | dict.fromkeys("–—", "-"))
 
 
@@ -144,11 +145,12 @@ def parse_html(answer: str) -> list[Cell]:
 def parse_otsl(answer: str) -> list[Cell]:
     """An OTSL table's cells: `<nl>` ends a row, `<fcel>` starts a cell with text and
     `<ecel>` an empty one; `<lcel>`, `<ucel>` and `<xcel>` extend the cell on the left,
-    above, or both ([OTSL](https://arxiv.org/abs/2305.03393))."""
+    above, or both ([OTSL](https://arxiv.org/abs/2305.03393)). PaddleOCR-VL writes a
+    line break inside a cell as the two characters `\\n`, read here as a space."""
     grid: list[list[tuple[str, str]]] = [[]]
     parts = OTSL.split(answer)
     for index in range(1, len(parts), 2):
-        tag, text = parts[index], parts[index + 1]
+        tag, text = parts[index], parts[index + 1].replace("\\n", " ")
         if tag == "<nl>":
             grid.append([])
         else:
@@ -174,6 +176,22 @@ def parse_otsl(answer: str) -> list[Cell]:
                 down += 1
             cells.append(Cell(row, column, text, down, across))
     return cells
+
+
+def unlatex(text: str) -> str:
+    """The model's inline LaTeX ($\\lambda$, $^{\\circ}$C, $^2$) as the characters a
+    PDF prints (λ, °C, 2), so a cell can be matched to the PDF's words. Only math is
+    converted: outside it, % and & are ordinary characters, not LaTeX markup."""
+    from pylatexenc.latex2text import LatexNodes2Text
+
+    converter = LatexNodes2Text()
+
+    def plain(match: re.Match[str]) -> str:
+        latex = match.group(1) or match.group(2)
+        latex = latex.replace("^{\\circ}", "°").replace("^\\circ", "°")
+        return re.sub(r"[\^_{}]", "", converter.latex_to_text(latex))
+
+    return MATH.sub(plain, text)
 
 
 def fold(text: str) -> str:
@@ -206,20 +224,28 @@ def _spell(
     return None
 
 
-def structure(
-    cells: list[Cell], words: list[str], header_rows: set[str]
-) -> tuple[list[str], list[tuple[int, list[str]]], int]:
-    """The table's column headers and its data rows, each cell's text spelt by the
-    PDF's `words` (a cell they cannot spell is left empty), and how many cells were
-    left empty. Header rows are those the model marks; if it marks none, those whose
-    folded text is one of `header_rows` (the rows Docling flagged). A header spanning
-    columns heads each of them; a value spanning rows is repeated in each row, and a
-    value spanning columns is written once."""
+@dataclass(frozen=True)
+class Structure:
+    """A table as the model reads it, in the PDF's own words."""
+
+    headers: list[str]  # each column's header, levels joined by " › "
+    rows: list[tuple[int, list[str]]]  # (row number, each column's value)
+    dropped: int  # cells the PDF's words could not spell, left empty
+    leftover: list[str]  # the PDF's words no cell used, in the PDF's order
+
+
+def structure(cells: list[Cell], words: list[str], header_words: set[str]) -> Structure:
+    """The table's column headers and data rows, each cell's text spelt by the PDF's
+    `words`. Header rows are those the model marks; if it marks none, those whose
+    words all lie in `header_words` (the rows Docling flagged: the two can split a
+    header differently, a label spanning two header rows sitting in either). A cell
+    spanning columns or rows applies to each of them and is repeated, except that a
+    value spanning the whole width (a title row) is written once."""
     used: set[int] = set()
     texts = {}
     dropped = 0
     for cell in cells:
-        found = spell(cell.text, words, used)
+        found = spell(unlatex(cell.text), words, used)
         if found is None:
             dropped += 1
         used.update(found or [])
@@ -236,11 +262,11 @@ def structure(
             if found and all(c.header for c in found)
         }
     else:
-        heads = {
-            row
-            for row, found in starting.items()
-            if found and fold(" ".join(texts[cell] for cell in found)) in header_rows
-        }
+        heads = set()
+        for row, begun in starting.items():
+            said = {fold(word) for cell in begun for word in texts[cell].split()}
+            if said and said <= header_words:
+                heads.add(row)
     headers = []
     for column in range(width):
         parts: list[str] = []
@@ -255,11 +281,15 @@ def structure(
             continue
         values = [""] * width
         for cell in cells:
-            if _covers(cell, row, cell.column):
-                values[cell.column] = texts[cell]
+            if not _covers(cell, row, cell.column):
+                continue
+            last = cell.column + (1 if cell.columns == width else cell.columns)
+            for column in range(cell.column, last):
+                values[column] = texts[cell]
         if any(values):
             rows.append((row, values))
-    return headers, rows, dropped
+    leftover = [word for index, word in enumerate(words) if index not in used]
+    return Structure(headers, rows, dropped, leftover)
 
 
 def _covers(cell: Cell, row: int, column: int) -> bool:

@@ -35,6 +35,11 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 
+# pylatexenc ships no type information.
+[[tool.mypy.overrides]]
+module = ["pylatexenc.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
@@ -59,6 +64,7 @@ ingest = [
     # dependencies only).
     "torch>=2.14.0",
     "torchvision>=0.29.0",
+    "pylatexenc>=2.11",
 ]
 
 # CPU builds of PyTorch on every platform: ingestion runs on the CPU, and the default

@@ -299,3 +299,56 @@ separately.
 For the blank pages, "every legible word" includes wordmarks ("lime green", "warm shell") and
 the printed text in photographs. It excludes signatures and symbols (| © ®), and the scoring
 counts only tokens that hold a letter or a digit.
+
+**Development on round 1's pages, and amendments before the round-2 run** (28 September
+2026). Both models ran on llama.cpp b10298 on 127.0.0.1:8083, with the platform's key
+(requests without it get 401) and the generator stopped. Their raw answers on round 1's
+tables showed:
+
+- **Structure:** both models read spans correctly, for example the two-level
+  "Performance › Class i" header, the rowspan-7 "EN998-2 2016" and separate title rows.
+- **Text:** both write their own text. GLM-OCR drops spaces ("10.253" for "1 0.25 3");
+  PaddleOCR-VL "corrects" the PDF's ",0.5%" to "0.5%". Spelling each cell from the PDF's
+  words restores the document's text or drops the cell, as designed.
+- **Headers:** neither model marks header cells. GLM-OCR's HTML has no `<th>` or `<thead>`,
+  as PaddleOCR-VL's OTSL was known to have none. Both VLM arms therefore take header rows
+  from Docling's flags.
+
+Changes that are general, derived only from round 1's pages, and made before any model read
+a round-2 page:
+
+1. **Header rows from Docling's flags.** Docling and the model can split a header
+   differently: "Essential Characteristics" spans two header rows in the model's reading
+   and sits in the second row in Docling's. "Equal to a row Docling flagged" therefore never
+   matched. A row is now a header when all its words are among the words of the rows Docling
+   flagged.
+2. **Spanning values.** A value spanning columns applies to each column it spans, so it is
+   repeated, as a spanning header already was. Written once, the value lost which classes it
+   applies to ("See SDS" across Class i–iv). A value spanning the table's whole width is a
+   title and is written once.
+3. **No lost words.** The PDF's words inside a table's box that no cell used are kept as one
+   `recovered` element after the table: tick boxes the model drew as ☐, and a value the
+   model left out. Previously the text-layer check restored such a line only when one of its
+   words appeared nowhere else on the page.
+4. **The models' notation.** Inline LaTeX in a cell ($\lambda$, `\(m^{2}\)`) becomes the
+   characters a PDF prints (λ, m2) before spelling, using pylatexenc 2.11 (MIT, 134 KB, no
+   dependencies; user approved). Only math spans are converted, because outside math `%` and
+   `&` are ordinary characters. PaddleOCR-VL writes a line break inside an OTSL cell as the
+   two characters `\n`, which is read as a space.
+
+Settings fixed now: the crop is exactly Docling's table box (no margin; every round-1 table
+read whole); image size limits are each projector's defaults.
+
+Exploratory scores on round 1's pages, which the changes came from, so not a gate:
+
+| Measure | docling | glm-ocr | paddleocr-vl |
+|---|---|---|---|
+| Table cells | 0.919 | 0.919 | 0.919 |
+| Pairs kept | 0.957 | 0.935 | 0.957 |
+| Text kept | 0.990 | 0.990 | 0.990 |
+| Sentences whole | 0.989 | 0.989 | 0.989 |
+| Cells left unspelt | — | 6 of 280 | 7 of 261 |
+
+GLM-OCR's lost pair is its own omission (a contents page's "31" is in no cell). The unspelt
+cells are the six tick boxes, plus PaddleOCR-VL's ",0.5%". On these pages neither VLM arm
+improves on Docling alone, and the styled-header tables still score 0. Round 2 decides.

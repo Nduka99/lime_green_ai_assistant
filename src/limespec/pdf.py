@@ -218,20 +218,14 @@ def table_elements(
     return found
 
 
-def header_rows(item: Any) -> set[str]:
-    """The folded text of each row Docling flags as a column header, from the cells
-    that start in that row."""
+def header_words(item: Any) -> set[str]:
+    """The folded words of the rows Docling flags as column headers."""
     from limespec.tables import fold
 
     found = set()
-    for index, row in enumerate(item.data.grid):
-        if not any(cell.column_header for cell in row):
-            continue
-        starting = []
-        for cell in row:
-            if cell.start_row_offset_idx == index and cell not in starting:
-                starting.append(cell)
-        found.add(fold(" ".join(cell.text for cell in starting)))
+    for row in item.data.grid:
+        if any(cell.column_header for cell in row):
+            found |= {fold(word) for cell in row for word in cell.text.split()}
     return found
 
 
@@ -276,10 +270,16 @@ def vlm_table(
     page = item.prov[0].page_no
     height = document.pages[page].size.height
     inside = words_inside(box(item, document), words.get(page, []), height)
-    headers, rows, dropped = tables.structure(cells, inside, header_rows(item))
+    read = tables.structure(cells, inside, header_words(item))
     stats["cells"] += len(cells)
-    stats["dropped"] += dropped
-    return table_elements(headers, rows, item, number, section, document)
+    stats["dropped"] += read.dropped
+    found = table_elements(read.headers, read.rows, item, number, section, document)
+    if read.leftover:
+        # The PDF's words no cell used (tick boxes, a value the model left out) are
+        # kept, so reading a table again never loses text.
+        text = " ".join(read.leftover)
+        found.append(Element(page, "recovered", text, section, box(item, document)))
+    return found
 
 
 def elements(document: DoclingDocument, reread: Reread | None = None) -> list[Element]:
