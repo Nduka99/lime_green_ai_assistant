@@ -5,11 +5,13 @@
 The store is the only difference between the arms. A temporary Postgres index
 version is copied from the SQLite index (the same pages, passages and vectors),
 each question is embedded once, and that one vector is ranked by both stores.
-Vector ranking should match. Keyword ranking is tried two ways: Postgres's
-built-in `ts_rank` (arm `pg`, run 1: failed) and BM25 from the pg_textsearch
-extension (arm `pg-bm25`, run 2), with one BM25 index per index version so its
-word statistics cover that version alone, as SQLite's did. The live Postgres
-version, re-embedded by `limespec ingest --postgres`, is reported beside them.
+Vector ranking should match. Keyword ranking is tried three ways: Postgres's
+built-in `ts_rank` (arm `pg`, run 1: failed), BM25 from the pg_textsearch extension
+with the `english` configuration (arm `pg-bm25`, run 2: failed on one measure), and
+the same BM25 keeping stop words as SQLite does (arm `pg-bm25-keep`, run 3), each
+with one BM25 index per index version so its word statistics cover that version
+alone, as SQLite's did. The live Postgres version, re-embedded by `limespec ingest
+--postgres`, is reported beside them.
 Rankings are scored against the frozen 90 and held-out v2 answer keys; the gate is
 that no measure of the gated arm is worse than SQLite beyond the paired bootstrap
 interval. The copy and the BM25 indexes are removed at the end. Needs the dev
@@ -35,18 +37,47 @@ SETS = ("frozen90", "heldout-v2")
 DEPTH = retrieval.DEPTH  # 20 candidates per method, as in the saved runs
 METHODS = ("keyword", "vector", "fused")
 OUT = Path("data/runs/x2")
-GATED_ARM = "pg-bm25"
+GATED_ARM = "pg-bm25-keep"
+# English stemming that keeps stop words, as SQLite's porter tokenizer does (run 3).
+# pg_textsearch finds a custom configuration only by its schema-qualified name.
+KEEP_STOP_NAME = "english_keep_stop"
+KEEP_STOP_WORDS = f"public.{KEEP_STOP_NAME}"
 # How an arm ranks keywords: (connection, version id, question, limit) -> ids
 KeywordRanking = Callable[[store.Connection, int, str, int], list[int]]
 # Postgres arm -> (version id, {Postgres passage id: SQLite id}, keyword ranking)
 Arms = dict[str, tuple[int, dict[int, int], KeywordRanking]]
 
 
-def bm25_index(version_id: int) -> str:
-    return f"x2_bm25_v{version_id}"
+def create_keep_stop_config(pg: store.Connection) -> None:
+    """The `english` text search configuration with its stop-word list removed.
+
+    A Snowball dictionary's StopWords setting is optional (Postgres docs), so this
+    stems English words exactly like `english` but keeps words such as "not".
+    """
+    exists = pg.execute(
+        "SELECT 1 FROM pg_ts_config WHERE cfgname = %s", (KEEP_STOP_NAME,)
+    ).fetchone()
+    if exists:
+        return
+    pg.execute(
+        "CREATE TEXT SEARCH DICTIONARY english_stem_keep_stop "
+        "(TEMPLATE = snowball, Language = english)"
+    )
+    pg.execute(f"CREATE TEXT SEARCH CONFIGURATION {KEEP_STOP_WORDS} (COPY = english)")
+    pg.execute(
+        f"ALTER TEXT SEARCH CONFIGURATION {KEEP_STOP_WORDS} "
+        "ALTER MAPPING REPLACE english_stem WITH english_stem_keep_stop"
+    )
 
 
-def create_bm25_index(pg: store.Connection, version_id: int) -> None:
+def bm25_index(version_id: int, config_name: str) -> str:
+    short_name = config_name.split(".")[
+        -1
+    ]  # public.english_keep_stop -> english_keep_stop
+    return f"x2_bm25_{short_name}_v{version_id}"
+
+
+def create_bm25_index(pg: store.Connection, version_id: int, config_name: str) -> None:
     """A BM25 index over one version's passages (title and text, as SQLite had).
 
     A partial index keeps its own word statistics, so scores cover this version
@@ -55,27 +86,37 @@ def create_bm25_index(pg: store.Connection, version_id: int) -> None:
     pg.execute(
         sql.SQL(
             "CREATE INDEX IF NOT EXISTS {} ON passages "
-            "USING bm25 ((title || ' ' || text)) WITH (text_config = 'english') "
+            "USING bm25 ((title || ' ' || text)) WITH (text_config = {}) "
             "WHERE index_version_id = {}"
-        ).format(sql.Identifier(bm25_index(version_id)), sql.Literal(version_id))
+        ).format(
+            sql.Identifier(bm25_index(version_id, config_name)),
+            sql.Literal(config_name),
+            sql.Literal(version_id),
+        )
     )
 
 
-def bm25_ranking(
-    pg: store.Connection, version_id: int, question: str, limit: int
-) -> list[int]:
-    """Passage ids ranked by BM25; passages sharing no word with the question
-    score 0 and are left out, as a full-text match would leave them out."""
-    score = sql.SQL("(title || ' ' || text) <@> to_bm25query({}, {})").format(
-        sql.Literal(question), sql.Literal(bm25_index(version_id))
-    )
-    rows = pg.execute(
-        sql.SQL(
-            "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
-            "ORDER BY {}, id LIMIT {}"
-        ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
-    ).fetchall()
-    return [row[0] for row in rows]
+def bm25_ranker(config_name: str) -> KeywordRanking:
+    """Keyword ranking by BM25 with this configuration's index."""
+
+    def rank(
+        pg: store.Connection, version_id: int, question: str, limit: int
+    ) -> list[int]:
+        # Passages sharing no word with the question score 0 and are left out, as
+        # a full-text match would leave them out.
+        index = bm25_index(version_id, config_name)
+        score = sql.SQL("(title || ' ' || text) <@> to_bm25query({}, {})").format(
+            sql.Literal(question), sql.Literal(index)
+        )
+        rows = pg.execute(
+            sql.SQL(
+                "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
+                "ORDER BY {}, id LIMIT {}"
+            ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    return rank
 
 
 def copy_sqlite_index(sqlite_conn: sqlite3.Connection, pg: store.Connection) -> int:
@@ -237,16 +278,28 @@ def main() -> int:
             raise SystemExit("no live Postgres index: run `limespec ingest --postgres`")
         copy = copy_sqlite_index(lite, pg)
         pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
-        create_bm25_index(pg, copy)
-        create_bm25_index(pg, live[0])
+        create_keep_stop_config(pg)
+        # (version, configuration) pairs that need a BM25 index for the arms below
+        indexes = [
+            (copy, "english"),
+            (copy, KEEP_STOP_WORDS),
+            (live[0], KEEP_STOP_WORDS),
+        ]
+        for version_id, config_name in indexes:
+            create_bm25_index(pg, version_id, config_name)
         pg.commit()
         try:
             copy_ids = sqlite_ids(pg, copy, lite)
             live_ids = sqlite_ids(pg, live[0], lite)
             arms: Arms = {
                 "pg": (copy, copy_ids, store.keyword_ranking),
-                "pg-bm25": (copy, copy_ids, bm25_ranking),
-                "pg-bm25-ingest": (live[0], live_ids, bm25_ranking),
+                "pg-bm25": (copy, copy_ids, bm25_ranker("english")),
+                "pg-bm25-keep": (copy, copy_ids, bm25_ranker(KEEP_STOP_WORDS)),
+                "pg-bm25-keep-ingest": (
+                    live[0],
+                    live_ids,
+                    bm25_ranker(KEEP_STOP_WORDS),
+                ),
             }
             failures = []
             for name in SETS:
@@ -256,10 +309,10 @@ def main() -> int:
                 failures += report(name, parts, arms)
         finally:
             pg.rollback()
-            for version_id in (copy, live[0]):
+            for version_id, config_name in indexes:
                 pg.execute(
                     sql.SQL("DROP INDEX IF EXISTS {}").format(
-                        sql.Identifier(bm25_index(version_id))
+                        sql.Identifier(bm25_index(version_id, config_name))
                     )
                 )
             pg.execute("DELETE FROM index_versions WHERE id = %s", (copy,))

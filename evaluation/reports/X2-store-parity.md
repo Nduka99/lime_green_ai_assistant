@@ -17,7 +17,10 @@ interval (95%, resampling questions), on the frozen 90 and held-out v2 answer ke
 - **Check of the experiment itself:** the fresh SQLite rankings equal the saved runs
   on 125 of 125 frozen parts and 95 of 95 held-out v2 parts, for keyword and vector.
 
-## Result: gate failed (built-in full-text search)
+**Outcome after three runs:** the gate passed on run 3 (BM25 keeping stop words);
+runs 1 and 2 failed and are kept below with their diagnoses.
+
+## Result of run 1: gate failed (built-in full-text search)
 
 Difference Postgres − SQLite, with the 95% interval.
 
@@ -84,6 +87,42 @@ configuration that stems but keeps stop words, matching the SQLite analyser that
 the parity target. This aligns the analyser with the baseline rather than tuning to
 the questions; the gate stays unchanged. If it still fails, the fallback is a
 Python BM25 with the same Porter stemming as FTS5.
+
+## Run 3: BM25 keeping stop words (28 September) — gate passed
+
+Decided before the run (above), gate unchanged. Arm `pg-bm25-keep`: the same BM25 with
+a configuration that stems English but keeps stop words, as SQLite's porter tokenizer
+does. Postgres documents a Snowball dictionary's stop-word list as optional
+([dictionaries](https://www.postgresql.org/docs/current/textsearch-dictionaries.html)),
+so it is `english` with that list removed. Beyond parity, published measurements find
+stop-word removal changes retrieval effectiveness negligibly, and it can invert meaning
+("not working" → "working"), which matters for guidance full of prohibitions.
+
+| Set | Method | Success@8 | nDCG@10 | MRR@10 | Every part @8 |
+|---|---|---|---|---|---|
+| Frozen | keyword | +0.000 [−0.024, +0.024] | +0.002 | +0.003 | −0.014 [−0.043, 0.000] |
+| Frozen | fused | −0.008 [−0.040, +0.016] | +0.010 | +0.018 | 0.000 |
+| Held-out v2 | keyword | +0.011 [−0.032, +0.063] | −0.013 | −0.012 | 0.000 [−0.133, +0.133] |
+| Held-out v2 | fused | +0.011 [0.000, +0.032] | −0.002 | −0.006 | 0.000 |
+
+**Gate: passed.** No measure is worse than SQLite beyond the interval on either set;
+the fused ranking that feeds the reranker covers every part of exactly as many
+questions as SQLite on both sets. Vector ranking stays identical, and the re-embedded
+live version gives the same numbers. Held-out v2 was not used in the diagnosis.
+
+**Pitfall found:** pg_textsearch finds a custom text search configuration only by its
+schema-qualified name (`public.english_keep_stop`); the bare name fails with "does not
+exist" although Postgres itself resolves it.
+
+## Decision after run 3
+
+Postgres replaces SQLite for search: pgvector exact search for vectors, and
+pg_textsearch BM25 with English stemming that keeps stop words for keywords, one BM25
+index per index version. Next: move this from the experiment into the store (a
+migration for the extension and configuration, `store.write_version` creating the
+version's BM25 index, `store.keyword_ranking` using it, and the unused `tsvector`
+column removed), then check 90/90 passage parity through the full search with the
+reranker.
 
 ## Reproduce
 

@@ -28,20 +28,37 @@ def test_a_copy_of_the_sqlite_index_ranks_vectors_identically(
         query = fake_embed_1024([QUESTION])[0]
 
         pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
-        x2.create_bm25_index(pg, copy)
+        x2.create_keep_stop_config(pg)
+        x2.create_bm25_index(pg, copy, "english")
+        x2.create_bm25_index(pg, copy, x2.KEEP_STOP_WORDS)
         arms: x2.Arms = {
             "pg": (copy, mapping, store.keyword_ranking),
-            "pg-bm25": (copy, mapping, x2.bm25_ranking),
+            "pg-bm25": (copy, mapping, x2.bm25_ranker("english")),
+            "pg-bm25-keep": (copy, mapping, x2.bm25_ranker(x2.KEEP_STOP_WORDS)),
         }
         found = x2.rankings(QUESTION, query, lite, pg, arms)
 
     assert sorted(mapping.values()) == list(range(1, count + 1))
     assert found["pg-vector"] == found["sqlite-vector"]
     faq_answer = found["sqlite-keyword"][0]
-    assert found["pg-keyword"][0] == faq_answer
-    assert found["pg-bm25-keyword"][0] == faq_answer
-    arms_seen = ("sqlite", "pg", "pg-bm25")
+    for arm in ("pg", "pg-bm25", "pg-bm25-keep"):
+        assert found[f"{arm}-keyword"][0] == faq_answer
+    arms_seen = ("sqlite", "pg", "pg-bm25", "pg-bm25-keep")
     assert set(found) == {f"{arm}-{m}" for arm in arms_seen for m in x2.METHODS}
+
+
+def test_the_keep_stop_configuration_stems_but_keeps_not(
+    pg: store.Connection,
+) -> None:
+    x2.create_keep_stop_config(pg)
+    x2.create_keep_stop_config(pg)  # a second call changes nothing
+
+    [(english, keep)] = pg.execute(
+        "SELECT to_tsvector('english', %s)::text, to_tsvector(%s, %s)::text",
+        ("Do not apply renders", x2.KEEP_STOP_WORDS, "Do not apply renders"),
+    ).fetchall()
+    assert english == "'appli':3 'render':4"
+    assert keep == "'appli':3 'do':1 'not':2 'render':4"
 
 
 def test_bm25_leaves_out_passages_that_share_no_word(
@@ -55,9 +72,9 @@ def test_bm25_leaves_out_passages_that_share_no_word(
     with closing(sqlite3.connect(database)) as lite:
         copy = x2.copy_sqlite_index(lite, pg)
     pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
-    x2.create_bm25_index(pg, copy)
+    x2.create_bm25_index(pg, copy, "english")
 
-    assert x2.bm25_ranking(pg, copy, "zebra xylophone", 20) == []
+    assert x2.bm25_ranker("english")(pg, copy, "zebra xylophone", 20) == []
 
 
 def test_the_gate_fails_only_when_the_whole_interval_is_below_zero() -> None:
