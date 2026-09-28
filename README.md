@@ -165,6 +165,9 @@ uv sync --all-groups --locked
 
 Run every command from the repository root. Model files (`models/`), fetched
 pages and the index (`data/`) stay on your machine and are never committed.
+`models.json` lists every model file the project uses, with its source, revision,
+size, SHA-256 and licence; `uv run limespec models` checks the files in `models/`
+against it (`--quick` compares sizes only).
 
 1. Download `Qwen3-Embedding-0.6B-f16.gguf` from
    [Qwen3-Embedding-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main),

@@ -8,7 +8,7 @@ from pathlib import Path
 import psycopg
 import uvicorn
 
-from limespec import acquire, assistant, config, llm, store, telemetry
+from limespec import acquire, assistant, config, llm, store, telemetry, weights
 from limespec.app import app
 from limespec.ingest import IngestError, cache_path, ingest
 from limespec.view import AnswerView, view
@@ -156,7 +156,20 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--port", type=int, default=config.APP_PORT)
     search_parser = commands.add_parser("search", help="show the passages retrieved")
     search_parser.add_argument("question")
+    models_parser = commands.add_parser(
+        "models", help="check the files in models/ against models.json"
+    )
+    models_parser.add_argument(
+        "--quick", action="store_true", help="compare sizes only, not SHA-256"
+    )
     args = parser.parse_args(argv)
+    if args.command == "models":
+        entries = weights.read()
+        found = weights.problems(entries, weights.FOLDER, args.quick)
+        for problem in found:
+            print(problem)
+        print(f"{len(entries)} model files checked, {len(found)} problems")
+        return 1 if found else 0
     try:
         if args.command == "acquire":
             run_acquire(args.what, args.measure)
