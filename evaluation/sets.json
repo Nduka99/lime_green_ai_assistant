@@ -18,7 +18,12 @@
     "retrieval/run-fused.txt": "4c7ce5ed474e74c533f090a4ffa64d370cbb1f452ba277997c7cb4263d0d0e1b",
     "retrieval/run-keyword.txt": "8d3e097b948fd5b1cbd18150a9fc960d7f9c6c469d6afd5952f3d8712830c838",
     "retrieval/run-reranked.txt": "235ce2cc0b4c71711b39056820f36c365e232b32b0402bec89da2661cf56a11f",
-    "retrieval/run-vector.txt": "bbac1b90b8807f6a5ff9145473f23ec8d161c35c91890cb2fd76f4c6b6ae78dd"
+    "retrieval/run-vector.txt": "bbac1b90b8807f6a5ff9145473f23ec8d161c35c91890cb2fd76f4c6b6ae78dd",
+    "sitting-x16-price/answers-x16-off.json": "bdb95a9e8dd3adb79a46ac4317443e0966f1ea1deb2c266158fa37c0b01a1037",
+    "sitting-x16-price/answers-x16-on.json": "ae42e2f25a0a019a56c89f35063904b0c5d6564c189ee4d20a24f1ae9b312c90",
+    "sitting-x16-price/order.json": "9801a12c0c54e098df384e03d3489ca710e3e1373c52e6c2e315ca17c5dc533c",
+    "sitting-x16-price/pairs.json": "7e8f989062f085db8f79d35f6840db0fd91c3649e68b365664e01944477090f8",
+    "sitting-x16-price/verdicts.json": "f46e36d8e1396b38b6d612be9659512967b6f3bf10fe3740b2088468ae3394e4"
    }
   },
   "heldout-v2": {
@@ -33,7 +38,12 @@
     "retrieval/run-vector.txt": "b293cab9e56bbe2540fbaeb753a000a66e307708d1308b84e183792a82525cb4",
     "sitting-topk/answers-cand_k20.json": "e002c432c3951ed8cb7d396463a0bb2ea9ceb19a32eb54a826c4b3baaed78f4a",
     "sitting-topk/answers-cand_k8.json": "136ac3fc8370e46c3c3fe5c602c3b565a23c57b662deaeb6c244cfaaeb041cc5",
-    "sitting-topk/grades.json": "fc44e1ef4a299eebdb9cfcd515da23d82edcea0bcc4c40811330490b6fc71181"
+    "sitting-topk/grades.json": "fc44e1ef4a299eebdb9cfcd515da23d82edcea0bcc4c40811330490b6fc71181",
+    "sitting-x16-price/answers-x16-off.json": "292fca3dae50c30cec764c897684eba493be399b99418d277f9e53309480bfd4",
+    "sitting-x16-price/answers-x16-on.json": "b5d45742993d4bdb0f10f4757c3fc7666e6d6630d1b33b3b14b93944f2be574c",
+    "sitting-x16-price/order.json": "6afd67b9a2afee66bb6add4b5fa23f6067982d0a6b30c16584c2583b3284e94c",
+    "sitting-x16-price/pairs.json": "11a3fd76e35694314638b9e6e20e7282da2daa8873ccb4f30b8074b874653e9b",
+    "sitting-x16-price/verdicts.json": "f3ac8aafdd30096f15272806de41b161304c1c8d716b7d27d3b0a4c9446c21a5"
    }
   },
   "heldout-v3": {
@@ -50,6 +60,11 @@
     "sitting-topk/answers-k20.json": "e428f003f0248912723d38b13b97e5b5b8d2b6665ae8b59fc869b5d4854881c7",
     "sitting-topk/answers-k8.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
     "sitting-topk/grades.json": "dbeb1e41970bb3a197ab73e4389f6d3ad799882b9a10f070fbf34370329780dc",
+    "sitting-x16-price/answers-x16-off.json": "fbdf918bb24da99fc2e1dac3b7d31354458e552d8e4bda11c801830d2871c673",
+    "sitting-x16-price/answers-x16-on.json": "da8b02b6b6c1ee280369e0a78f1b3a4e5d1e7155d3da7298650ba930be2b0ae7",
+    "sitting-x16-price/order.json": "28350e8ebdabfcee3478318968415285d051331c78d7f532e2965fbff4bb5bfb",
+    "sitting-x16-price/pairs.json": "99386449446b1928f68557f38358d33ef9087876be1427dae97a057917c56dc4",
+    "sitting-x16-price/verdicts.json": "1efbf08949b62afe071b55123262368d6fa31ef24590f892edad67c8903a024b",
     "sitting-x2-answers/answers-x2-pg.json": "ff07b8bd885c126991bec0c22816810b5a85a0291e56e5431711f138e9c4442b",
     "sitting-x2-answers/answers-x2-v5.json": "b04d8f06aa95d815c37394367d733c57e46ea06d93272063e13b8254e0651f41",
     "sitting-x2-answers/order.json": "e3a396812a876ba7ac224a15b34ea9ca8c662881445f95f4e7542b684ed9c2f0",
