@@ -131,6 +131,33 @@
     "images/b8-p1.png": "9a7ec474684fab934fe01d2df352240a7920261e6cf208e4b71b9eadf7426dc1",
     "truth.json": "124702c522c27de75b49f0278e9ea75d9b208e560dabdc6105e176342b6c7022"
    }
+  },
+  "x8-pages-r3": {
+   "description": "X8 round 3: the first 20 table pages among seed-10 candidates not used in rounds 1-2, judged from images; every table written as a full grid with its header rows, plus pairs and sentences, before any parser read them",
+   "files": {
+    "images/01-p7.png": "d99b92510a6d200c3c094d9f9db899f92c6613257126526f0b564adb4ad5fdea",
+    "images/02-p4.png": "ece2e7bec73ab908dec8035861d82401976a5816bf559aa033b007eecc2134bf",
+    "images/03-p11.png": "54544b52cb773f2f76075b537d01a12eccad7af51b00d712ad5de81824299ed0",
+    "images/04-p2.png": "c8fcc88f7c24b8d3b5f6e00d7ab9a4517ea1703c2f4ec2c6f3206640aa6f86e0",
+    "images/05-p1.png": "4847b5442155d2d3a085d6f8e3cf07aee896bd2e5344455e2242493ad1a3cc69",
+    "images/06-p8.png": "ffefa102d1e064ef66a47165e565154d5ff08bf59200e9d43853b7f495de8172",
+    "images/07-p2.png": "976c5b640784aa0b593700c262e4602adb1795fb99abcfe97d3f732268b21ea6",
+    "images/08-p2.png": "374f73de48a0b0b6108a5e3e96ad643478a7e7fa1ce72bccd0aa3514cddcb355",
+    "images/09-p2.png": "64cf2f65647eaeecc308c7f144fe5fd7c72ecdcbd9d4a7ebb3bd3cae5ae7fca1",
+    "images/10-p7.png": "7cc749e813d4e62d5c10dc4a5f31c3bfddff6856daf0ec8e64d7046fc274bde9",
+    "images/11-p2.png": "14af15477a423a4f7277a249e81a6bcc2ab9273e5a4c34800744338ff5f3c6aa",
+    "images/12-p2.png": "8ca3e9bea0eb5d51d342a9acf15129bccdd46e7c9d376fde5177bdf8cb951b5c",
+    "images/13-p7.png": "4105ad978e13769e13e877fcf95280b9d051361bd6d7b5c2515e4c0815207a24",
+    "images/14-p3.png": "908823832f38260fa11945d90f30802b763f02293fad61e208431332d0e1cf21",
+    "images/15-p7.png": "c47d4034074aae44f486ab64fc04e6ced9aad6e3009a6dcc72c73da37c24cc17",
+    "images/16-p8.png": "26de61c6d9585f742030a49b375d2d8bf1d15433f017c4245ba336cffe0788c6",
+    "images/17-p2.png": "79acb5792042b6113fb1f2f136bbff98dc6fac71451e4411472ba3fe2791370d",
+    "images/18-p2.png": "bdbf0ddf3059b665818517a75f51fd6d1e33a44aa3e7ec0d80bf38383dd523b9",
+    "images/19-p2.png": "31b835e30000f879b050c7a0380b33f2cbdfda8fd79cd0315561128e0b613c67",
+    "images/20-p1.png": "d9c00bdd018d95bdeb2c5e36bd8d10260e088bcc99cc0fce588dce1bbf6943d6",
+    "judged.json": "3de2b21007c15cba103541996a3786d355bfe7bc605c9d35cc2a63f76f436069",
+    "truth.json": "83cab04d5a3c0e4bfab38d0b3b2b0318a1808f8d5a02fae0ede9be228e81958d"
+   }
   }
  }
 }

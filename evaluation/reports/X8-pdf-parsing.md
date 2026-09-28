@@ -466,3 +466,14 @@ columns. Such lists have no header row and are measured by pairs in every round.
 measure targets tables with column headers, where round 2 failed. A table here therefore
 needs a header row (or header column) over at least two data rows and two columns; key–value
 lists do not count, whatever their alignment.
+
+**Truth sealed** (28 September 2026, set `x8-pages-r3`, before any parser read these pages):
+
+- 78 candidates were judged (`judged.json`, one yes/no each), and the first 20 showing a table
+  form the sample: 22 tables and 367 values, 12 of them from safety data sheets;
+- one wide EPD impact table (7 impacts × 18 modules) holds 133 values;
+- four SDS transport tables of dashes hold 72;
+- two 2014 datasheets carry the styled-header family that round 2 could not read.
+
+Because of this mix, results are also reported table by table, and the lowest-table item
+guards against any single table carrying the pooled score.
