@@ -6,6 +6,7 @@ the id of the answer's audit record. An unreachable model or a missing index is
 an operational error: a clear message with HTTP 503, never an answer.
 """
 
+import contextvars
 import queue
 import threading
 from collections.abc import Iterator
@@ -18,12 +19,13 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, StringConstraints
 
-from limespec import assistant, config, llm
+from limespec import assistant, config, llm, telemetry
 from limespec.ingest import IngestError
 from limespec.llm import ModelServerError
 from limespec.view import AnswerView, view
 
 app = FastAPI(title="Lime Green Assistant")
+telemetry.instrument(app)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
@@ -109,8 +111,11 @@ def stream_answer(request: AnswerRequest) -> Iterator[ServerSentEvent]:
             recorded: RecordedAnswer = {"id": answer_id, "answer": view(result)}
             events.put(ServerSentEvent(event="answer", data=recorded))
 
-    # The answer runs in its own thread so each stage is sent as it starts.
-    threading.Thread(target=run, daemon=True).start()
+    # The answer runs in its own thread so each stage is sent as it starts. A new
+    # thread starts with an empty context, so the request's is copied in: its spans
+    # then belong to the request's trace.
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(run,), daemon=True).start()
     while True:
         event = events.get()
         if isinstance(event, Exception):

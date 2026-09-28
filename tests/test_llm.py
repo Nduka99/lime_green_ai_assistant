@@ -3,6 +3,8 @@ from typing import Any
 
 import httpx
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind, StatusCode
 
 from limespec import config, llm
 
@@ -334,3 +336,67 @@ def test_an_unreachable_server_is_not_healthy(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(httpx, "get", get)
 
     assert llm.healthy(config.RERANK_URL) is False
+
+
+def test_a_chat_request_is_traced_with_its_tokens_but_no_text(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        body = chat_reply(json.dumps({"claims": []}))
+        body.update(
+            model="qwen.gguf", usage={"prompt_tokens": 812, "completion_tokens": 9}
+        )
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.chat("secret system text", "secret user text", SCHEMA)
+
+    [chat] = spans.get_finished_spans()
+    assert (chat.name, chat.kind) == ("chat", SpanKind.CLIENT)
+    assert chat.attributes is not None
+    attributes = dict(chat.attributes)
+    assert attributes["gen_ai.operation.name"] == "chat"
+    assert attributes["gen_ai.provider.name"] == "llama.cpp"
+    assert attributes["gen_ai.response.model"] == "qwen.gguf"
+    assert attributes["gen_ai.response.finish_reasons"] == ("stop",)
+    assert attributes["gen_ai.usage.input_tokens"] == 812
+    assert attributes["gen_ai.usage.output_tokens"] == 9
+    assert attributes["server.port"] == 8080
+    assert not any("secret" in str(value) for value in attributes.values())
+
+
+def test_search_requests_are_traced_as_embeddings_and_rerank(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        else:
+            body = {"results": [{"index": 0, "relevance_score": 1.0}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.embed(["question"])
+    llm.rerank("question", ["passage"])
+
+    names = [span.name for span in spans.get_finished_spans()]
+    assert names == [f"embeddings {config.EMBEDDING_MODEL}", "rerank"]
+
+
+def test_a_failed_model_request_ends_its_span_with_an_error(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    with pytest.raises(llm.ModelServerError):
+        llm.chat("s", "u", SCHEMA)
+
+    [chat] = spans.get_finished_spans()
+    assert chat.status.status_code is StatusCode.ERROR
+    assert chat.attributes is not None
+    assert chat.attributes["error.type"] == "ModelServerError"

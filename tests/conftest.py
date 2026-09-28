@@ -6,9 +6,11 @@ from pathlib import Path
 
 import psycopg
 import pytest
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import sql
 
-from limespec import config, store
+from limespec import config, store, telemetry
 from limespec.answer import INSUFFICIENT, PARTIAL, SAFETY_REFERRAL
 from limespec.ingest import cache_path
 from limespec.models import Answer, Claim, Evidence, Passage, Rejection
@@ -125,6 +127,20 @@ def no_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests use SQLite unless they set the Postgres URL themselves, even when the
     suite runs with the developer's .env loaded."""
     monkeypatch.setattr(config, "DATABASE_URL", "")
+
+
+@pytest.fixture(scope="session")
+def span_store() -> InMemorySpanExporter:
+    exporter = InMemorySpanExporter()
+    telemetry.provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return exporter
+
+
+@pytest.fixture
+def spans(span_store: InMemorySpanExporter) -> InMemorySpanExporter:
+    """Every span finished during the test, oldest first."""
+    span_store.clear()
+    return span_store
 
 
 # Postgres tests run against the development server started with

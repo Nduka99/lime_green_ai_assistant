@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from markupsafe import escape
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from limespec import assistant, cli, config, llm
+from limespec import assistant, cli, config, llm, telemetry
 from limespec.app import app
 from limespec.ingest import IngestError
 from limespec.llm import ModelServerError
@@ -311,3 +312,41 @@ def test_readiness_needs_the_database_and_every_model_server(
     }
     assert ready.status_code == 200
     assert ready.json()["ready"] is True
+
+
+@pytest.mark.parametrize("route", ["/api/v1/answers", "/api/v1/answers/stream"])
+def test_each_request_is_one_trace_with_the_answer_inside(
+    monkeypatch: pytest.MonkeyPatch,
+    spans: InMemorySpanExporter,
+    answered: Answer,
+    route: str,
+) -> None:
+    def ask_and_record(
+        question: str, on_stage: Callable[[str], None] = assistant.no_stage
+    ) -> tuple[Answer, int]:
+        with telemetry.span("answer"):
+            return answered, 7
+
+    monkeypatch.setattr(assistant, "ask_and_record", ask_and_record)
+
+    client.post(route, json={"question": "What joints does Mortex suit?"})
+
+    finished = {span.name: span for span in spans.get_finished_spans()}
+    request = finished[f"POST {route}"]
+    answer = finished["answer"]
+    # The streamed answer runs in its own thread, yet stays in the request's trace.
+    assert answer.parent is not None
+    assert answer.parent.span_id == request.context.span_id
+    assert answer.context.trace_id == request.context.trace_id
+
+
+def test_health_probes_are_not_traced(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    monkeypatch.setattr(assistant, "database_ready", lambda: True)
+    monkeypatch.setattr(llm, "healthy", lambda url: True)
+
+    client.get("/healthz")
+    client.get("/readyz")
+
+    assert spans.get_finished_spans() == ()

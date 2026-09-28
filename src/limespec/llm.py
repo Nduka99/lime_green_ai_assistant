@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from limespec import config
+from limespec import config, telemetry
 
 
 class ModelServerError(RuntimeError):
@@ -15,17 +15,18 @@ class ModelServerError(RuntimeError):
 
 def embed(texts: list[str]) -> list[list[float]]:
     """Return one embedding vector per text, in the same order."""
-    try:
-        response = httpx.post(
-            config.EMBEDDING_URL,
-            json={"input": texts, "model": config.EMBEDDING_MODEL},
-            timeout=config.SEARCH_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-    except httpx.HTTPError as error:
-        raise ModelServerError(
-            f"embedding server at {config.EMBEDDING_URL} failed: {error}"
-        ) from error
+    with telemetry.embeddings_span():
+        try:
+            response = httpx.post(
+                config.EMBEDDING_URL,
+                json={"input": texts, "model": config.EMBEDDING_MODEL},
+                timeout=config.SEARCH_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise ModelServerError(
+                f"embedding server at {config.EMBEDDING_URL} failed: {error}"
+            ) from error
     try:
         items = response.json()["data"]
         if not isinstance(items, list):
@@ -60,17 +61,18 @@ def rerank(query: str, documents: list[str]) -> list[float]:
     The reranker is a cross-encoder: it reads the question together with each
     document, so it can judge relevance that shares no words with the question.
     """
-    try:
-        response = httpx.post(
-            config.RERANK_URL,
-            json={"query": query, "documents": documents},
-            timeout=config.SEARCH_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-    except httpx.HTTPError as error:
-        raise ModelServerError(
-            f"reranking server at {config.RERANK_URL} failed: {error}"
-        ) from error
+    with telemetry.rerank_span():
+        try:
+            response = httpx.post(
+                config.RERANK_URL,
+                json={"query": query, "documents": documents},
+                timeout=config.SEARCH_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise ModelServerError(
+                f"reranking server at {config.RERANK_URL} failed: {error}"
+            ) from error
     try:
         results = response.json()["results"]
         if not isinstance(results, list):
@@ -112,23 +114,26 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
         # a reasoning budget alone does not stop Qwen3.x from thinking.
         "chat_template_kwargs": {"enable_thinking": False},
     }
-    try:
-        response = httpx.post(
-            config.CHAT_URL, json=payload, timeout=config.CHAT_TIMEOUT_SECONDS
-        )
-        response.raise_for_status()
-    except httpx.HTTPError as error:
-        raise ModelServerError(
-            f"generation server at {config.CHAT_URL} failed: {error}"
-        ) from error
-    try:
-        choice = response.json()["choices"][0]
-        finish = choice["finish_reason"]
-        content = choice["message"]["content"]
-    except (ValueError, KeyError, IndexError, TypeError) as error:
-        raise ModelServerError(
-            "the generation server returned a malformed response"
-        ) from error
+    with telemetry.chat_span():
+        try:
+            response = httpx.post(
+                config.CHAT_URL, json=payload, timeout=config.CHAT_TIMEOUT_SECONDS
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise ModelServerError(
+                f"generation server at {config.CHAT_URL} failed: {error}"
+            ) from error
+        try:
+            body = response.json()
+            choice = body["choices"][0]
+            finish = choice["finish_reason"]
+            content = choice["message"]["content"]
+        except (ValueError, KeyError, IndexError, TypeError) as error:
+            raise ModelServerError(
+                "the generation server returned a malformed response"
+            ) from error
+        telemetry.record_reply(body.get("model"), finish, body.get("usage"))
     # A reply cut off at max_tokens can still happen to be valid JSON, so only a
     # reply the model finished itself is used.
     if finish != "stop":

@@ -221,6 +221,12 @@ The command line, page and JSON endpoint (`/api/answer?q=...`) call the same
 `assistant.ask()` and use the same checks and presentation data. Separate model
 requests can still produce different wording, even with a fixed seed.
 
+To trace answers, start VictoriaTraces inside WSL
+(`docker compose -f deploy/compose.yaml --profile observability up -d`) and serve with
+`uv run --env-file .env limespec serve`. Each request is one trace, with a span per
+stage and per model call (token counts, no question or answer text), at
+http://localhost:10428/select/vmui.
+
 ## Tests
 
 ```powershell

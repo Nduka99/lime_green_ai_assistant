@@ -13,7 +13,7 @@ from typing import Any
 
 import psycopg
 
-from limespec import config, llm, store
+from limespec import config, llm, store, telemetry
 from limespec.answer import EXPOSURE_SCHEMA, PROMPT_SHA256, Chat, Retrieve, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
@@ -66,20 +66,24 @@ def no_stage(stage: str) -> None:
 def with_stages(
     retrieve: Retrieve, chat: Chat, on_stage: Callable[[str], None]
 ) -> tuple[Retrieve, Chat]:
-    """The same retrieval and model calls, reporting each stage as it starts:
-    understanding (the first model request), searching, answering and checking
-    (verification runs once the answer request returns)."""
+    """The same retrieval and model calls, reporting each stage as it starts and
+    tracing it: understanding (the first model request), searching, answering and
+    checking (verification runs once the answer request returns; its outcome is
+    traced on the answer's span)."""
 
     def staged_retrieve(query: str) -> list[Passage]:
         on_stage("searching")
-        return retrieve(query)
+        with telemetry.span("searching"):
+            return retrieve(query)
 
     def staged_chat(system: str, user: str, schema: dict[str, Any]) -> object:
         if schema is EXPOSURE_SCHEMA:
             on_stage("understanding")
-            return chat(system, user, schema)
+            with telemetry.span("understanding"):
+                return chat(system, user, schema)
         on_stage("answering")
-        reply = chat(system, user, schema)
+        with telemetry.span("answering"):
+            reply = chat(system, user, schema)
         on_stage("checking")
         return reply
 
@@ -91,7 +95,7 @@ def ask_and_record(
 ) -> tuple[Answer, int]:
     """Answer from the live Postgres index and store the audit record; return the
     answer and the record's id. `on_stage` hears each stage as it starts."""
-    with connect() as conn:
+    with telemetry.span("answer"), connect() as conn:
         version_id = live_index(conn)
         started = time.perf_counter()
         retrieve, chat = with_stages(
@@ -114,6 +118,7 @@ def ask_and_record(
             prompt_sha256=PROMPT_SHA256,
             seconds=seconds,
         )
+        telemetry.record_answer(result, answer_id, version_id)
     return result, answer_id
 
 

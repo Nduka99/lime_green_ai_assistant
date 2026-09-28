@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from limespec import assistant, config, llm, store
 from limespec.answer import PROMPT_SHA256, answer
@@ -261,3 +262,35 @@ def test_the_database_is_ready_only_with_a_matching_live_index(
     live_postgres_index(pg, fixture_pages, fake_embed_1024)
 
     assert assistant.database_ready() is True
+
+
+def test_an_answer_is_traced_stage_by_stage_without_its_text(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    fake_rerank: Rerank,
+    postgres_url: str,
+    pg: store.Connection,
+    spans: InMemorySpanExporter,
+) -> None:
+    version = live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    monkeypatch.setattr(llm, "rerank", fake_rerank)
+    monkeypatch.setattr(llm, "chat", two_days_chat)
+
+    _, answer_id = assistant.ask_and_record("How long does Mortex take to set?")
+
+    finished = {span.name: span for span in spans.get_finished_spans()}
+    answer_span = finished["answer"]
+    for stage in ["understanding", "searching", "answering"]:
+        parent = finished[stage].parent
+        assert parent is not None and parent.span_id == answer_span.context.span_id
+    assert answer_span.attributes is not None
+    assert dict(answer_span.attributes) == {
+        "limespec.index.version": version,
+        "limespec.answer.id": answer_id,
+        "limespec.answer.status": "answered",
+        "limespec.claims.kept": 1,
+        "limespec.claims.removed": 0,
+    }
