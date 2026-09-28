@@ -305,3 +305,32 @@ def test_unreachable_embedding_server_is_a_clear_error(
 
     with pytest.raises(llm.ModelServerError, match=config.EMBEDDING_URL):
         llm.embed(["question"])
+
+
+def test_a_server_is_healthy_only_when_its_health_route_answers_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+    statuses = {
+        "http://127.0.0.1:8081/health": 200,
+        "http://127.0.0.1:8080/health": 503,
+    }
+
+    def get(url: str, **kwargs: Any) -> httpx.Response:
+        asked.append(url)
+        return httpx.Response(statuses[url], request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", get)
+
+    assert llm.healthy("http://127.0.0.1:8081/v1/embeddings") is True
+    assert llm.healthy("http://127.0.0.1:8080/v1/chat/completions") is False  # loading
+    assert asked == list(statuses)
+
+
+def test_an_unreachable_server_is_not_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get(url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", get)
+
+    assert llm.healthy(config.RERANK_URL) is False

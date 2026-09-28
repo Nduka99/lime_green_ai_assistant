@@ -63,3 +63,8 @@ CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
 # another.
 APP_HOST = "127.0.0.1"
 APP_PORT = 8090
+# The API refuses longer questions (OWASP LLM10, unbounded consumption). The longest
+# question in the evaluation sets is 237 characters.
+MAX_QUESTION_CHARS = 1000
+# /readyz asks each model server's /health; a loaded server answers at once.
+HEALTH_TIMEOUT_SECONDS = 2.0

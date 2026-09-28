@@ -138,3 +138,16 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
     except (json.JSONDecodeError, TypeError) as error:
         raise ModelServerError("the model's reply is not valid JSON") from error
     return reply
+
+
+def healthy(url: str) -> bool:
+    """Whether the llama.cpp server behind `url` has loaded its model: its /health
+    answers 200 when ready and 503 while the model is still loading."""
+    try:
+        response = httpx.get(
+            str(httpx.URL(url).join("/health")),
+            timeout=config.HEALTH_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError:
+        return False
+    return response.status_code == 200

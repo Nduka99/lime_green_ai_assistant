@@ -6,8 +6,9 @@ from typing import Any
 import pytest
 
 from limespec import assistant, config, llm, store
-from limespec.answer import PROMPT_SHA256
+from limespec.answer import PROMPT_SHA256, answer
 from limespec.ingest import IngestError, build_index, prepare_index
+from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
 
 
@@ -198,3 +199,65 @@ def test_an_unreachable_postgres_is_an_ingest_error(
 
     with pytest.raises(IngestError, match="cannot reach the Postgres index"):
         assistant.ask("anything")
+
+
+def test_each_stage_is_reported_as_it_starts(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    fake_rerank: Rerank,
+    postgres_url: str,
+    pg: store.Connection,
+) -> None:
+    live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    monkeypatch.setattr(llm, "rerank", fake_rerank)
+    monkeypatch.setattr(llm, "chat", two_days_chat)
+    stages: list[str] = []
+
+    result, _ = assistant.ask_and_record(
+        "How long does Mortex take to set?", stages.append
+    )
+
+    assert result.status == "answered"
+    assert stages == ["understanding", "searching", "answering", "checking"]
+
+
+def test_a_safety_referral_reports_only_understanding() -> None:
+    stages: list[str] = []
+
+    def never_searched(query: str) -> list[Passage]:
+        raise AssertionError("an emergency is never searched")
+
+    retrieve, chat = assistant.with_stages(
+        never_searched,
+        lambda system, user, schema: {"describes_exposure": True},
+        stages.append,
+    )
+
+    result = answer("my son swallowed some mortar", retrieve, chat)
+
+    assert result.status == "safety_referral"
+    assert stages == ["understanding"]
+
+
+def test_recording_an_answer_needs_the_postgres_url() -> None:
+    with pytest.raises(IngestError, match="set LIMESPEC_DATABASE_URL"):
+        assistant.ask_and_record("anything")
+
+
+def test_the_database_is_ready_only_with_a_matching_live_index(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    postgres_url: str,
+    pg: store.Connection,
+) -> None:
+    assert assistant.database_ready() is False  # no URL set
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    assert assistant.database_ready() is False  # no live index yet
+
+    live_postgres_index(pg, fixture_pages, fake_embed_1024)
+
+    assert assistant.database_ready() is True

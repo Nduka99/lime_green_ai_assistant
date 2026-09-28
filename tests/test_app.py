@@ -1,13 +1,16 @@
-"""The web page and JSON endpoint, compared with the CLI."""
+"""The web page and the JSON API, compared with the CLI."""
 
+import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
-from limespec import assistant, cli
+from limespec import assistant, cli, config, llm
 from limespec.app import app
+from limespec.ingest import IngestError
 from limespec.llm import ModelServerError
 from limespec.models import Answer
 from limespec.view import view
@@ -157,3 +160,154 @@ def test_cli_and_http_show_the_same_answer_for_the_same_question(
         assert claim["text"] in page
     for source in api.json()["sources"]:
         assert source["title"] in page and source["quote"] in page
+
+
+STAGES = ["understanding", "searching", "answering", "checking"]
+
+
+def records_with(
+    monkeypatch: pytest.MonkeyPatch, result: Answer, answer_id: int = 7
+) -> list[str]:
+    """Make every v1 question get `result`, recorded as `answer_id`, after
+    reporting each stage; returns the questions asked."""
+    asked: list[str] = []
+
+    def ask_and_record(
+        question: str, on_stage: Callable[[str], None] = assistant.no_stage
+    ) -> tuple[Answer, int]:
+        asked.append(question)
+        for stage in STAGES:
+            on_stage(stage)
+        return result, answer_id
+
+    monkeypatch.setattr(assistant, "ask_and_record", ask_and_record)
+    return asked
+
+
+def sse_events(text: str) -> list[tuple[str, object]]:
+    """(event name, decoded data) for each event in a server-sent event stream."""
+    events: list[tuple[str, object]] = []
+    for block in text.strip().split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((fields["event"], json.loads(fields["data"])))
+    return events
+
+
+def test_v1_returns_the_reader_view_with_its_audit_record_id(
+    monkeypatch: pytest.MonkeyPatch, answered: Answer
+) -> None:
+    asked = records_with(monkeypatch, answered)
+
+    response = client.post(
+        "/api/v1/answers", json={"question": "  What joints does Mortex suit?  "}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"id": 7, "answer": view(answered)}
+    assert asked == ["What joints does Mortex suit?"]
+
+
+def test_v1_refuses_an_empty_or_overlong_question(
+    monkeypatch: pytest.MonkeyPatch, answered: Answer
+) -> None:
+    asked = records_with(monkeypatch, answered)
+    longest = "x" * config.MAX_QUESTION_CHARS
+
+    for question in ["   ", longest + "x"]:
+        for route in ["/api/v1/answers", "/api/v1/answers/stream"]:
+            assert client.post(route, json={"question": question}).status_code == 422
+    assert client.post("/api/v1/answers", json={"question": longest}).status_code == 200
+    assert asked == [longest]
+
+
+def test_v1_operational_error_is_a_clear_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable(question: str) -> tuple[Answer, int]:
+        raise IngestError("no live Postgres index")
+
+    monkeypatch.setattr(assistant, "ask_and_record", unavailable)
+
+    response = client.post("/api/v1/answers", json={"question": "anything"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "no live Postgres index"}
+
+
+def test_the_stream_sends_each_stage_then_the_verified_answer(
+    monkeypatch: pytest.MonkeyPatch, answered: Answer
+) -> None:
+    records_with(monkeypatch, answered)
+
+    response = client.post(
+        "/api/v1/answers/stream", json={"question": "What joints does Mortex suit?"}
+    )
+
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = sse_events(response.text)
+    assert events[:-1] == [("stage", {"stage": stage}) for stage in STAGES]
+    assert events[-1] == ("answer", {"id": 7, "answer": view(answered)})
+    assert "Mortex is cheap" not in response.text  # removed claims are never sent
+
+
+def test_the_stream_ends_with_an_error_event_not_an_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(
+        question: str, on_stage: Callable[[str], None]
+    ) -> tuple[Answer, int]:
+        on_stage("understanding")
+        raise ModelServerError("generation server at http://127.0.0.1:8080 failed")
+
+    monkeypatch.setattr(assistant, "ask_and_record", unavailable)
+
+    response = client.post("/api/v1/answers/stream", json={"question": "anything"})
+
+    assert sse_events(response.text) == [
+        ("stage", {"stage": "understanding"}),
+        ("error", {"detail": "generation server at http://127.0.0.1:8080 failed"}),
+    ]
+
+
+def test_a_bug_in_the_stream_is_raised_for_the_server_to_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken(question: str, on_stage: Callable[[str], None]) -> tuple[Answer, int]:
+        raise RuntimeError("a bug")
+
+    monkeypatch.setattr(assistant, "ask_and_record", broken)
+
+    # FastAPI's stream runs beside its keep-alive task, so the bug arrives grouped.
+    with pytest.raises(ExceptionGroup) as raised:
+        client.post("/api/v1/answers/stream", json={"question": "anything"})
+    assert raised.group_contains(RuntimeError, match="a bug")
+
+
+def test_liveness_checks_nothing_but_the_process() -> None:
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readiness_needs_the_database_and_every_model_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loading = {config.CHAT_URL}
+    monkeypatch.setattr(assistant, "database_ready", lambda: True)
+    monkeypatch.setattr(llm, "healthy", lambda url: url not in loading)
+
+    not_ready = client.get("/readyz")
+    loading.clear()
+    ready = client.get("/readyz")
+
+    assert not_ready.status_code == 503
+    assert not_ready.json() == {
+        "ready": False,
+        "checks": {
+            "database": True,
+            "embedding": True,
+            "reranking": True,
+            "generation": False,
+        },
+    }
+    assert ready.status_code == 200
+    assert ready.json()["ready"] is True
