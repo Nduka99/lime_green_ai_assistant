@@ -126,3 +126,37 @@ because a rebuilt table row adds separators ("A1;").
 `table`. The reader now reads every item by what it carries (table rows, a figure's
 caption, text, or a key-value region's text cells), tested on invented items of each
 kind (`264784e` + this commit). No score had been computed.
+
+## Result, round 1: fail
+
+Run on 28 September 2026 (`6846a81`), outputs in `data/runs/x8-pages/` (both parsers'
+text per page and every measure per page). Peak memory 1,185 MB; Docling 1.1 s per page
+(median), 18.7 s for the first page, which loads the models.
+
+| Measure | pypdf | docling | Gate |
+|---|---|---|---|
+| Table cells | — | 0.779 | ≥ 0.95 |
+| Pairs kept | 0.761 | 0.957 | ≥ 0.95 |
+| Text kept | 1.000 | 0.976 | ≥ 0.99 |
+| Sentences whole | 0.989 | 0.924 | ≥ 0.95, and ≥ pypdf |
+| Table numbers | 1.000 | 1.000 | ≥ 0.99 |
+| Lowest table | — | 0.000 | ≥ 0.80 |
+
+Gates 1, 2 and 3 fail; Docling is not adopted on this result.
+
+**Diagnosis,** from both parsers' saved output, page by page:
+
+| Cause | Pages | Owner |
+|---|---|---|
+| The U-value table was read perfectly (every value under its thickness column), but a spanning "U Value W / m²K" subheader is joined after the column name, so the pre-run "ends with" clarification failed all 12 cells | 17 | scorer |
+| List numbering ("5.", "a.", "ii.", "9.1.") is dropped: the reader used Docling's `text`, which strips markers; `orig` keeps them | 1, 5, 13, 19 | reader |
+| Table header text disappears when its cells are empty (a checklist's heading over tick boxes) or when it heads the label column ("Essential Characteristics") | 1, 16 | reader |
+| Docling's PDF parser sanitises typography by default (curly quotes and apostrophes to straight, en dash to hyphen; `do_sanitization`, not exposed by Docling's options), so sentences copied from the page image no longer match character for character | 1, 8, 9, 11, 18 | matching |
+| Letter-spaced titles, superscripts read as "m 2" and web addresses split at a line-end hyphen count as lost words though the text is there | 1, 20 | scorer |
+| Styled header rows (white on green) are not recognised as headers: every row keeps its label and value, but values have no column name | 8 | Docling |
+
+Only the last is a limit of Docling itself; the others are in this project's reader or
+scoring. Fixes follow as general changes (read `orig`; keep a table's header row as its
+own element; compare header components; fold typographic variants on both sides of
+every comparison), and are then checked on a **new** sample of pages they were not
+derived from (round 2), with its gate written first.

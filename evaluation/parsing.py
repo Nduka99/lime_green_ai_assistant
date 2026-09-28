@@ -159,10 +159,10 @@ def markdown(result: dict[str, Any]) -> str:
     for measure, threshold in GATE.items():
         pypdf = result["pypdf"][measure]
         docling = result["docling"][measure]
-        lines.append(f"| {measure} | {pypdf:.3f} | {docling:.3f} | ≥ {threshold} |")
+        lines.append(f"| {measure} | {pypdf:.3f} | {docling:.3f} | >= {threshold} |")
     lines.append("")
     lines.append(
-        f"Lowest table (docling): {result['lowest_table']:.3f} (≥ {LOWEST_TABLE})"
+        f"Lowest table (docling): {result['lowest_table']:.3f} (>= {LOWEST_TABLE})"
     )
     lines.append(
         f"Docling seconds per page: median {result['seconds']['median']:.1f}, "

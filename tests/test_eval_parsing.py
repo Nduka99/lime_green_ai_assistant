@@ -65,8 +65,8 @@ def test_the_gate_needs_every_measure_and_no_weak_table() -> None:
     assert not any(failed["gate"].values())
     assert parsing.pooled([{m: (0, 0) for m in parsing.GATE}])["cells"] == 1.0
     text = parsing.markdown(failed)
-    assert "| cells | 1.000 | 0.500 | ≥ 0.95 |" in text
-    assert "Lowest table (docling): 0.500 (≥ 0.8)" in text
+    assert "| cells | 1.000 | 0.500 | >= 0.95 |" in text
+    assert "Lowest table (docling): 0.500 (>= 0.8)" in text
     assert "- 2. text kept: FAIL" in text
 
 
@@ -100,7 +100,7 @@ def test_the_command_line_runs_both_parsers_and_saves_their_output(
 
     assert cli.main([*base, "parsing", "pages", "--out", str(out)]) == 0
     printed = capsys.readouterr().out
-    assert "| cells | 0.000 | 1.000 | ≥ 0.95 |" in printed
+    assert "| cells | 0.000 | 1.000 | >= 0.95 |" in printed
     saved = json.loads((out / "parsed.json").read_text(encoding="utf-8"))
     assert saved["1"]["pypdf"] == text.splitlines()
     assert len(saved["1"]["docling"]) == 4  # page 3 left out
