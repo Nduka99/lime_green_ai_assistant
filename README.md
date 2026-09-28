@@ -150,12 +150,15 @@ Put `llama-server` on your `PATH`. The tested setup used Windows, an 8 GB NVIDIA
 GPU and 64 GB of RAM; the Python application itself has no platform-specific
 paths.
 
-One command installs everything: the application and its tests.
+One command installs everything: the application, its tests and the `ingest` group
+(Docling, the layout-aware PDF parser, with CPU PyTorch: about 300 MB of packages;
+Docling's layout and table models, about 500 MB, download on the first PDF parse).
 
 ```powershell
 uv sync --all-groups --locked
 ```
 
+`uv sync --locked` installs the application and its tests without the `ingest` group.
 `uv.lock` pins every version; uv recommends it over a second `requirements.txt`.
 
 ## Build the search index
