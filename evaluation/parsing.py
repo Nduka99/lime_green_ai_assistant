@@ -18,6 +18,8 @@ NUMBER = re.compile(r"[0-9]+(?:[.,][0-9]+)?")
 EDGES = ".,;:!?()[]{}\"'‘’“”—–-"
 GATE = {"cells": 0.95, "pairs": 0.95, "words": 0.99, "sentences": 0.95, "numbers": 0.99}
 LOWEST_TABLE = 0.80
+# Round 2's bar for indexing a model's transcriptions as searchable text.
+TRANSCRIPTION = {"recall": 0.90, "precision": 0.95}
 
 
 # Docling's PDF parser writes typographic characters in their plain form (its
@@ -146,37 +148,42 @@ def pooled(pages: list[dict[str, Any]]) -> dict[str, float]:
 
 
 def gate(
-    docling: dict[str, float], pypdf: dict[str, float], lowest: float
+    arm: dict[str, float], pypdf: dict[str, float], lowest: float
 ) -> dict[str, bool]:
-    """The registered gate, item by item."""
+    """The registered gate, item by item, for one arm."""
     return {
-        "1. table cells and pairs": docling["cells"] >= GATE["cells"]
-        and docling["pairs"] >= GATE["pairs"]
+        "1. table cells and pairs": arm["cells"] >= GATE["cells"]
+        and arm["pairs"] >= GATE["pairs"]
         and lowest >= LOWEST_TABLE,
-        "2. text kept": docling["words"] >= GATE["words"],
-        "3. sentences whole": docling["sentences"] >= GATE["sentences"]
-        and docling["sentences"] >= pypdf["sentences"],
-        "4. table numbers": docling["numbers"] >= GATE["numbers"],
+        "2. text kept": arm["words"] >= GATE["words"],
+        "3. sentences whole": arm["sentences"] >= GATE["sentences"]
+        and arm["sentences"] >= pypdf["sentences"],
+        "4. table numbers": arm["numbers"] >= GATE["numbers"],
     }
 
 
 def markdown(result: dict[str, Any]) -> str:
-    """The scores of both parsers, the lowest table and the gate, as a report table."""
+    """The scores of the text layer and the arm, the lowest table and the gate, as a
+    report table."""
+    arm = result["arm"]
     lines = [
-        "| Measure | pypdf | docling | Gate |",
+        f"| Measure | pypdf | {arm} | Gate |",
         "|---|---|---|---|",
     ]
     for measure, threshold in GATE.items():
         pypdf = result["pypdf"][measure]
-        docling = result["docling"][measure]
-        lines.append(f"| {measure} | {pypdf:.3f} | {docling:.3f} | >= {threshold} |")
+        score = result[arm][measure]
+        lines.append(f"| {measure} | {pypdf:.3f} | {score:.3f} | >= {threshold} |")
     lines.append("")
+    shares = ", ".join(f"{share:.3f}" for share in result["table_shares"])
     lines.append(
-        f"Lowest table (docling): {result['lowest_table']:.3f} (>= {LOWEST_TABLE})"
+        f"Lowest table ({arm}): {result['lowest_table']:.3f} (>= {LOWEST_TABLE}); "
+        f"each table: {shares}"
     )
+    seconds = result["seconds"]
     lines.append(
-        f"Docling seconds per page: median {result['seconds']['median']:.1f}, "
-        f"first {result['seconds']['first']:.1f} (loads the models)"
+        f"Seconds per page ({arm}): mean {seconds['mean']:.1f}, median "
+        f"{seconds['median']:.1f}, first {seconds['first']:.1f} (loads the models)"
     )
     for item, passed in result["gate"].items():
         lines.append(f"- {item}: {'pass' if passed else 'FAIL'}")
@@ -184,17 +191,41 @@ def markdown(result: dict[str, Any]) -> str:
 
 
 def summarise(
-    scores: dict[str, list[dict[str, Any]]], seconds: list[float]
+    scores: dict[str, list[dict[str, Any]]], seconds: list[float], arm: str = "docling"
 ) -> dict[str, Any]:
-    """Pooled measures per parser, the lowest docling table and the gate."""
-    docling = pooled(scores["docling"])
+    """Pooled measures for the text layer and the arm, the arm's lowest table and its
+    gate."""
+    measured = pooled(scores[arm])
     pypdf = pooled(scores["pypdf"])
-    shares = [share for page in scores["docling"] for share in page["table_shares"]]
+    shares = [share for page in scores[arm] for share in page["table_shares"]]
     lowest = min(shares, default=1.0)
     return {
+        "arm": arm,
         "pypdf": pypdf,
-        "docling": docling,
+        arm: measured,
         "lowest_table": lowest,
-        "seconds": {"median": statistics.median(seconds), "first": seconds[0]},
-        "gate": gate(docling, pypdf, lowest),
+        "table_shares": shares,
+        "seconds": {
+            "mean": statistics.mean(seconds),
+            "median": statistics.median(seconds),
+            "first": seconds[0],
+        },
+        "gate": gate(measured, pypdf, lowest),
     }
+
+
+def transcription(truth: str, answer: str) -> dict[str, tuple[int, int]]:
+    """Recall (truth words the transcription holds) and precision (transcribed
+    words the truth holds), counted as multisets of words with a letter or digit,
+    markup removed."""
+    wanted = _alphanumeric(words(truth))
+    have = _alphanumeric(words(re.sub(r"<[^>]+>", " ", answer)))
+    common = sum((wanted & have).values())
+    return {
+        "recall": (common, sum(wanted.values())),
+        "precision": (common, sum(have.values())),
+    }
+
+
+def _alphanumeric(counts: Counter[str]) -> Counter[str]:
+    return Counter({w: n for w, n in counts.items() if any(c.isalnum() for c in w)})

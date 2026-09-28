@@ -1,0 +1,162 @@
+"""Tables read again by a vision model. Every table, answer and word is invented."""
+
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+from limespec import llm, tables
+from limespec.tables import Cell
+
+HTML = (
+    "<table><thead><tr><th rowspan='2'>Property</th><th colspan=\"2\">Class</th></tr>"
+    "<tr><th>i</th><th>ii</th></tr></thead>"
+    "<tr><td>Fire</td><td>A1</td><td>A 2</td></tr>"
+    "<tr><td>Strength<br/>28 days</td><td colspan='2'>5 N/mm<sup>2</sup></td></tr>"
+    "</table>"
+)
+OTSL = (
+    "<fcel>Property<fcel>Class<lcel><nl>"
+    "<ucel><fcel>i<fcel>ii<nl>"
+    "<fcel>Fire<fcel>A1<ecel><nl>"
+)
+
+
+class Image:
+    """Stands in for a PIL image: saving writes fixed bytes."""
+
+    def save(self, buffer: Any, format: str) -> None:
+        buffer.write(b"png")
+
+
+IMAGE: Any = Image()
+
+
+def test_the_model_is_asked_with_the_image_and_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: dict[str, Any] = {}
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.update(url=url, **kwargs)
+        body = {"choices": [{"message": {"content": "<table></table>"}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm, "auth", lambda: {"Authorization": "Bearer k"})
+
+    answer = tables.recognise(IMAGE, "http://127.0.0.1:8083", "OCR:")
+
+    assert answer == "<table></table>"
+    assert sent["url"] == "http://127.0.0.1:8083/v1/chat/completions"
+    content = sent["json"]["messages"][0]["content"]
+    assert content[0]["image_url"]["url"] == "data:image/png;base64,cG5n"
+    assert content[1] == {"type": "text", "text": "OCR:"}
+    assert sent["json"]["max_tokens"] == tables.MAX_TOKENS
+    assert sent["headers"] == {"Authorization": "Bearer k"}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(500),
+        httpx.Response(200, content=b"not json"),
+        httpx.Response(200, json={"choices": []}),
+    ],
+)
+def test_a_failed_or_malformed_answer_is_a_model_server_error(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+) -> None:
+    response.request = httpx.Request("POST", "http://x")
+    monkeypatch.setattr(httpx, "post", lambda url, **kwargs: response)
+
+    with pytest.raises(llm.ModelServerError, match="vision model at http://x"):
+        tables.recognise(IMAGE, "http://x")
+
+
+def test_html_cells_keep_their_spans_headers_and_line_breaks() -> None:
+    cells = tables.parse(HTML)
+
+    assert cells == [
+        Cell(0, 0, "Property", rows=2, header=True),
+        Cell(0, 1, "Class", columns=2, header=True),
+        Cell(1, 1, "i", header=True),
+        Cell(1, 2, "ii", header=True),
+        Cell(2, 0, "Fire"),
+        Cell(2, 1, "A1"),
+        Cell(2, 2, "A 2"),
+        Cell(3, 0, "Strength 28 days"),
+        Cell(3, 1, "5 N/mm2", columns=2),
+    ]
+    odd = tables.parse_html("<td>outside</td><TABLE><tr><td rowspan='x'>a</td></tr>")
+    assert odd == [Cell(0, 0, "a")]
+
+
+def test_otsl_cells_extend_left_up_or_both() -> None:
+    assert tables.parse(OTSL) == [
+        Cell(0, 0, "Property", rows=2),
+        Cell(0, 1, "Class", columns=2),
+        Cell(1, 1, "i"),
+        Cell(1, 2, "ii"),
+        Cell(2, 0, "Fire"),
+        Cell(2, 1, "A1"),
+        Cell(2, 2, ""),
+    ]
+    both = tables.parse_otsl("<fcel>a<lcel><nl><ucel><xcel><nl><fcel>b")
+    assert both == [Cell(0, 0, "a", rows=2, columns=2), Cell(2, 0, "b")]
+    assert tables.parse("Just some text.") == []
+
+
+def test_a_cell_is_spelt_by_unused_words_in_reading_order() -> None:
+    words = ["Fire", "A1", "0.8kg/(m", "2", ".min", "0.5", ")", "A1", "‘B’"]
+
+    assert tables.fold("0.8 kg/(m²") == "0.8kg/(m2"
+    assert tables.spell("0.8kg/(m2.min0.5)", words, set()) == [2, 3, 4, 5, 6]
+    assert tables.spell("A1", words, {1}) == [7]
+    assert tables.spell("A1", words, {1, 7}) is None
+    assert tables.spell("'b'", words, set()) == [8]
+    assert tables.spell("", words, set()) == []
+    # A word that starts the text but leaves a rest no word spells is tried and
+    # abandoned for the next word ("10" then "25" fails; "1025" spells it).
+    assert tables.spell("1025", ["10", "2", "1025"], set()) == [2]
+    assert tables.spell("Fire A1", words, {0}) is None
+    # Words before the last one used are searched too, after those that follow.
+    assert tables.spell("A1 Fire", words, set()) == [1, 0]
+
+
+def test_the_structure_takes_headers_from_the_model_and_text_from_the_pdf() -> None:
+    words = ["Property", "Class", "i", "ii", "Fire", "A1", "A2", "Strength", "28",
+             "days", "5", "N/mm2"]  # fmt: skip
+    cells = tables.parse(HTML)
+
+    headers, rows, dropped = tables.structure(cells, words, set())
+
+    assert headers == ["Property", "Class › i", "Class › ii"]
+    # "A 2" is spelt by the PDF's "A2"; the value spanning two columns is written once.
+    assert rows == [
+        (2, ["Fire", "A1", "A2"]),
+        (3, ["Strength 28 days", "5 N/mm2", ""]),
+    ]
+    assert dropped == 0
+
+
+def test_without_marked_headers_docling_s_header_rows_are_used() -> None:
+    words = ["Property", "Class", "i", "ii", "Fire", "A1", "Smoke", "s1"]
+    cells = tables.parse(OTSL) + [Cell(3, 0, "Smoke", rows=2), Cell(3, 1, "s1")]
+    cells += [Cell(4, 1, "s2 invented")]
+    header_rows = {tables.fold("Property Class"), tables.fold("i ii")}
+
+    headers, rows, dropped = tables.structure(cells, words, header_rows)
+
+    assert headers == ["Property", "Class › i", "Class › ii"]
+    # A value spanning rows repeats; a cell the PDF cannot spell is left empty.
+    assert rows == [
+        (2, ["Fire", "A1", ""]),
+        (3, ["Smoke", "s1", ""]),
+        (4, ["Smoke", "", ""]),
+    ]
+    assert dropped == 1
+    no_headers, _, _ = tables.structure(cells, words, set())
+    assert no_headers == ["", "", ""]
+    assert json.dumps(rows)  # plain, JSON-compatible data

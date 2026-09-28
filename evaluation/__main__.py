@@ -28,6 +28,7 @@ import argparse
 import json
 import sys
 import time
+from collections import Counter
 from dataclasses import asdict
 from functools import cache
 from pathlib import Path
@@ -50,7 +51,7 @@ from evaluation import (
     retrieval,
     sets,
 )
-from limespec import acquire, pdf
+from limespec import acquire, pdf, tables
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 
@@ -127,6 +128,17 @@ def parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True, help="where each parser's output is saved"
     )
     parsed.add_argument("--json", action="store_true")
+    parsed.add_argument("--arm", default="docling", help="a name for this arm")
+    parsed.add_argument(
+        "--vlm", default="", help="a vision model server that reads each table again"
+    )
+    transcribed = commands.add_parser(
+        "transcription", help="score a vision model on a page set's blank pages (X8)"
+    )
+    transcribed.add_argument("name")
+    transcribed.add_argument("--vlm", required=True, help="the model server's URL")
+    transcribed.add_argument("--prompt", required=True, help="e.g. 'OCR:'")
+    transcribed.add_argument("--out", type=Path, required=True)
     sampled = commands.add_parser(
         "sample-pages", help="draw PDF pages for X8 from the catalogue, by code"
     )
@@ -142,6 +154,13 @@ def parser() -> argparse.ArgumentParser:
         "--blank", type=int, default=0, help="also draw this many pages without text"
     )
     sampled.add_argument("--out", type=Path, required=True, help="a JSON file")
+    rendered = commands.add_parser(
+        "render-page", help="render one PDF page to a PNG (one page per process)"
+    )
+    rendered.add_argument("source", type=Path, help="the PDF")
+    rendered.add_argument("page", type=int)
+    rendered.add_argument("out", type=Path, help="the PNG to write")
+    rendered.add_argument("--scale", type=float, default=2.0, help="2 = 144 DPI")
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -284,16 +303,19 @@ def text_layer(path: Path, page: int) -> str:
 def run_parsing(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     truth = grades.read_json(folder / "truth.json")["pages"]
-    scores: dict[str, list[dict[str, Any]]] = {"pypdf": [], "docling": []}
+    scores: dict[str, list[dict[str, Any]]] = {"pypdf": [], args.arm: []}
     seconds = []
     saved = {}
+    stats: Counter[str] = Counter()
     for page in truth:
         path = acquire.store_path(page["entry"].split(":", 1)[1])
         reference = text_layer(path, page["page"])
         started = time.perf_counter()
         found = [
             element
-            for element in pdf.read_pdf(path, page["page"], page["page"])
+            for element in pdf.read_pdf(
+                path, page["page"], page["page"], args.vlm, stats
+            )
             if element.page == page["page"]
         ]
         seconds.append(time.perf_counter() - started)
@@ -301,18 +323,50 @@ def run_parsing(args: argparse.Namespace) -> int:
         rows = [element.cells for element in found if element.kind == "table_row"]
         lines = reference.splitlines()
         scores["pypdf"].append(parsing.score_page(page, lines, [], reference))
-        scores["docling"].append(parsing.score_page(page, units, rows, reference))
+        scores[args.arm].append(parsing.score_page(page, units, rows, reference))
         saved[str(page["number"])] = {
             "pypdf": lines,
-            "docling": [asdict(element) for element in found],
+            args.arm: [asdict(element) for element in found],
         }
+    result = parsing.summarise(scores, seconds, args.arm)
+    result["tables"] = dict(stats)
     args.out.mkdir(parents=True, exist_ok=True)
-    for name, data in (("parsed.json", saved), ("scores.json", scores)):
+    outputs = (("parsed.json", saved), ("scores.json", scores), ("result.json", result))
+    for name, data in outputs:
         text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
         (args.out / name).write_text(text, encoding="utf-8", newline="\n")
-    result = parsing.summarise(scores, seconds)
     print(json.dumps(result, indent=1) if args.json else parsing.markdown(result))
     return 0 if all(result["gate"].values()) else 1
+
+
+def run_transcription(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    blank = grades.read_json(folder / "truth.json")["blank"]
+    answers = {}
+    counts: Counter[str] = Counter()
+    for page in blank:
+        path = acquire.store_path(page["entry"].split(":", 1)[1])
+        image = pdf.page_image(path, page["page"], pdf.IMAGES_SCALE)
+        answer = tables.recognise(image, args.vlm, args.prompt)
+        scored = parsing.transcription(page["words"], answer)
+        answers[page["number"]] = {"answer": answer, **scored}
+        for measure, (found, total) in scored.items():
+            counts[f"{measure} found"] += found
+            counts[f"{measure} total"] += total
+    shares = {
+        measure: counts[f"{measure} found"] / max(counts[f"{measure} total"], 1)
+        for measure in parsing.TRANSCRIPTION
+    }
+    args.out.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(
+        {"pages": answers, "pooled": shares}, indent=1, ensure_ascii=False
+    )
+    (args.out / "transcription.json").write_text(text + "\n", encoding="utf-8")
+    passed = all(shares[m] >= bar for m, bar in parsing.TRANSCRIPTION.items())
+    for measure, bar in parsing.TRANSCRIPTION.items():
+        print(f"{measure}: {shares[measure]:.3f} (bar {bar})")
+    print("pass" if passed else "FAIL")
+    return 0 if passed else 1
 
 
 def run_sample_pages(args: argparse.Namespace) -> int:
@@ -337,6 +391,14 @@ def run_sample_pages(args: argparse.Namespace) -> int:
         name = page["url"].rsplit("/", 1)[-1]
         print(f"{page['format']:16} p{page['page']:<3} {name}")
     print(f"{len(drawn['pages'])} pages, {len(drawn['blank'])} blank, in {args.out}")
+    return 0
+
+
+def run_render_page(args: argparse.Namespace) -> int:
+    image = pdf.page_image(args.source, args.page, args.scale)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    image.save(args.out)
+    print(f"{args.out}: {image.width} x {image.height}")
     return 0
 
 
@@ -431,6 +493,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_parsing(args)
         if args.command == "sample-pages":
             return run_sample_pages(args)
+        if args.command == "transcription":
+            return run_transcription(args)
+        if args.command == "render-page":
+            return run_render_page(args)
         if args.command == "blind":
             return run_blind(args)
         if args.command == "unblind":

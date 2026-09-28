@@ -2,12 +2,13 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from evaluation import __main__ as cli
 from evaluation import parsing, sets
-from limespec import pdf
+from limespec import pdf, tables
 from limespec.elements import Element
 
 TABLE = {"header": ["Property", "Class i", "Class ii"], "rows": [["Fire", "A1", "A2"]]}
@@ -67,7 +68,7 @@ def test_the_gate_needs_every_measure_and_no_weak_table() -> None:
     failed = parsing.summarise({"pypdf": [perfect], "docling": [page_scores(1)]}, [1.0])
 
     assert all(passed["gate"].values())
-    assert passed["seconds"] == {"median": 5.0, "first": 9.0}
+    assert passed["seconds"] == {"mean": 5.0, "median": 5.0, "first": 9.0}
     assert not any(failed["gate"].values())
     assert parsing.pooled([{m: (0, 0) for m in parsing.GATE}])["cells"] == 1.0
     text = parsing.markdown(failed)
@@ -100,7 +101,15 @@ def test_the_command_line_runs_both_parsers_and_saves_their_output(
         Element(page=2, kind="figure", text=""),
         Element(page=3, kind="paragraph", text="the next page"),
     ]  # fmt: skip
-    monkeypatch.setattr(pdf, "read_pdf", lambda path, first, last: elements)
+    asked = []
+
+    def read_pdf(path: Path, first: int, last: int, vlm: str, stats: Any) -> Any:
+        asked.append(vlm)
+        if vlm:
+            stats["tables"] += 1
+        return elements
+
+    monkeypatch.setattr(pdf, "read_pdf", read_pdf)
     out = tmp_path / "out"
     base = ["--root", str(tmp_path), "--registry", str(tmp_path / "sets.json")]
 
@@ -113,6 +122,12 @@ def test_the_command_line_runs_both_parsers_and_saves_their_output(
     assert cli.main([*base, "parsing", "pages", "--out", str(out), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["docling"]["cells"] == 1.0
     assert cli.text_layer.__name__ == "<lambda>"
+    vlm = ["--arm", "glm-ocr", "--vlm", "http://vlm"]
+    assert cli.main([*base, "parsing", "pages", "--out", str(out), *vlm]) == 0
+    assert "| Measure | pypdf | glm-ocr | Gate |" in capsys.readouterr().out
+    result = json.loads((out / "result.json").read_text(encoding="utf-8"))
+    assert result["tables"] == {"tables": 1}
+    assert asked == ["", "", "http://vlm"]
 
 
 def test_the_text_layer_is_read_page_by_page(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -131,3 +146,66 @@ def test_the_text_layer_is_read_page_by_page(monkeypatch: pytest.MonkeyPatch) ->
 
     assert cli.text_layer(Path("a.pdf"), 1) == "first"
     assert cli.text_layer(Path("a.pdf"), 2) == ""
+
+
+def test_a_transcription_is_scored_by_its_words() -> None:
+    truth = "lime | green T: 01952 728611 Much Wenlock ©"
+    answer = "<p>lime green</p> T: 01952 728611 Much Wenlock Shropshire"
+
+    assert parsing.transcription(truth, answer) == {
+        "recall": (7, 7),
+        "precision": (7, 8),
+    }
+
+
+def test_the_command_line_renders_one_page(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    saved = []
+
+    class Image:
+        width, height = 1190, 1684
+
+        def save(self, path: Path) -> None:
+            saved.append(path)
+
+    monkeypatch.setattr(pdf, "page_image", lambda path, page, scale: Image())
+    out = tmp_path / "images" / "01-p1.png"
+
+    assert cli.main(["render-page", "a.pdf", "1", str(out), "--scale", "2"]) == 0
+    assert saved == [out]
+    assert "1190 x 1684" in capsys.readouterr().out
+
+
+def test_the_command_line_scores_a_model_s_transcriptions(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    folder = tmp_path / "pages"
+    folder.mkdir()
+    truth = {"pages": [], "blank": [
+        {"number": "b1", "entry": "file:" + "a" * 64, "page": 3,
+         "words": "Product Data T: 01952 728611"},
+    ]}  # fmt: skip
+    (folder / "truth.json").write_text(json.dumps(truth))
+    sets.register("pages", "invented", tmp_path, tmp_path / "sets.json")
+    answers = ["Product Data T: 01952 728611", "Product Data invented words here"]
+    asked = []
+
+    def recognise(image: Any, url: str, prompt: str) -> str:
+        asked.append((image, url, prompt))
+        return answers.pop(0)
+
+    monkeypatch.setattr(pdf, "page_image", lambda path, page, scale: f"page {page}")
+    monkeypatch.setattr(tables, "recognise", recognise)
+    base = ["--root", str(tmp_path), "--registry", str(tmp_path / "sets.json")]
+    command = ["transcription", "pages", "--vlm", "http://vlm", "--prompt", "OCR:"]
+
+    assert cli.main([*base, *command, "--out", str(tmp_path / "out")]) == 0
+    assert "recall: 1.000 (bar 0.9)" in capsys.readouterr().out
+    assert asked == [("page 3", "http://vlm", "OCR:")]
+    saved = json.loads((tmp_path / "out" / "transcription.json").read_text())
+    assert saved["pages"]["b1"]["answer"] == "Product Data T: 01952 728611"
+    assert cli.main([*base, *command, "--out", str(tmp_path / "out")]) == 1
+    assert "FAIL" in capsys.readouterr().out

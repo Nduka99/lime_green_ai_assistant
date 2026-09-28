@@ -1,7 +1,9 @@
 """Reading PDFs into elements. The Docling documents here are built by hand, so no
 model runs; every text is invented."""
 
+from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,10 +13,12 @@ from docling_core.types.doc.common.content_layer import ContentLayer
 from docling_core.types.doc.common.reference import ProvenanceItem
 from docling_core.types.doc.document import DoclingDocument
 from docling_core.types.doc.items.key_value import GraphCell, GraphData
+from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.table.table_data import TableCell, TableData
 from docling_core.types.doc.labels import DocItemLabel, GraphCellLabel
+from docling_core.types.doc.page import BoundingRectangle, TextCell
 
-from limespec import pdf
+from limespec import pdf, tables
 from limespec.elements import Element, row_text
 
 
@@ -147,6 +151,9 @@ def test_a_pdf_is_read_through_the_converter(
     calls = []
 
     class Converter:
+        def __init__(self, images_scale: float = 0.0) -> None:
+            assert images_scale == 0.0  # no page images without a vision model
+
         def convert(self, path: Path, page_range: tuple[int, int]) -> Any:
             calls.append((path, page_range))
             return type("Result", (), {"document": datasheet()})
@@ -199,3 +206,125 @@ def test_the_converter_reads_text_cells_without_ocr() -> None:
 
     assert options.do_ocr is False
     assert options.table_structure_options.mode.value == "accurate"
+
+
+def test_a_converter_for_a_vision_model_keeps_page_images_and_words() -> None:
+    found = pdf.converter(pdf.IMAGES_SCALE).format_to_options[InputFormat.PDF]
+    options: Any = found.pipeline_options
+    plain: Any = pdf.converter().format_to_options[InputFormat.PDF].pipeline_options
+
+    assert options.generate_page_images and options.generate_parsed_pages
+    assert options.images_scale == pdf.IMAGES_SCALE
+    assert not plain.generate_page_images and not plain.generate_parsed_pages
+
+
+def test_a_page_is_rendered_by_the_converter(monkeypatch: pytest.MonkeyPatch) -> None:
+    rendered: dict[int, Any] = {3: SimpleNamespace(pil_image="image of page 3")}
+
+    class Converter:
+        def __init__(self, images_scale: float) -> None:
+            assert images_scale == 2.0
+
+        def convert(self, path: Path, page_range: tuple[int, int]) -> Any:
+            page = page_range[0]
+            pages = {page: SimpleNamespace(image=rendered.get(page))}
+            return SimpleNamespace(document=SimpleNamespace(pages=pages))
+
+    monkeypatch.setattr(pdf, "converter", Converter)
+
+    assert pdf.page_image(Path("a.pdf"), 3, 2.0) == "image of page 3"
+    with pytest.raises(ValueError, match="page 4 of a.pdf was not rendered"):
+        pdf.page_image(Path("a.pdf"), 4, 2.0)
+
+
+def word(text: str, left: float, top: float) -> TextCell:
+    """A word 10 points high, `top` points above the bottom of an 800-point page."""
+    box = BoundingBox(
+        l=left, t=top, r=left + 20, b=top - 10, coord_origin=CoordOrigin.BOTTOMLEFT
+    )
+    return TextCell(
+        text=text, orig=text, rect=BoundingRectangle.from_bounding_box(box),
+        from_ocr=False,
+    )  # fmt: skip
+
+
+# The table's box runs from 280 to 300 points below the top of page 1 (see prov),
+# so a word 515 points above the bottom is centred inside it.
+TABLE_WORDS = [word(text, 60 + 5 * n, 515)
+               for n, text in enumerate(["Property", "M5", "Strength", "5", "N/mm2",
+                                         "Fire", "A1"])]  # fmt: skip
+OUTSIDE = word("Mixing", 60, 650)
+ANSWER = (
+    "<fcel>Property<fcel>M5<nl><fcel>Strength<fcel>5 N/mm2<nl><fcel>Fire<fcel>A1<nl>"
+)
+
+
+def test_words_inside_a_box_and_docling_s_header_rows() -> None:
+    doc = datasheet()
+    table = next(item for item, _ in doc.iterate_items() if hasattr(item, "data"))
+    words = TABLE_WORDS + [OUTSIDE]
+
+    assert pdf.words_inside(pdf.box(table, doc), words, 800) == [
+        "Property", "M5", "Strength", "5", "N/mm2", "Fire", "A1",
+    ]  # fmt: skip
+    assert pdf.header_rows(table) == {"grade", "propertym5"}
+
+
+def test_a_table_is_read_again_from_its_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    doc = datasheet()
+    table = next(item for item, _ in doc.iterate_items() if hasattr(item, "data"))
+    answers = [ANSWER, "No table here."]
+    monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
+    monkeypatch.setattr(tables, "recognise", lambda image, url: answers.pop(0))
+    stats: Counter[str] = Counter()
+    words = {1: TABLE_WORDS + [OUTSIDE]}
+
+    rows = pdf.vlm_table(table, 1, ("Performance",), doc, words, "http://vlm", stats)
+    unread = pdf.vlm_table(table, 1, ("Performance",), doc, words, "http://vlm", stats)
+
+    assert [(e.kind, e.text) for e in rows or []] == [
+        ("table_header", "Property | M5"),
+        ("table_row", "Table 1 › Strength — M5: 5 N/mm2"),
+        ("table_row", "Table 1 › Fire — M5: A1"),
+    ]
+    assert unread is None
+    assert stats == Counter(tables=2, cells=6, unread=1)
+    monkeypatch.setattr(TableItem, "get_image", lambda self, document: None)
+    assert pdf.vlm_table(table, 1, (), doc, words, "http://vlm", stats) is None
+
+
+def test_a_pdf_read_with_a_vision_model_keeps_its_other_elements(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parsed = SimpleNamespace(word_cells=TABLE_WORDS)
+    pages = [SimpleNamespace(page_no=1, parsed_page=parsed),
+             SimpleNamespace(page_no=2, parsed_page=None)]  # fmt: skip
+
+    class Converter:
+        def __init__(self, images_scale: float) -> None:
+            assert images_scale == pdf.IMAGES_SCALE
+
+        def convert(self, path: Path, page_range: tuple[int, int]) -> Any:
+            return SimpleNamespace(document=datasheet(), pages=pages)
+
+    class Reader:
+        def __init__(self, path: Path) -> None:
+            self.pages = [SimpleNamespace(extract_text=lambda: None)] * 2
+
+    answers = [ANSWER, "", ""]
+    monkeypatch.setattr(pdf, "converter", Converter)
+    monkeypatch.setattr(pdf, "PdfReader", Reader)
+    monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
+    monkeypatch.setattr(tables, "recognise", lambda image, url: answers.pop(0))
+    stats: Counter[str] = Counter()
+
+    found = pdf.read_pdf(Path("sheet.pdf"), vlm="http://vlm", stats=stats)
+
+    texts = [element.text for element in found]
+    assert "Table 1 › Strength — M5: 5 N/mm2" in texts
+    assert "Mixing — 1" in texts  # the contents table: the model gave no table
+    assert stats == Counter(tables=3, cells=6, unread=2)
+    answers[:] = [ANSWER, "", ""]
+    assert len(pdf.read_pdf(Path("sheet.pdf"), vlm="http://vlm")) == len(found)

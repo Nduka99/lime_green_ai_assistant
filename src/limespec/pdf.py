@@ -14,7 +14,8 @@ needs the `ingest` dependency group.
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Callable, Iterable
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from limespec.elements import Element, row_text
 if TYPE_CHECKING:
     from docling.document_converter import DocumentConverter
     from docling_core.types.doc.document import DoclingDocument
+    from PIL.Image import Image
 
 # Docling's labels for each kind of element; any other text label is running text.
 HEADINGS = {"title", "section_header"}
@@ -43,11 +45,17 @@ CONTENT_LAYERS = ("body", "furniture", "notes")
 # sanitisation), so the text layer is folded the same way before it is compared.
 TYPOGRAPHY = str.maketrans(dict.fromkeys('‘’“”"', "'") | dict.fromkeys("–—", "-"))
 EDGES = ".,;:!?()[]{}'-"
+# Pages are rendered at 200 DPI for a vision model, GLM-OCR's setting for PDFs.
+IMAGES_SCALE = 200 / 72
+# Reads a table again: (table item, its number, its section) → rows, or None.
+Reread = Callable[[Any, int, tuple[str, ...]], "list[Element] | None"]
 
 
 @cache
-def converter() -> DocumentConverter:
-    """Docling's converter, loading its layout and table models once."""
+def converter(images_scale: float = 0.0) -> DocumentConverter:
+    """Docling's converter, loading its layout and table models once. Given an
+    `images_scale` (1 = 72 DPI), it also keeps each page rendered at that scale and
+    the words it parsed, so a table can be read again from its image."""
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import (
         PdfPipelineOptions,
@@ -61,16 +69,42 @@ def converter() -> DocumentConverter:
         do_table_structure=True,
         table_structure_options=TableStructureOptions(mode=TableFormerMode.ACCURATE),
     )
+    if images_scale:
+        options.generate_page_images = True
+        options.generate_parsed_pages = True
+        options.images_scale = images_scale
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
     )
 
 
-def read_pdf(path: Path, first: int = 1, last: int = sys.maxsize) -> list[Element]:
+def read_pdf(
+    path: Path,
+    first: int = 1,
+    last: int = sys.maxsize,
+    vlm: str = "",
+    stats: Counter[str] | None = None,
+) -> list[Element]:
     """The elements of pages `first` to `last` of a PDF in reading order, each page
-    followed by any text-layer line its reading lost."""
-    result = converter().convert(path, page_range=(first, last))
-    found = elements(result.document)
+    followed by any text-layer line its reading lost. Given the URL of a vision
+    model's server (`vlm`), each table is read again from its image, and `stats`
+    counts the tables and cells it read."""
+    result = converter(IMAGES_SCALE if vlm else 0.0).convert(
+        path, page_range=(first, last)
+    )
+    reread = None
+    if vlm:
+        words = {
+            page.page_no: page.parsed_page.word_cells
+            for page in result.pages
+            if page.parsed_page
+        }
+        counts = Counter[str]() if stats is None else stats
+
+        def reread(item: Any, number: int, section: tuple[str, ...]) -> Any:
+            return vlm_table(item, number, section, result.document, words, vlm, counts)
+
+    found = elements(result.document, reread)
     pages = PdfReader(path).pages
     ordered = []
     for page in range(first, min(last, len(pages)) + 1):
@@ -79,6 +113,15 @@ def read_pdf(path: Path, first: int = 1, last: int = sys.maxsize) -> list[Elemen
         lines = lost_lines(pages[page - 1].extract_text() or "", text)
         ordered += on_page + [Element(page, "recovered", line) for line in lines]
     return ordered
+
+
+def page_image(path: Path, page: int, scale: float) -> Image:
+    """One page as Docling renders it, at `scale` (2 = 144 DPI)."""
+    result = converter(scale).convert(path, page_range=(page, page))
+    image = result.document.pages[page].image
+    if image is None or image.pil_image is None:
+        raise ValueError(f"page {page} of {path} was not rendered")
+    return image.pil_image
 
 
 def squash(text: str) -> str:
@@ -110,9 +153,8 @@ def box(item: Any, document: DoclingDocument) -> tuple[float, float, float, floa
 def table_rows(
     item: Any, number: int, section: tuple[str, ...], document: DoclingDocument
 ) -> list[Element]:
-    """The table's header row as one element, then one element per data row with
-    each cell paired with its column's header. A header of several levels keeps its
-    parts, top first, joined by " › " ("Performance › Class i")."""
+    """The table as Docling reads it. A header of several levels keeps its parts, top
+    first, joined by " › " ("Performance › Class i")."""
     grid = item.data.grid
     if not grid:
         return []
@@ -124,12 +166,32 @@ def table_rows(
             if cell.column_header and cell.text and cell.text not in texts:
                 texts.append(cell.text)
         headers.append(" › ".join(texts))
+    # A header row can hold empty, unflagged cells (a blank corner above the row
+    # labels), but a data row never holds a column header.
+    rows = [
+        (index, [cell.text for cell in row])
+        for index, row in enumerate(grid)
+        if not any(cell.column_header for cell in row)
+    ]
+    return table_elements(headers, rows, item, number, section, document)
+
+
+def table_elements(
+    headers: list[str],
+    rows: list[tuple[int, list[str]]],
+    item: Any,
+    number: int,
+    section: tuple[str, ...],
+    document: DoclingDocument,
+) -> list[Element]:
+    """The table's header row as one element, then one element per data row with
+    each cell paired with its column's header."""
     caption = item.caption_text(document)
-    rows = []
+    found = []
     if any(headers):
         # Kept as its own element, so header text is never lost, even over a column
         # of empty cells (a checklist's tick boxes).
-        rows.append(
+        found.append(
             Element(
                 page=item.prov[0].page_no,
                 kind="table_header",
@@ -139,13 +201,9 @@ def table_rows(
                 table=number,
             )
         )
-    for index, row in enumerate(grid):
-        # A header row can hold empty, unflagged cells (a blank corner above the
-        # row labels), but a data row never holds a column header.
-        if any(cell.column_header for cell in row):
-            continue
-        cells = tuple(zip(headers, (cell.text for cell in row), strict=True))
-        rows.append(
+    for index, values in rows:
+        cells = tuple(zip(headers, values, strict=True))
+        found.append(
             Element(
                 page=item.prov[0].page_no,
                 kind="table_row",
@@ -157,12 +215,77 @@ def table_rows(
                 cells=cells,
             )
         )
-    return rows
+    return found
 
 
-def elements(document: DoclingDocument) -> list[Element]:
+def header_rows(item: Any) -> set[str]:
+    """The folded text of each row Docling flags as a column header, from the cells
+    that start in that row."""
+    from limespec.tables import fold
+
+    found = set()
+    for index, row in enumerate(item.data.grid):
+        if not any(cell.column_header for cell in row):
+            continue
+        starting = []
+        for cell in row:
+            if cell.start_row_offset_idx == index and cell not in starting:
+                starting.append(cell)
+        found.add(fold(" ".join(cell.text for cell in starting)))
+    return found
+
+
+def words_inside(
+    bbox: tuple[float, float, float, float], cells: list[Any], height: float
+) -> list[str]:
+    """The page's words, in the PDF's order, whose centre lies in the box (measured
+    from the page's top-left corner)."""
+    left, top, right, bottom = bbox
+    words = []
+    for cell in cells:
+        rect = cell.rect.to_bounding_box().to_top_left_origin(height)
+        x = (rect.l + rect.r) / 2
+        y = (rect.t + rect.b) / 2
+        if left <= x <= right and top <= y <= bottom:
+            words.append(cell.text)
+    return words
+
+
+def vlm_table(
+    item: Any,
+    number: int,
+    section: tuple[str, ...],
+    document: DoclingDocument,
+    words: dict[int, list[Any]],
+    url: str,
+    stats: Counter[str],
+) -> list[Element] | None:
+    """The table as a vision-language model reads its image, each cell spelt by the
+    PDF's own words inside the table's box; None, so Docling's reading stands, when
+    the answer is not a table."""
+    from limespec import tables
+
+    image = item.get_image(document)
+    if image is None:
+        return None
+    stats["tables"] += 1
+    cells = tables.parse(tables.recognise(image, url))
+    if not cells:
+        stats["unread"] += 1
+        return None
+    page = item.prov[0].page_no
+    height = document.pages[page].size.height
+    inside = words_inside(box(item, document), words.get(page, []), height)
+    headers, rows, dropped = tables.structure(cells, inside, header_rows(item))
+    stats["cells"] += len(cells)
+    stats["dropped"] += dropped
+    return table_elements(headers, rows, item, number, section, document)
+
+
+def elements(document: DoclingDocument, reread: Reread | None = None) -> list[Element]:
     """A Docling document's elements in reading order, text inside pictures (such as
-    a drawing's callouts) included, each with the headings above it."""
+    a drawing's callouts) included, each with the headings above it. `reread` reads
+    a table again (from its image); where it gives None, Docling's reading stands."""
     from docling_core.types.doc.common.content_layer import ContentLayer
 
     layers = {ContentLayer(name) for name in CONTENT_LAYERS}
@@ -183,7 +306,8 @@ def elements(document: DoclingDocument) -> list[Element]:
         # regions).
         if hasattr(item, "data"):
             tables += 1
-            found += table_rows(item, tables, path, document)
+            rows = reread(item, tables, path) if reread else None
+            found += table_rows(item, tables, path, document) if rows is None else rows
             continue
         if label in FIGURES:
             text = item.caption_text(document)
