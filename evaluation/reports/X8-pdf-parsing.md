@@ -676,3 +676,27 @@ every call goes through Docling's `pypdfium2_lock`.
 4. `scripts/check.py` passes.
 
 Otherwise pypdfium2 is removed and the adapter reverted.
+
+**Result** (28 September 2026). Outputs are in `data/runs/pdfium/` and
+`data/runs/av-probe-pdfium.*`.
+
+| Item | docling-parse renderer | pdfium | Verdict |
+|---|---|---|---|
+| 1. Access violations, all 97 readable PDFs in one process | 1 in 20 documents (earlier probe) | **0 in 97** (page sizes agree on every page) | pass |
+| 2. IWI Installation Guide, fresh processes | crashes 6 of 6 | converts 6 of 6 | pass |
+| 3a. `glm-ocr`, round 3 | 0.984 (lowest 0.800) | 0.984 (lowest 0.800), every table identical | pass |
+| 3b. `docling` arm, page by page | — | 2 page measures better, 6 worse | **fails as written** |
+| 4. `scripts/check.py` | — | 351 tests, all checks | pass |
+
+What changed in the `docling` arm is Docling's layout model deciding differently on slightly
+different pixels. No text is lost or altered:
+
+- **Round 1:** pairs 0.957 → 0.826 (p5: a label column and a value column grouped
+  differently; p6: two variant labels merged into one paragraph).
+- **Round 2:** pairs 0.662 → 0.623 (p20: a borderless label–value block read as paragraphs
+  where it was read as a table; p1 −1 pair).
+- **Round 3:** the flips go both ways. p15 places 3 more values and p14 2 fewer, so values
+  placed rise 0.875 → 0.877.
+
+The selected configuration, Docling + GLM-OCR, is unchanged. Gate item 3 fails as written,
+so the decision goes to the user.
