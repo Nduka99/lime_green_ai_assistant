@@ -597,3 +597,7 @@ leaves out of the text measures (round 1 p16). Baselines for item 2 were therefo
 at the same commit with 7.22.0, restored offline from the uv cache.
 
 Gate item 1 fails as written, so the decision on adoption goes to the user.
+
+**Decision (user, 28 September 2026):** adopt 7.22.1, pinned as the ingest group's floor.
+Gate item 1's shortfall is recorded above as unrelated to the update. The region loss on the
+two carbon-footprint pages is diagnosed separately.
