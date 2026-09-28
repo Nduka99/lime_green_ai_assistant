@@ -204,7 +204,19 @@ against it (`--quick` compares sizes only).
    uv run limespec browse
    ```
 
-3. See which passages a question retrieves (this also needs the reranker server
+3. Read every stored PDF into elements (the `ingest` group). Each document is read
+   in its own process and saved in `data/elements/` with a fingerprint of what read
+   it; a run skips documents already read the same way, and writes
+   `data/elements/report.json` with every page it flags (ADR 0027). `--vlm` reads each
+   table's structure again with GLM-OCR from a llama.cpp server started beforehand
+   with the generator stopped (it needs the GPU):
+
+   ```powershell
+   uv run --group ingest python -m limespec read-pdfs
+   uv run --group ingest --env-file .env python -m limespec read-pdfs --vlm http://127.0.0.1:8083
+   ```
+
+4. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 
    ```powershell
@@ -215,7 +227,8 @@ against it (`--quick` compares sizes only).
 
 Answering needs three servers: the embedding server from step 1, the reranker
 and the generator. Download `bge-reranker-v2-m3-Q8_0.gguf` from
-[bge-reranker-v2-m3 GGUF](https://huggingface.co/keisuke-miyako/bge-reranker-v2-m3-gguf-q8_0/tree/main)
+[bge-reranker-v2-m3-GGUF](https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/tree/main)
+(the file whose SHA-256 `models.json` records)
 and `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf` (22.4 GB) from
 [Qwen3.6-35B-A3B GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/tree/main).
 Put both in `models/` and start each in its own terminal:
