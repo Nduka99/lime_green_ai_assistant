@@ -91,9 +91,14 @@ def test_every_page_and_file_is_labelled_once(collected: Path) -> None:
     datasheet = entries["file:" + "a" * 64]
     assert (datasheet["format"], datasheet["topic"]) == ("pdf:safety", "lime-render")
     assert datasheet["text"] == "SDS"
+    assert datasheet["pages"] == ["page:products__lime-render__duro"]
     image = entries["file:" + "b" * 64]
     assert (image["format"], image["topic"]) == ("image", "lime-render")
     assert image["text"] == "A rendered wall"
+    assert image["pages"] == [
+        "page:products__lime-render__duro",
+        "page:support__case-studies__tower",
+    ]
     external = entries["file:" + "c" * 64]
     assert (external["format"], external["topic"]) == (
         "external:guidance",

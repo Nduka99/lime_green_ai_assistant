@@ -118,10 +118,11 @@ def file_topic(page_topics: list[str]) -> str:
 
 def catalogue() -> list[Entry]:
     """Every cached page and every stored file, labelled; a file takes its topic
-    from the pages that link to it (`file_topic`)."""
+    from the pages that link to it (`file_topic`) and lists those pages."""
     entries: list[Entry] = []
     link_texts: dict[str, list[str]] = {}
     linked_topics: dict[str, list[str]] = {}
+    linking_pages: dict[str, list[str]] = {}
     for page in sorted(config.PAGE_CACHE.glob("*.html")):
         slug = page.stem
         entries.append(
@@ -136,6 +137,7 @@ def catalogue() -> list[Entry]:
         for _, url, text in links(page):
             link_texts.setdefault(url, []).append(text)
             linked_topics.setdefault(url, []).append(page_topic(slug))
+            linking_pages.setdefault(url, []).append(f"page:{slug}")
     for record in acquire.read_manifest():
         url = str(record["url"])
         texts = link_texts.get(url, [])
@@ -153,6 +155,7 @@ def catalogue() -> list[Entry]:
                 "source": str(acquire.store_path(str(record["sha256"]))),
                 "url": url,
                 "text": next((t for t in texts if t), ""),
+                "pages": sorted(set(linking_pages.get(url, []))),
             }
         )
     return unique(entries)

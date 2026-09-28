@@ -8,6 +8,7 @@
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
+    uv run python -m evaluation check-conversations KEY.json ... --plan PLAN.json
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
@@ -88,6 +89,13 @@ def parser() -> argparse.ArgumentParser:
     planned.add_argument("--per-part", type=int, default=5)
     planned.add_argument(
         "--limit", type=int, default=8000, help="characters per source"
+    )
+    written = commands.add_parser(
+        "check-conversations", help="check a conversation key against its bundle"
+    )
+    written.add_argument("keys", nargs="+", type=Path, help="the key's JSON files")
+    written.add_argument(
+        "--plan", type=Path, required=True, help="the bundle's plan.json"
     )
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
@@ -188,6 +196,20 @@ def run_plan_conversations(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_check_conversations(args: argparse.Namespace) -> int:
+    seen = grades.read_json(args.plan)
+    written = [c for path in args.keys for c in grades.read_json(path)["conversations"]]
+    found = conversations.key_problems({"conversations": written}, seen)
+    for problem in found:
+        print("PROBLEM", problem)
+    turns = sum(len(c.get("turns", [])) for c in written)
+    later = [t for c in written for t in c.get("turns", [])[1:]]
+    leaning = sum(t.get("standalone") is False for t in later)
+    print(f"{len(written)} conversations, {turns} turns, {len(found)} problems")
+    print(f"{leaning} of {len(later)} later turns lean on earlier turns")
+    return 1 if found else 0
+
+
 def run_grades(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -269,6 +291,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_catalogue(args)
         if args.command == "plan-conversations":
             return run_plan_conversations(args)
+        if args.command == "check-conversations":
+            return run_check_conversations(args)
         if args.command == "grades":
             return run_grades(args)
         if args.command == "blind":

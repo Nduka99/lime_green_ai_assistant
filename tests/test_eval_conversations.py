@@ -65,42 +65,42 @@ def test_each_source_offers_its_text(
 
 
 def test_only_sources_with_something_to_quote_are_usable() -> None:
-    assert conversations.usable(entry("i", "image", "t"), "Sponged finish of Motif")
-    assert not conversations.usable(entry("i", "image", "t"), "Lime Green logo"[:9])
+    image = entry("i", "image", "t")
+    assert conversations.usable(image, "Sponged finish of Motif plaster")
+    assert not conversations.usable(image, "Cannock mill 1")  # shorter than a quote
     assert conversations.usable(entry("p", "pdf:safety", "t"), "x" * 200)
     assert not conversations.usable(entry("p", "pdf:safety", "t"), " " * 300)
 
 
-def test_the_plan_spreads_topics_and_mixes_formats() -> None:
+def test_each_conversation_follows_one_subject() -> None:
+    duro = ["page:duro"]
     entries = [
-        entry("a1", "page:product", "render"),
-        entry("a2", "page:product", "render"),
-        entry("a3", "pdf:safety", "render"),
-        entry("a4", "image", "render"),
-        entry("b1", "page:product", "mortar"),
-        entry("b2", "pdf:technical", "mortar"),
-        entry("u1", "page:news", "unknown"),  # no topic: never planned
-        entry("x1", "pdf:guide", "mortar"),  # no usable text
+        entry("page:duro", "page:product", "render"),
+        entry("file:sds", "pdf:safety", "render", pages=duro),
+        entry("file:sds2", "pdf:safety", "render", pages=duro),
+        entry("file:tds", "pdf:technical", "render", pages=duro),
+        entry("page:solo", "page:product", "render"),
+        entry("file:dop", "pdf:performance", "render", pages=["page:solo"]),
+        entry("page:ashlar", "page:product", "mortar"),
+        entry("file:adl1", "external:guidance", "regulation", pages=[]),
+        entry("page:news", "page:news", "unknown"),  # no topic: never planned
+        entry("file:guide", "pdf:guide", "render", pages=duro),  # no usable text
     ]
     texts = {e["id"]: "x" * 300 for e in entries}
-    texts["a4"] = "a rendered stone wall"
-    texts["x1"] = ""
+    texts["file:guide"] = ""
 
-    planned = conversations.plan(entries, texts, conversations=3, turns=3, seed=1)
+    planned = conversations.plan(entries, texts, conversations=5, turns=3, seed=1)
 
-    assert [c["id"] for c in planned] == ["c01", "c02", "c03"]
-    assert sorted({c["topic"] for c in planned}) == ["mortar", "render"]
-    sources = [s for c in planned for s in c["sources"]]
-    assert len(sources) == len(set(sources))  # no source is used twice
-    assert "u1" not in sources and "x1" not in sources
-    by_id = {e["id"]: e for e in entries}
-    first = next(c for c in planned if c["topic"] == "render")
-    formats = [by_id[s]["format"] for s in first["sources"]]
-    assert len(set(formats)) == 3  # three formats before any repeats
-    assert planned[0]["dynamics"] == conversations.DYNAMICS[:2]
+    # Four subjects: Duro with its files, Solo with its file, Ashlar, and ADL1,
+    # which no page links. The topic change takes Solo, the smallest subject left,
+    # so planning stops after three conversations.
+    assert [(c["topic"], c["sources"], c["shift"]) for c in planned] == [
+        ("regulation", ["file:adl1"], ""),
+        ("render", ["page:duro", "file:sds", "file:tds", "page:solo"], "page:solo"),
+        ("mortar", ["page:ashlar"], ""),
+    ]
     assert planned[1]["dynamics"] == conversations.DYNAMICS[2:4]
-    third = planned[2]  # the topic's sources ran out: fewer than 3
-    assert len(third["sources"]) < 3
+    assert conversations.TOPIC_CHANGE in planned[1]["dynamics"]
 
 
 def test_a_long_text_is_cut_to_a_window_starting_at_a_paragraph() -> None:
@@ -128,8 +128,9 @@ def test_the_bundle_writes_parts_images_and_what_the_writer_saw(
     texts = {"page:p": "Duro plaster", "file:i": "A wall", "file:g": "a\n\nb" * 40}
     planned = [
         {"id": "c01", "topic": "render", "sources": ["page:p", "file:i"],
-         "dynamics": ["d1", "d2"]},
-        {"id": "c02", "topic": "render", "sources": ["file:g"], "dynamics": ["d3"]},
+         "shift": "file:i", "dynamics": ["d1", "d2"]},
+        {"id": "c02", "topic": "render", "sources": ["file:g"], "shift": "",
+         "dynamics": ["d3"]},
     ]  # fmt: skip
     out = tmp_path / "bundle"
 
@@ -143,6 +144,7 @@ def test_the_bundle_writes_parts_images_and_what_the_writer_saw(
     first = parts[0].read_text()
     assert "# Conversation c01: render" in first and "Include: d1; d2." in first
     assert "Image file: c01-s2.jpg. Alt text (quote only this):" in first
+    assert "## Source c01-s2 (image), another subject, for the topic change" in first
     assert "Excerpt from character" in parts[1].read_text()
     seen = json.loads((out / "plan.json").read_text())
     assert seen["plan"] == planned
@@ -153,6 +155,134 @@ def test_the_bundle_writes_parts_images_and_what_the_writer_saw(
 def test_nothing_usable_is_a_clear_error() -> None:
     with pytest.raises(ValueError, match="nothing to plan"):
         conversations.plan([entry("p", "page:news", "news")], {"p": ""}, 1, 1, seed=1)
+
+
+SEEN = {
+    "plan": [
+        {"id": "c01", "topic": "plaster", "sources": ["page:p", "file:i"],
+         "dynamics": ["pronoun follow-up (it)", "emergency arising mid-conversation"]},
+    ],
+    "sources": {
+        "c01-s1": {"entry": "page:p",
+                   "text": "Duro is a lime undercoat plaster\nfor brick and stone."},
+        "c01-s2": {"entry": "file:i", "text": "Sponged finish of Motif plaster"},
+    },
+}  # fmt: skip
+
+
+def turn(number: int, **changes: Any) -> dict[str, Any]:
+    """A sound turn of conversation c01, with any fields changed."""
+    duro = {"source": "c01-s1", "quote": "lime undercoat plaster for brick"}
+    written = {
+        "id": f"c01t{number}",
+        "message": "where can duro go",
+        "standalone_question": "Where can Duro plaster be used?",
+        "dynamic": "first question" if number == 1 else "plain follow-up",
+        "standalone": number == 1,
+        "expected_status": "answered",
+        "expected_answer": "On brick and stone.",
+        "parts": [{"id": "p1", "asks": "where", "expected_answer": "Brick and stone.",
+                   "evidence": [duro]}],
+        "must_not": ["Duro is a finish coat."],
+    }  # fmt: skip
+    return {**written, **changes}
+
+
+def sound_key() -> dict[str, Any]:
+    motif = {"source": "c01-s2", "quote": "Sponged finish of Motif plaster"}
+    finish = {"id": "p1", "asks": "finish", "expected_answer": "Sponged.",
+              "evidence": [motif]}  # fmt: skip
+    turns = [
+        turn(1),
+        turn(2, dynamic="pronoun follow-up", message="and its finish?", parts=[finish]),
+        turn(3, dynamic="emergency arising mid-conversation (it went in my eye)",
+             expected_status="safety_referral", expected_answer="", parts=[]),
+    ]  # fmt: skip
+    return {"conversations": [{"id": "c01", "turns": turns}]}
+
+
+def test_a_sound_key_has_no_problems() -> None:
+    assert conversations.key_problems(sound_key(), SEEN) == []
+
+
+def test_each_turn_follows_the_brief() -> None:
+    key = sound_key()
+    duro = key["conversations"][0]["turns"][0]["parts"][0]
+    duro["evidence"] = [
+        {"source": "c01-s1", "quote": "Duro is"},
+        {"source": "c01-s1", "quote": "Duro is a lime render plaster"},
+        {"source": "c02-s1", "quote": "Duro is a lime undercoat plaster"},
+    ]
+    key["conversations"][0]["turns"] = [
+        key["conversations"][0]["turns"][0],
+        turn(2, id="c01t9", dynamic="topic change", message="and c01-s2?"),
+        turn(3, dynamic="first question", standalone=False),
+        turn(4, dynamic="emergency arising mid-conversation", parts=[{"id": "p1"}]),
+        turn(5, expected_status="safety_referral"),
+        turn(6, expected_status="unknown", parts=[]),
+        turn(7, dynamic="ellipsis follow-up", standalone=True, parts=[]),
+        turn(8, message=None),
+    ]
+
+    assert conversations.key_problems(key, SEEN) == [
+        "c01: 8 turns, not 3 to 5",
+        "c01t1 p1 quote 1 (c01-s1) has 2 words",
+        "c01t1 p1 quote 2 (c01-s1) is not in the source as shown",
+        "c01t1 p1 quote 3: c02-s1 is not its source",
+        "c01t2: id is c01t9",
+        "c01t2: dynamic 'topic change' is not one of its situations",
+        "c01t2: message names a source id or alt text",
+        "c01t3: dynamic 'first question' is not one of its situations",
+        "c01t3: the first question must be standalone",
+        "c01t4: emergency arising mid-conversation must be safety_referral",
+        "c01t4 p1: no asks",
+        "c01t4 p1: no expected_answer",
+        "c01t4 p1: no evidence",
+        "c01t5: safety_referral must have no parts",
+        "c01t5: safety_referral leaves expected_answer empty",
+        "c01t6: unknown expected_status 'unknown'",
+        "c01t7: dynamic 'ellipsis follow-up' is not one of its situations",
+        "c01t7: ellipsis follow-up cannot be standalone",
+        "c01t7: answered but has no parts",
+        "c01t8: message is missing or not a str",
+        "c01: c01-s2 is never quoted",
+        "c01: no turn is a pronoun follow-up",
+    ]
+
+
+def test_every_planned_conversation_is_written_once() -> None:
+    key = sound_key()
+    first = key["conversations"][0]
+    key["conversations"] = [first, first, {"id": "c09", "turns": []}]
+    assert conversations.key_problems(key, SEEN) == [
+        "conversation ids are not unique",
+        "c09: not planned",
+    ]
+    assert conversations.key_problems({"conversations": []}, SEEN) == [
+        "c01: not written"
+    ]
+
+
+def test_the_command_line_checks_a_key_split_into_parts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen = tmp_path / "plan.json"
+    seen.write_text(json.dumps(SEEN))
+    first = tmp_path / "key-part-1.json"
+    first.write_text(json.dumps(sound_key()))
+    second = tmp_path / "key-part-2.json"
+    second.write_text(json.dumps({"conversations": [{"id": "c02", "turns": []}]}))
+
+    assert cli.main(["check-conversations", str(first), "--plan", str(seen)]) == 0
+    leaning = "2 of 2 later turns lean on earlier turns\n"
+    assert capsys.readouterr().out == "1 conversations, 3 turns, 0 problems\n" + leaning
+    code = cli.main(
+        ["check-conversations", str(first), str(second), "--plan", str(seen)]
+    )
+    assert code == 1
+    assert capsys.readouterr().out == (
+        "PROBLEM c02: not planned\n2 conversations, 3 turns, 1 problems\n" + leaning
+    )
 
 
 def test_the_command_line_plans_and_writes_the_bundle(
