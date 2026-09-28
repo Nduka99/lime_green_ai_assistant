@@ -160,3 +160,31 @@ scoring. Fixes follow as general changes (read `orig`; keep a table's header row
 own element; compare header components; fold typographic variants on both sides of
 every comparison), and are then checked on a **new** sample of pages they were not
 derived from (round 2), with its gate written first.
+
+## After round 1: fixes, an exploratory re-score, and the table-model question
+
+**General fixes** (`9af80e3`, `5a26d78`): the reader takes Docling's `orig` text (list
+and section numbering kept); each table's header row is its own element (header text
+kept over empty cells); header levels are joined by " › " and the scorer matches a truth
+header against those levels; every quote mark and dash is folded alike on both sides
+(Docling's parser writes typography plainly); and after each page, any text-layer line
+with a word found nowhere in Docling's text is added back as a `recovered` element, so
+no text is lost.
+
+**Exploratory re-score of round 1's pages** (the fixes were derived from them, so this is
+not the gate): table cells 0.919, pairs 0.957, text kept 0.990, sentences 0.989 (the
+text layer 0.989), table numbers 1.000; the lowest table is still 0.000. What remains
+is one limit of Docling's table model: header rows styled as white text on a coloured
+band (the 2014 datasheets' green bars) are not recognised as headers. Every such row
+keeps its label and value together; only the column names are missing.
+
+**Alternatives researched for that limit:**
+
+| Option | Evidence | Verdict |
+|---|---|---|
+| TableFormer V2 (`TableStructureV2Options`, `docling-project/TableFormerV2`) | 52.4M parameters, 210 MB; the model page has no model card and no stated licence; an open issue (5 June 2026) reports it duplicating rows in multi-page tables, ~7k to ~42k words ([#3553](https://github.com/docling-project/docling/issues/3553)) | Out: no licence to check, and a known defect |
+| Granite Vision 4.1 4B (`GraniteVisionTableStructureOptions`) | A 4B vision-language model generating the table's text ([catalog](https://docling-project.github.io/docling/usage/model_catalog/)); the GPU is full, so it would run on the CPU | Out for now: too heavy here, and generated text breaks quoting |
+| Treat a table's first row as its header when none is flagged | Would mislabel headerless key-value tables and contents pages (their first row is data) | Rejected: wrong for a whole class of tables |
+
+Docling's default model (TableFormer, accurate) stays. Round 2 runs on new pages, with
+the same measures and gate, as registered.
