@@ -8,8 +8,8 @@ a new parser only has to produce them. Plain, JSON-compatible data.
 from dataclasses import dataclass
 
 # What an element is: a heading, running text, a list item, a table's header row or
-# one of its rows, a caption, a figure (its caption), or page furniture (running
-# headers and footers).
+# one of its rows, a caption, a figure (its caption), page furniture (running
+# headers and footers), or a text-layer line the parser's reading lost.
 KINDS = (
     "heading",
     "paragraph",
@@ -19,6 +19,7 @@ KINDS = (
     "caption",
     "figure",
     "furniture",
+    "recovered",
 )
 
 

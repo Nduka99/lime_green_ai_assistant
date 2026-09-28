@@ -151,12 +151,47 @@ def test_a_pdf_is_read_through_the_converter(
             calls.append((path, page_range))
             return type("Result", (), {"document": datasheet()})
 
+    class Page:
+        def __init__(self, text: str | None) -> None:
+            self.text = text
+
+        def extract_text(self) -> str | None:
+            return self.text
+
+    class Reader:
+        def __init__(self, path: Path) -> None:
+            self.pages = [
+                Page(None),
+                Page("Detail\nA line the reading lost\nMesh here"),
+            ]
+
     monkeypatch.setattr(pdf, "converter", Converter)
+    monkeypatch.setattr(pdf, "PdfReader", Reader)
 
     found = pdf.read_pdf(Path("sheet.pdf"), first=2, last=2)
 
     assert calls == [(Path("sheet.pdf"), (2, 2))]
-    assert isinstance(found[0], Element)
+    assert all(isinstance(element, Element) for element in found)
+    assert {element.page for element in found} == {2}
+    assert found[-1] == Element(2, "recovered", "A line the reading lost")
+    assert len(pdf.read_pdf(Path("sheet.pdf"))) == len(pdf.elements(datasheet())) + 1
+
+
+def test_only_text_layer_lines_the_reading_lost_are_recovered() -> None:
+    text_layer = (
+        "Water absorption 0.8kg/(m2.min0.5) 1.0kg/(m2.min0.5)\n"
+        "C E R T I F I C A T E\n"
+        "noted in section 7 “Handling and storage”.\n"
+        "  Additional Material (required if a WUFI Pro. Calculation)  "
+    )
+    parsed = (
+        "Water absorption — Class i: 0.8kg/(m 2 .min 0.5 ); Class iii: 1.0kg/(m 2 "
+        ".min 0.5 ) CERTIFICATE noted in section 7 'Handling and storage'."
+    )
+
+    assert pdf.lost_lines(text_layer, parsed) == [
+        "Additional Material (required if a WUFI Pro. Calculation)"
+    ]
 
 
 def test_the_converter_reads_text_cells_without_ocr() -> None:

@@ -4,6 +4,8 @@ Docling's standard pipeline takes each page's own characters from the PDF, finds
 the layout (headings, text, lists, tables, pictures) and rebuilds each table's
 rows and columns from those characters, so quoted text stays the document's own.
 OCR is off: pages without a text layer are handled separately, as transcription.
+Any line of the PDF's text layer that Docling's reading lost (measured in X8: a
+styled table heading) is added back after its page's elements, so no text is lost.
 
 Docling and its models are imported only when a PDF is read, so the API never
 needs the `ingest` dependency group.
@@ -16,6 +18,8 @@ from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from pypdf import PdfReader
 
 from limespec.elements import Element, row_text
 
@@ -35,6 +39,10 @@ FIGURES = {"picture", "chart"}
 # Running headers and footers are kept, so no text is lost; hidden or background
 # text is left out.
 CONTENT_LAYERS = ("body", "furniture", "notes")
+# Docling's PDF parser writes typographic characters plainly (its default
+# sanitisation), so the text layer is folded the same way before it is compared.
+TYPOGRAPHY = str.maketrans(dict.fromkeys('‘’“”"', "'") | dict.fromkeys("–—", "-"))
+EDGES = ".,;:!?()[]{}'-"
 
 
 @cache
@@ -59,9 +67,36 @@ def converter() -> DocumentConverter:
 
 
 def read_pdf(path: Path, first: int = 1, last: int = sys.maxsize) -> list[Element]:
-    """The elements of pages `first` to `last` of a PDF, in reading order."""
+    """The elements of pages `first` to `last` of a PDF in reading order, each page
+    followed by any text-layer line its reading lost."""
     result = converter().convert(path, page_range=(first, last))
-    return elements(result.document)
+    found = elements(result.document)
+    pages = PdfReader(path).pages
+    ordered = []
+    for page in range(first, min(last, len(pages)) + 1):
+        on_page = [element for element in found if element.page == page]
+        text = " ".join(element.text for element in on_page)
+        lines = lost_lines(pages[page - 1].extract_text() or "", text)
+        ordered += on_page + [Element(page, "recovered", line) for line in lines]
+    return ordered
+
+
+def squash(text: str) -> str:
+    """Text without whitespace, case or typographic variants, for comparison only."""
+    return "".join(text.translate(TYPOGRAPHY).casefold().split())
+
+
+def lost_lines(text_layer: str, parsed: str) -> list[str]:
+    """Text-layer lines holding a word found nowhere in the parsed text. Words are
+    compared without spacing, so a line the parser only spaced differently ("m 2"
+    for "m2") or split into table cells is not added twice."""
+    have = squash(parsed)
+    lost = []
+    for line in text_layer.splitlines():
+        words = [squash(word).strip(EDGES) for word in line.split()]
+        if any(word and word not in have for word in words):
+            lost.append(line.strip())
+    return lost
 
 
 def box(item: Any, document: DoclingDocument) -> tuple[float, float, float, float]:

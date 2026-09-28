@@ -22,7 +22,7 @@ LOWEST_TABLE = 0.80
 
 # Docling's PDF parser writes typographic characters in their plain form (its
 # default sanitisation), so both sides of every comparison are folded the same way.
-TYPOGRAPHY = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
+TYPOGRAPHY = str.maketrans(dict.fromkeys('‘’“”"', "'") | dict.fromkeys("–—", "-"))
 
 
 def fold(text: str) -> str:
