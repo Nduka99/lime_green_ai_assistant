@@ -525,3 +525,41 @@ words.
     converted first, in a fresh process;
   - GLM-OCR must run with the generator stopped: about 3 GB of VRAM and 3.3 GB of RAM, about
     1.1 h for Lime Green's PDFs.
+
+## After X8: docling-parse 7.22.1 (design and gate)
+
+Written on 28 September 2026, before the update was installed.
+
+**Problem.** docling-parse 7.21.0 and 7.22.0 treat character code 32 as a word break, even
+when the font's ToUnicode map puts a letter there ([#359](https://github.com/docling-project/docling-parse/issues/359)).
+Subset TrueType fonts renumber their glyphs, so code 32 can be any letter. In round 2's
+carbon-footprint report it was "u" in the regular weight ("Man fact rer") and "f" in the
+bold ("GWP- ossil"). A scan of every Lime Green PDF's fonts finds **5 of 98 documents, 7
+pages**: the three carbon-footprint reports and the Forte and Silicate Render datasheets.
+
+On those pages, Docling's own text keeps only 0.469–0.909 of the text layer's words. The
+recovery step adds 8–63 raw lines per page, so the index loses no words, but those lines
+carry no table or section structure.
+
+**Fix.** docling-parse 7.22.1 (MIT, 28 September 2026) "treat[s] a source byte that decodes
+to a visible glyph as text, even when that byte is 32" ([PR #361](https://github.com/docling-project/docling-parse/pull/361)).
+It also changes two other things:
+
+- word boundaries for short headings and positioned text;
+- curly double quotes now fold to `"` rather than `'` ([PR #349](https://github.com/docling-project/docling-parse/pull/349)).
+
+So its effect elsewhere must be measured too.
+
+**Gate** (baselines saved from 7.22.0 in `data/runs/`):
+
+1. On each of the 7 pages, Docling's own text (recovered lines left out) keeps ≥ 0.99 of the
+   text layer's words.
+2. The `docling` arm, re-scored on `x8-pages`, `x8-pages-r2` and `x8-pages-r3`, is no worse
+   on any registered measure, pooled or page by page. A drop on any page is diagnosed
+   before adoption.
+3. The selected configuration (`glm-ocr`) on `x8-pages-r3` still passes round 3's gate,
+   with values placed no lower than 0.984.
+4. `scripts/check.py` passes.
+
+If the gate passes, 7.22.1 becomes the ingest group's floor (`docling-parse>=7.22.1`).
+Otherwise the lockfile returns to 7.22.0.
