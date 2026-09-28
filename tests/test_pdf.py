@@ -17,9 +17,8 @@ from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.table.table_data import TableCell, TableData
 from docling_core.types.doc.labels import DocItemLabel, GraphCellLabel
 from docling_core.types.doc.page import BoundingRectangle, TextCell
-from pypdf.errors import DependencyError
 
-from limespec import pdf, tables
+from limespec import pdf, recovery, tables
 from limespec.elements import Element, row_text
 
 
@@ -161,47 +160,25 @@ def test_a_pdf_is_read_through_the_converter(
             calls.append((path, page_range))
             return type("Result", (), {"document": datasheet()})
 
-    class Page:
-        def __init__(self, text: str | None) -> None:
-            self.text = text
+    recovered = []
 
-        def extract_text(self) -> str | None:
-            return self.text
-
-    class Reader:
-        def __init__(self, path: Path) -> None:
-            self.pages = [
-                Page(None),
-                Page("Detail\nA line the reading lost\nMesh here"),
-            ]
+    def recover(
+        path: Path, found: list[Element], first: int, last: int, checks: Any
+    ) -> list[Element]:
+        recovered.append((path, len(found), first, last, checks))
+        return found + [Element(first, "recovered", "A line the reading lost")]
 
     monkeypatch.setattr(pdf, "converter", Converter)
-    monkeypatch.setattr(pdf, "PdfReader", Reader)
+    monkeypatch.setattr(recovery, "recover", recover)
+    checks: dict[int, dict[str, int]] = {}
 
-    found = pdf.read_pdf(Path("sheet.pdf"), first=2, last=2)
+    found = pdf.read_pdf(Path("sheet.pdf"), first=2, last=2, checks=checks)
 
     assert calls == [(Path("sheet.pdf"), (2, 2))]
     assert all(isinstance(element, Element) for element in found)
-    assert {element.page for element in found} == {2}
     assert found[-1] == Element(2, "recovered", "A line the reading lost")
-    assert len(pdf.read_pdf(Path("sheet.pdf"))) == len(pdf.elements(datasheet())) + 1
-
-
-def test_only_text_layer_lines_the_reading_lost_are_recovered() -> None:
-    text_layer = (
-        "Water absorption 0.8kg/(m2.min0.5) 1.0kg/(m2.min0.5)\n"
-        "C E R T I F I C A T E\n"
-        "noted in section 7 “Handling and storage”.\n"
-        "  Additional Material (required if a WUFI Pro. Calculation)  "
-    )
-    parsed = (
-        "Water absorption — Class i: 0.8kg/(m 2 .min 0.5 ); Class iii: 1.0kg/(m 2 "
-        ".min 0.5 ) CERTIFICATE noted in section 7 'Handling and storage'."
-    )
-
-    assert pdf.lost_lines(text_layer, parsed) == [
-        "Additional Material (required if a WUFI Pro. Calculation)"
-    ]
+    elements = len(pdf.elements(datasheet()))
+    assert recovered == [(Path("sheet.pdf"), elements, 2, 2, checks)]
 
 
 def test_the_converter_reads_text_cells_without_ocr() -> None:
@@ -314,13 +291,9 @@ def test_a_pdf_read_with_a_vision_model_keeps_its_other_elements(
         def convert(self, path: Path, page_range: tuple[int, int]) -> Any:
             return SimpleNamespace(document=datasheet(), pages=pages)
 
-    class Reader:
-        def __init__(self, path: Path) -> None:
-            self.pages = [SimpleNamespace(extract_text=lambda: None)] * 2
-
     answers = [ANSWER, "", ""]
     monkeypatch.setattr(pdf, "converter", Converter)
-    monkeypatch.setattr(pdf, "PdfReader", Reader)
+    monkeypatch.setattr(recovery, "recover", lambda path, found, *rest: found)
     monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
     monkeypatch.setattr(tables, "recognise", lambda image, url: answers.pop(0))
     stats: Counter[str] = Counter()
@@ -350,23 +323,10 @@ def test_page_grades_come_from_docling_s_confidence_report(
             return SimpleNamespace(document=datasheet(), confidence=report)
 
     monkeypatch.setattr(pdf, "converter", Converter)
-    monkeypatch.setattr(pdf, "text_layers", lambda path, first, last: {})
+    monkeypatch.setattr(recovery, "recover", lambda path, found, *rest: found)
     grades: dict[int, str] = {}
 
     found = pdf.read_pdf(Path("sheet.pdf"), grades=grades)
 
     assert grades == {2: "fair"}
     assert not any(element.kind == "recovered" for element in found)
-
-
-def test_an_unreadable_text_layer_leaves_nothing_to_check(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class Locked:
-        def __init__(self, path: Path) -> None:
-            raise DependencyError("cryptography>=3.1 is required for AES algorithm")
-
-    monkeypatch.setattr(pdf, "PdfReader", Locked)
-
-    assert pdf.text_layers(Path("locked.pdf")) == {}
-    assert pdf.coverage("Mix 4 litres, then wait.", "mix 4 litres") == (3, 5)

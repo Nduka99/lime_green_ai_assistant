@@ -6,8 +6,9 @@ it is tried once more, then reported as failed. Each reading is saved with a
 fingerprint of everything that produced it (reader code, package versions, the
 vision model), so a run skips documents already read the same way and resumes
 after an interruption. Each reading carries a validation record per page: how much
-of the text layer the parser's own text holds, the lines added back, and Docling's
-confidence grade; pages below the bar are flagged in the run's report.
+of the words a reader sees (by pdfium) the parser's own text holds, the lines
+recovered, the words not shown, and Docling's confidence grade; pages below the bar
+are flagged in the run's report.
 """
 
 import hashlib
@@ -24,7 +25,6 @@ from typing import Any
 import httpx
 
 from limespec import acquire, llm, pdf
-from limespec.elements import Element
 
 OUT = Path("data/elements")
 ATTEMPTS = 2
@@ -33,7 +33,7 @@ LOW_COVERAGE = 0.95  # D84: a page whose own text holds less of its layer is fla
 MIN_WORDS = 10  # a page with fewer text-layer words has no text to check
 PACKAGES = ("docling-slim", "docling-core", "docling-parse", "docling-ibm-models",
             "pypdfium2", "torch", "pylatexenc", "pypdf")  # fmt: skip
-READER = ("elements.py", "pdf.py", "rendering.py", "tables.py")
+READER = ("elements.py", "pdf.py", "recovery.py", "rendering.py", "tables.py")
 
 Run = Any  # subprocess.run, or a stand-in in tests
 
@@ -67,31 +67,22 @@ def fingerprint(vlm: str) -> dict[str, Any]:
 
 
 def validate(
-    found: list[Element], layers: dict[int, str], grades: dict[int, str]
+    checks: dict[int, dict[str, int]], grades: dict[int, str]
 ) -> dict[str, Any]:
-    """Per page: text-layer words the parser's own text holds (lines added back left
-    out), lines added back, Docling's lowest confidence grade, and flags."""
+    """Per page: the words pdfium reads where the page shows them, how many the
+    parser's own reading holds, words not shown (left out of the index), lines
+    recovered, Docling's lowest confidence grade, and flags."""
     pages = []
-    for number in sorted(set(layers) | {element.page for element in found}):
-        own = [e.text for e in found if e.page == number and e.kind != "recovered"]
-        kept, words = pdf.coverage(layers.get(number, ""), " ".join(own))
+    for number, check in sorted(checks.items()):
         flags = []
-        if number not in layers:
-            flags.append("no text layer to check")
-        elif words < MIN_WORDS:
-            flags.append("little or no text layer")
-        elif kept / words < LOW_COVERAGE:
+        if check["words"] < MIN_WORDS:
+            flags.append("little or no text")
+        elif check["kept"] / check["words"] < LOW_COVERAGE:
             flags.append("low coverage")
         if grades.get(number) == "poor":
             flags.append("poor confidence")
-        pages.append({
-            "page": number,
-            "words": words,
-            "kept": kept,
-            "recovered": sum(e.page == number and e.kind == "recovered" for e in found),
-            "grade": grades.get(number, "unspecified"),
-            "flags": flags,
-        })  # fmt: skip
+        grade = grades.get(number, "unspecified")
+        pages.append({"page": number, **check, "grade": grade, "flags": flags})
     return {"pages": pages, "flagged": sum(bool(page["flags"]) for page in pages)}
 
 
@@ -100,14 +91,15 @@ def read_one(sha256: str, vlm: str) -> dict[str, Any]:
     path = acquire.store_path(sha256)
     stats: Counter[str] = Counter()
     grades: dict[int, str] = {}
+    checks: dict[int, dict[str, int]] = {}
     started = time.perf_counter()
-    found = pdf.read_pdf(path, vlm=vlm, stats=stats, grades=grades)
+    found = pdf.read_pdf(path, vlm=vlm, stats=stats, grades=grades, checks=checks)
     seconds = round(time.perf_counter() - started, 1)
     return {
         "sha256": sha256,
         "seconds": seconds,
         "tables": dict(stats),
-        "validation": validate(found, pdf.text_layers(path), grades),
+        "validation": validate(checks, grades),
         "elements": [asdict(element) for element in found],
     }
 
@@ -185,6 +177,7 @@ def summary(files: dict[str, list[str]], out: Path) -> dict[str, Any]:
         for page in reading["validation"]["pages"]:
             totals["pages"] += 1
             totals["recovered lines"] += page["recovered"]
+            totals["words not shown"] += page["hidden"]
             if page["flags"]:
                 flagged.append({
                     "url": urls[0],

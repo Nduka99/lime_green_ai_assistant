@@ -4,8 +4,8 @@ Docling's standard pipeline takes each page's own characters from the PDF, finds
 the layout (headings, text, lists, tables, pictures) and rebuilds each table's
 rows and columns from those characters, so quoted text stays the document's own.
 OCR is off: pages without a text layer are handled separately, as transcription.
-Any line of the PDF's text layer that Docling's reading lost (measured in X8: a
-styled table heading) is added back after its page's elements, so no text is lost.
+Any line the page shows but Docling's reading lacks is recovered from pdfium and
+placed where it stands (limespec.recovery), so no visible text is lost.
 
 Docling and its models are imported only when a PDF is read, so the API never
 needs the `ingest` dependency group.
@@ -19,9 +19,6 @@ from collections.abc import Callable, Iterable
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-from pypdf import PdfReader
-from pypdf.errors import DependencyError, PyPdfError
 
 from limespec.elements import Element, grid_text, row_text
 
@@ -92,12 +89,14 @@ def read_pdf(
     vlm: str = "",
     stats: Counter[str] | None = None,
     grades: dict[int, str] | None = None,
+    checks: dict[int, dict[str, int]] | None = None,
 ) -> list[Element]:
-    """The elements of pages `first` to `last` of a PDF in reading order, each page
-    followed by any text-layer line its reading lost. Given the URL of a vision
-    model's server (`vlm`), each table is read again from its image, and `stats`
-    counts the tables and cells it read. `grades` receives each page's lowest
-    Docling confidence grade (poor, fair, good, excellent)."""
+    """The elements of pages `first` to `last` of a PDF in reading order, with any
+    line the page shows but Docling's reading lacks recovered where it stands (see
+    limespec.recovery). Given the URL of a vision model's server (`vlm`), each table
+    is read again from its image, and `stats` counts the tables and cells it read.
+    `grades` receives each page's lowest Docling confidence grade (poor, fair, good,
+    excellent) and `checks` each page's check against pdfium's text."""
     result = converter(IMAGES_SCALE if vlm else 0.0).convert(
         path, page_range=(first, last)
     )
@@ -117,38 +116,9 @@ def read_pdf(
             return vlm_table(item, number, section, result.document, words, vlm, counts)
 
     found = elements(result.document, reread)
-    layers = text_layers(path, first, last)
-    ordered = []
-    pages = {element.page for element in found} | set(layers)
-    for page in sorted(page for page in pages if first <= page <= last):
-        on_page = [element for element in found if element.page == page]
-        text = " ".join(element.text for element in on_page)
-        lines = lost_lines(layers.get(page, ""), text)
-        ordered += on_page + [Element(page, "recovered", line) for line in lines]
-    return ordered
+    from limespec.recovery import recover
 
-
-def text_layers(path: Path, first: int = 1, last: int = sys.maxsize) -> dict[int, str]:
-    """Pages `first` to `last` of the PDF's text layer, by page number; none when
-    pypdf cannot read the file (AES encryption needs its cryptography extra), so
-    Docling's reading then stands without a check."""
-    try:
-        pages = PdfReader(path).pages
-        return {
-            number: pages[number - 1].extract_text() or ""
-            for number in range(first, min(last, len(pages)) + 1)
-        }
-    except (PyPdfError, DependencyError, ValueError):
-        return {}
-
-
-def coverage(text_layer: str, parsed: str) -> tuple[int, int]:
-    """How many of the text layer's words the parsed text holds, of how many,
-    compared without spacing, case or typographic variants (as `lost_lines`)."""
-    have = squash(parsed)
-    words = [squash(word).strip(EDGES) for word in text_layer.split()]
-    words = [word for word in words if word]
-    return sum(word in have for word in words), len(words)
+    return recover(path, found, first, last, checks)
 
 
 def page_image(path: Path, page: int, scale: float) -> Image:
@@ -163,19 +133,6 @@ def page_image(path: Path, page: int, scale: float) -> Image:
 def squash(text: str) -> str:
     """Text without whitespace, case or typographic variants, for comparison only."""
     return "".join(text.translate(TYPOGRAPHY).casefold().split())
-
-
-def lost_lines(text_layer: str, parsed: str) -> list[str]:
-    """Text-layer lines holding a word found nowhere in the parsed text. Words are
-    compared without spacing, so a line the parser only spaced differently ("m 2"
-    for "m2") or split into table cells is not added twice."""
-    have = squash(parsed)
-    lost = []
-    for line in text_layer.splitlines():
-        words = [squash(word).strip(EDGES) for word in line.split()]
-        if any(word and word not in have for word in words):
-            lost.append(line.strip())
-    return lost
 
 
 def box(item: Any, document: DoclingDocument) -> tuple[float, float, float, float]:

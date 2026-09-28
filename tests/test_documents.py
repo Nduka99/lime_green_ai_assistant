@@ -57,42 +57,44 @@ def test_a_fingerprint_names_the_code_packages_and_vision_model(
     assert with_model["reader_sha256"] == plain["reader_sha256"]
 
 
-def test_each_page_is_checked_against_its_text_layer() -> None:
-    found = [
-        Element(1, "paragraph", WORDS),
-        Element(2, "paragraph", "Mix four litres"),
-        Element(2, "recovered", "of clean water with each bag for ten minutes please"),
-        Element(3, "paragraph", "Section A-A"),
-        Element(4, "figure", ""),
-    ]
-    layers = {1: WORDS, 2: WORDS, 3: "Section A-A", 5: ""}
+def test_each_page_is_flagged_from_its_check_and_grade() -> None:
+    checks = {
+        1: {"words": 13, "kept": 13, "hidden": 0, "recovered": 0},
+        2: {"words": 13, "kept": 3, "hidden": 0, "recovered": 1},
+        3: {"words": 2, "kept": 2, "hidden": 4, "recovered": 0},
+        4: {"words": 20, "kept": 20, "hidden": 0, "recovered": 0},
+    }
     grades = {1: "excellent", 2: "fair", 4: "poor"}
 
-    checked = documents.validate(found, layers, grades)
+    checked = documents.validate(checks, grades)
 
     pages = {page["page"]: page for page in checked["pages"]}
-    assert (pages[1]["kept"], pages[1]["words"], pages[1]["flags"]) == (13, 13, [])
-    assert (pages[2]["kept"], pages[2]["recovered"]) == (3, 1)
+    assert pages[1] == {"page": 1, "words": 13, "kept": 13, "hidden": 0,
+                        "recovered": 0, "grade": "excellent", "flags": []}  # fmt: skip
     assert pages[2]["flags"] == ["low coverage"]
-    assert pages[3]["flags"] == ["little or no text layer"]
-    assert pages[4]["flags"] == ["no text layer to check", "poor confidence"]
-    assert pages[5]["grade"] == "unspecified"
-    assert checked["flagged"] == 4
+    assert pages[3]["flags"] == ["little or no text"]
+    assert pages[3]["grade"] == "unspecified"
+    assert pages[4]["flags"] == ["poor confidence"]
+    assert checked["flagged"] == 3
 
 
 def test_one_document_is_read_with_its_tables_and_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def read_pdf(
-        path: Path, vlm: str, stats: Counter[str], grades: dict[int, str]
+        path: Path,
+        vlm: str,
+        stats: Counter[str],
+        grades: dict[int, str],
+        checks: dict[int, dict[str, int]],
     ) -> Any:
         assert (path.name, vlm) == ("abc", "http://vlm")
         stats["tables"] += 2
         grades[1] = "good"
+        checks[1] = {"words": 13, "kept": 13, "hidden": 0, "recovered": 0}
         return [Element(1, "paragraph", WORDS)]
 
     monkeypatch.setattr(pdf, "read_pdf", read_pdf)
-    monkeypatch.setattr(pdf, "text_layers", lambda path: {1: WORDS})
 
     reading = documents.read_one("abc", "http://vlm")
 
@@ -119,10 +121,11 @@ class Child:
         if outcome == "ok":
             reading = {"sha256": sha256, "seconds": 2.5, "tables": {"tables": 1},
                        "validation": {"pages": [
-                           {"page": 1, "words": 20, "kept": 20, "recovered": 0,
-                            "grade": "good", "flags": []},
-                           {"page": 2, "words": 20, "kept": 10, "recovered": 3,
-                            "grade": "fair", "flags": ["low coverage"]}],
+                           {"page": 1, "words": 20, "kept": 20, "hidden": 0,
+                            "recovered": 0, "grade": "good", "flags": []},
+                           {"page": 2, "words": 20, "kept": 10, "hidden": 5,
+                            "recovered": 3, "grade": "fair",
+                            "flags": ["low coverage"]}],
                            "flagged": 1},
                        "elements": []}  # fmt: skip
             part.write_text(json.dumps(reading), encoding="utf-8")
@@ -165,7 +168,7 @@ def test_a_run_reads_each_document_once_retries_and_reports(
     )
     totals = report["summary"]["totals"]
     assert totals == {"documents": 4, "seconds": 8.5, "tables": 3, "pages": 6,
-                      "recovered lines": 9}  # fmt: skip
+                      "recovered lines": 9, "words not shown": 15}  # fmt: skip
     assert [page["url"] for page in report["summary"]["flagged"]] == [
         "u/new.pdf",
         "u/r.pdf",
