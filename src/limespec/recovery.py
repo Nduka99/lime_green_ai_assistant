@@ -23,6 +23,7 @@ Box = tuple[float, float, float, float]  # left, top, right, bottom from the top
 Line = tuple[str, Box]
 INK = 200  # a grey level (0 black, 255 white) darker than this is ink
 SCALE = 2.0  # pages are drawn at 144 DPI to look for ink
+LINE_END_HYPHEN = "￾"  # how pdfium writes a hyphen that ends a line it joins
 
 
 def words(text: str) -> list[str]:
@@ -35,8 +36,9 @@ def words(text: str) -> list[str]:
 def text_lines(textpage: Any, height: float) -> list[Line]:
     """The page's text as pdfium reads it, one line per line break with its spacing
     (tabs included) made single spaces, each with the box around its characters
-    (measured from the page's top-left corner)."""
-    text = textpage.get_text_range()
+    (measured from the page's top-left corner). pdfium joins a line ending in a
+    hyphen to the next; the hyphen is written back as the page shows it."""
+    text = textpage.get_text_range().replace(LINE_END_HYPHEN, "-")
     lines = []
     for match in re.finditer(r"[^\r\n]+", text):
         span = range(match.start(), match.end())

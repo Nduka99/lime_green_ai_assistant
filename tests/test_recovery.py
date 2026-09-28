@@ -40,12 +40,15 @@ class TextPage:
 
 
 def test_each_line_gets_the_box_around_its_characters() -> None:
-    lines = recovery.text_lines(TextPage("Ab\r\n  \r\ncd\t e\r\n"), height=800)
+    lines = recovery.text_lines(
+        TextPage("Ab\r\n  \r\ncd\t e\r\nself￾declared"), height=800
+    )
 
     # "Ab" is characters 0-1; "cd\t e" is 8-12 (spacing is not measured).
     assert lines == [
         ("Ab", (10.0, 90.0, 12.0, 100.0)),
         ("cd e", (18.0, 90.0, 23.0, 100.0)),
+        ("self-declared", (25.0, 90.0, 38.0, 100.0)),
     ]
 
 
