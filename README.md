@@ -140,7 +140,7 @@ application is about 1,400 lines in `src/limespec/`.
 
 You need Python 3.12, a recent
 [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases) with GPU
-support (tested with build b10298), and [uv](https://docs.astral.sh/uv/) or pip.
+support (tested with build b10298), and [uv](https://docs.astral.sh/uv/).
 Put `llama-server` on your `PATH`. The tested setup used Windows, an 8 GB NVIDIA
 GPU and 64 GB of RAM; the Python application itself has no platform-specific
 paths.
@@ -151,15 +151,7 @@ One command installs everything: the application, its tests and the notebook.
 uv sync --all-groups --locked
 ```
 
-Without uv, `requirements.txt` pins the same versions (generated from `uv.lock`):
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-With pip, drop the `uv run` prefix from the commands below.
+`uv.lock` pins every version; uv recommends it over a second `requirements.txt`.
 
 ## Build the search index
 
