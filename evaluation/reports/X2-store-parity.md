@@ -133,11 +133,44 @@ removes a version with its index. Re-run with the gated arm calling
 `store.keyword_ranking`: every number identical to run 3, gate passed; run 1's arm,
 now computed without its dropped column, reproduced its original numbers exactly.
 
+## Served passages, with the reranker (gate written 28 September, before the run)
+
+The passages the model reads are the reranker's top 8 of the fused top 20, so the last
+check is on those. Method `reranked` is added to every arm: each arm's fused candidates
+are reranked by the BGE reranker (identical candidate lists share one reranker call, so
+server noise cannot differ between them) and the top 8 are scored against the same
+keys. **Gate:** for the gated arm, no measure of the served top 8 (Success@8, nDCG@10,
+MRR@10, every part @8) is worse than SQLite beyond the paired bootstrap interval, on
+the frozen and held-out v2 keys. Reported for information: on how many questions the
+two stores serve the same 8 passages in the same order. The plan's earlier wording
+("the same passages on 90 of 90") assumed an unchanged keyword ranker; X2 changed it
+by design, so the gate is on answer-passage quality, not identity.
+
+**Result: gate passed.** Served top 8, difference Postgres − SQLite:
+
+| Set | Arm | Success@8 | nDCG@10 | MRR@10 | Every part @8 | Same 8, same order |
+|---|---|---|---|---|---|---|
+| Frozen (70 q) | `pg-bm25-keep` (gated) | 0.000 [0.000, 0.000] | +0.002 | −0.000 | 0.000 [0.000, 0.000] | 34 of 70 |
+| Frozen | `pg` (run 1, ts_rank) | **−0.048** | **−0.022** | **−0.017** | **−0.071** | 14 of 70 |
+| Held-out v2 (30 q) | `pg-bm25-keep` (gated) | 0.000 [−0.032, +0.032] | −0.000 | −0.000 | 0.000 [−0.100, +0.100] | 12 of 30 |
+| Held-out v2 | `pg` (run 1) | −0.053 | −0.018 | −0.007 | **−0.133** | 4 of 30 |
+
+The passages the model reads contain the answer as often as with SQLite, on every part
+of exactly as many questions. The re-embedded live version gave the same numbers. The
+reranker does not rescue the losing run-1 ranker: its served passages stay worse.
+
+**What remains open.** The two stores serve the same 8 passages in the same order on
+about half the questions; elsewhere the answer passages are the same but the other
+passages or their order differ, so the model's wording will differ. Answer-level
+quality through Postgres is therefore not yet measured; it belongs to the first
+end-to-end evaluation of the Postgres-served engine (asking the sealed sets through
+the API and grading, plan Phases 4 and 6).
+
 ## Reproduce
 
 ```text
 uv run --env-file .env python -m experiments.x2_store_parity
 ```
 
-Needs the dev Postgres, the embedding server on port 8081, and the registered sets in
-`data/eval/`. Rankings are written to `data/runs/x2/<set>/` as TREC run files.
+Needs the dev Postgres, the embedding server on port 8081, the reranker on port 8082,
+and the registered sets in `data/eval/`. Rankings are written to `data/runs/x2/<set>/` as TREC run files.

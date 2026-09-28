@@ -33,10 +33,21 @@ def test_a_copy_of_the_sqlite_index_ranks_vectors_identically(
             "pg-bm25": (copy, mapping, x2.bm25_ranker("english")),
             "pg-bm25-keep": (copy, mapping, store.keyword_ranking),
         }
-        found = x2.rankings(QUESTION, query, lite, pg, arms)
+        calls: list[int] = []
+
+        def rerank(question: str, documents: list[str]) -> list[float]:
+            calls.append(len(documents))
+            return [0.0] * len(documents)  # ties keep the fused order
+
+        found = x2.rankings(QUESTION, query, lite, pg, arms, rerank)
 
     assert sorted(mapping.values()) == list(range(1, count + 1))
     assert found["pg-vector"] == found["sqlite-vector"]
+    # Served passages are the fused order's top 8 here, and identical candidate
+    # lists share one reranker call.
+    assert found["sqlite-reranked"] == found["sqlite-fused"][:8]
+    distinct_fused = {tuple(found[f"{arm}-fused"]) for arm in ("sqlite", *arms)}
+    assert len(calls) == len(distinct_fused)
     faq_answer = found["sqlite-keyword"][0]
     for arm in ("pg", "pg-bm25", "pg-bm25-keep"):
         assert found[f"{arm}-keyword"][0] == faq_answer

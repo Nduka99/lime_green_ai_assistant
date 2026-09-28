@@ -33,11 +33,21 @@ from psycopg import sql
 
 from evaluation import retrieval, sets
 from limespec import config, llm, store
-from limespec.retrieve import Embed, from_blob, fuse, keyword_ranking, vector_ranking
+from limespec.retrieve import (
+    Embed,
+    Rerank,
+    from_blob,
+    fuse,
+    keyword_ranking,
+    load_passage,
+    rerank_top,
+    vector_ranking,
+)
 
 SETS = ("frozen90", "heldout-v2")
 DEPTH = retrieval.DEPTH  # 20 candidates per method, as in the saved runs
-METHODS = ("keyword", "vector", "fused")
+# "reranked" is what the model reads: the reranker's top 8 of the fused top 20.
+METHODS = ("keyword", "vector", "fused", "reranked")
 OUT = Path("data/runs/x2")
 # Run 3's arm is now the store's own keyword ranking (store.keyword_ranking).
 GATED_ARM = "pg-bm25-keep"
@@ -151,20 +161,42 @@ def sqlite_ids(
     return mapping
 
 
+def served(
+    question: str,
+    fused: list[int],
+    sqlite_conn: sqlite3.Connection,
+    rerank: Rerank,
+    reranked: dict[tuple[int, ...], list[int]],
+) -> list[int]:
+    """The passages the model would read: the reranker's top 8 of the fused
+    candidates. Identical candidate lists share one reranker call (the `reranked`
+    cache), so server noise cannot make two arms differ."""
+    candidates = tuple(fused[: config.RERANK_CANDIDATES])
+    if candidates not in reranked:
+        passages = [load_passage(sqlite_conn, i) for i in candidates]
+        reranked[candidates] = [p.id for p in rerank_top(question, passages, rerank)]
+    return reranked[candidates]
+
+
 def rankings(
     question: str,
     query_vector: list[float],
     sqlite_conn: sqlite3.Connection,
     pg: store.Connection,
     arms: Arms,
+    rerank: Rerank,
 ) -> dict[str, list[int]]:
-    """Every arm's keyword, vector and fused ranking, all as SQLite passage ids."""
+    """Every arm's keyword, vector, fused and reranked ranking, all as SQLite
+    passage ids."""
+    reranked: dict[tuple[int, ...], list[int]] = {}
     keyword = keyword_ranking(sqlite_conn, question, DEPTH)
     vector = vector_ranking(sqlite_conn, query_vector, DEPTH)
+    fused = fuse([keyword, vector])[:DEPTH]
     found = {
         "sqlite-keyword": keyword,
         "sqlite-vector": vector,
-        "sqlite-fused": fuse([keyword, vector])[:DEPTH],
+        "sqlite-fused": fused,
+        "sqlite-reranked": served(question, fused, sqlite_conn, rerank, reranked),
     }
     for arm, (version_id, to_sqlite, rank_keywords) in arms.items():
         keyword = [to_sqlite[i] for i in rank_keywords(pg, version_id, question, DEPTH)]
@@ -172,15 +204,20 @@ def rankings(
             to_sqlite[i]
             for i in store.vector_ranking(pg, version_id, query_vector, DEPTH)
         ]
+        fused = fuse([keyword, vector])[:DEPTH]
         found[f"{arm}-keyword"] = keyword
         found[f"{arm}-vector"] = vector
-        found[f"{arm}-fused"] = fuse([keyword, vector])[:DEPTH]
+        found[f"{arm}-fused"] = fused
+        found[f"{arm}-reranked"] = served(
+            question, fused, sqlite_conn, rerank, reranked
+        )
     return found
 
 
 def run_set(
     folder: Path,
     embed: Embed,
+    rerank: Rerank,
     sqlite_conn: sqlite3.Connection,
     pg: store.Connection,
     arms: Arms,
@@ -200,7 +237,7 @@ def run_set(
             text = questions[question_id]
             query_vector = embed([config.QUERY_INSTRUCTION + text])[0]
             found_by_question[question_id] = rankings(
-                text, query_vector, sqlite_conn, pg, arms
+                text, query_vector, sqlite_conn, pg, arms, rerank
             )
         parts.append(
             retrieval.Part(
@@ -257,6 +294,17 @@ def report(name: str, parts: list[retrieval.Part], arms: Arms) -> list[str]:
                 failures += [f"{name}: {item}" for item in worse]
             verdict = "; ".join(worse) or "none"
             print(f"| {arm} | {method} | " + " | ".join(cells) + f" | {verdict} |")
+    print()
+    for arm in arms:
+        served_alike = set()
+        for question_id in {p.question_id for p in parts}:
+            [part] = [p for p in parts if p.question_id == question_id][:1]
+            if part.rankings[f"{arm}-reranked"] == part.rankings["sqlite-reranked"]:
+                served_alike.add(question_id)
+        print(
+            f"{arm}: the same 8 passages in the same order as SQLite on "
+            f"{len(served_alike)} of {questions} questions"
+        )
     return failures
 
 
@@ -287,7 +335,7 @@ def main() -> int:
             failures = []
             for name in SETS:
                 folder = sets.require(name, sets.ROOT, sets.REGISTRY)
-                parts = run_set(folder, llm.embed, lite, pg, arms)
+                parts = run_set(folder, llm.embed, llm.rerank, lite, pg, arms)
                 retrieval.write(parts, OUT / name)
                 failures += report(name, parts, arms)
         finally:
