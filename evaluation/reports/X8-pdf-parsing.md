@@ -630,3 +630,11 @@ documents only (2 pages, 450 words).
 text-layer line. But the lines sit after the page's elements with no section, and labels
 ("Declared unit", "Manufacturer") are cut off from their values (Arial text that Docling
 reads), which is why the pairs on these pages fail in every arm.
+
+**Decision (user, 28 September 2026):** no code change for 2 pages.
+
+- The bug goes upstream to docling-parse, posted by the user with a public reproduction.
+- The recovery step keeps every word meanwhile.
+- S2's per-document validation report flags any page whose parser text keeps fewer than
+  0.95 of the text layer's words, with its cause, so such pages stay visible.
+- To revisit when docling-parse fixes Type 3 decoding.
