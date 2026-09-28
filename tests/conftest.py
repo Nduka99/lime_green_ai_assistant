@@ -175,6 +175,11 @@ def pg(postgres_url: str) -> Iterator[store.Connection]:
         yield conn
         conn.rollback()
         conn.execute("TRUNCATE passages, index_versions, documents RESTART IDENTITY")
+        # Each index version has its own BM25 index; the next test starts at version 1.
+        for (name,) in conn.execute(
+            "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'passages_bm25_v%'"
+        ).fetchall():
+            conn.execute(sql.SQL("DROP INDEX {}").format(sql.Identifier(name)))
 
 
 @pytest.fixture

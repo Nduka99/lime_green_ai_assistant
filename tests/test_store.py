@@ -99,18 +99,62 @@ def test_making_an_unknown_version_live_changes_nothing(
 def test_keyword_ranking_matches_any_stemmed_word(pg: store.Connection) -> None:
     version = build(pg)
 
-    # "rendering" stems to "render"; "the" is a stop word; "sample" matches too.
+    # "rendering" stems to "render"; "sample" and the stop word "the" also match.
     found = store.keyword_ranking(pg, version, "The rendering sample?", 10)
 
     passages = store.load_passages(pg, found)
     assert {p.heading for p in passages} == {"Duro Render", "Samples"}
 
 
-def test_keyword_ranking_without_words_finds_nothing(pg: store.Connection) -> None:
+def test_keyword_ranking_counts_stop_words_such_as_not(pg: store.Connection) -> None:
+    [(words,)] = pg.execute(
+        "SELECT to_tsvector(%s, 'Do not apply renders')::text", (store.KEYWORD_CONFIG,)
+    ).fetchall()
+
+    # Stemmed like `english`, but "do" and "not" are kept: "not" carries meaning.
+    assert words == "'appli':3 'do':1 'not':2 'render':4"
+
+
+def test_keyword_ranking_without_a_matching_word_finds_nothing(
+    pg: store.Connection,
+) -> None:
     version = build(pg)
 
     assert store.keyword_ranking(pg, version, "?!", 10) == []
-    assert store.keyword_ranking(pg, version, "the and", 10) == []
+    assert store.keyword_ranking(pg, version, "zebra xylophone", 10) == []
+
+
+def test_each_version_has_its_own_bm25_index_removed_with_it(
+    pg: store.Connection,
+) -> None:
+    first = build(pg)
+    second = build(pg)
+    store.set_live(pg, second)
+
+    names = {
+        row[0]
+        for row in pg.execute(
+            "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'passages_bm25_v%'"
+        ).fetchall()
+    }
+    assert names == {store.bm25_index(first), store.bm25_index(second)}
+    store.delete_version(pg, first)
+    assert pg.execute("SELECT count(*) FROM passages").fetchone() == (3,)
+    remaining = pg.execute(
+        "SELECT count(*) FROM pg_indexes WHERE indexname = %s",
+        (store.bm25_index(first),),
+    ).fetchone()
+    assert remaining == (0,)
+    assert store.keyword_ranking(pg, second, "sample", 10) != []
+
+
+def test_the_live_version_cannot_be_deleted(pg: store.Connection) -> None:
+    version = build(pg)
+    store.set_live(pg, version)
+
+    with pytest.raises(ValueError, match="not live"):
+        store.delete_version(pg, version)
+    assert store.live_version(pg) == (version, "test-embedder")
 
 
 def test_vector_ranking_orders_by_cosine_within_one_version(

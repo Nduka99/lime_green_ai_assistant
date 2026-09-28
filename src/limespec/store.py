@@ -1,5 +1,6 @@
 """The Postgres index: write an index version, choose which version is live, and
-rank its passages for a question.
+rank its passages for a question: keywords by BM25 (pg_textsearch), meaning by
+pgvector. Experiment X2 showed this ranks as well as the SQLite index did.
 
 All SQL lives here. Retrieval and answering stay plain functions that receive the
 rankings, as they did with SQLite. An index version is written beside the live one
@@ -12,6 +13,7 @@ from datetime import UTC
 from typing import Any
 
 import psycopg
+from psycopg import sql
 
 from limespec.models import Passage
 from limespec.retrieve import unit_vector
@@ -19,6 +21,17 @@ from limespec.retrieve import unit_vector
 Connection = psycopg.Connection[tuple[Any, ...]]
 PageRow = tuple[str, str, str, str]  # url, title, fetched_at (ISO 8601), sha256
 PassageRow = tuple[str, str, str, str]  # url, title, heading, text
+
+# English stemming that keeps stop words (migration 20260928100000). pg_textsearch
+# finds a custom configuration only by its schema-qualified name.
+KEYWORD_CONFIG = "public.english_keep_stop"
+# What keyword search reads: the page title and the passage text, as SQLite did.
+KEYWORD_TEXT = sql.SQL("(title || ' ' || text)")
+
+
+def bm25_index(version_id: int) -> str:
+    """Each version's own BM25 index, so its word statistics cover that version."""
+    return f"passages_bm25_v{version_id}"
 
 
 def vector_text(vector: Sequence[float]) -> str:
@@ -37,7 +50,7 @@ def write_version(
     vectors: Sequence[Sequence[float]],
     manifest: dict[str, str],
 ) -> int:
-    """Store one index version (not yet live) and return its id.
+    """Store one index version (not yet live) with its BM25 index; return its id.
 
     A page captured with the same bytes before is reused, not stored twice.
     """
@@ -77,7 +90,35 @@ def write_version(
                 "VALUES (%s, %s, %s, %s, %s, %s::vector)",
                 rows,
             )
+        # A partial index keeps its own word statistics. The version id is a
+        # literal, because the planner must see the predicate to use the index.
+        conn.execute(
+            sql.SQL(
+                "CREATE INDEX {} ON passages USING bm25 ({}) "
+                "WITH (text_config = {}) WHERE index_version_id = {}"
+            ).format(
+                sql.Identifier(bm25_index(version[0])),
+                KEYWORD_TEXT,
+                sql.Literal(KEYWORD_CONFIG),
+                sql.Literal(version[0]),
+            )
+        )
     return int(version[0])
+
+
+def delete_version(conn: Connection, version_id: int) -> None:
+    """Remove a version that is not live: its passages and its BM25 index."""
+    with conn.transaction():
+        deleted = conn.execute(
+            "DELETE FROM index_versions WHERE id = %s AND NOT live", (version_id,)
+        )
+        if deleted.rowcount != 1:
+            raise ValueError(f"no index version {version_id} that is not live")
+        conn.execute(
+            sql.SQL("DROP INDEX IF EXISTS {}").format(
+                sql.Identifier(bm25_index(version_id))
+            )
+        )
 
 
 def set_live(conn: Connection, version_id: int) -> None:
@@ -102,19 +143,21 @@ def live_version(conn: Connection) -> tuple[int, str] | None:
 def keyword_ranking(
     conn: Connection, version_id: int, question: str, limit: int
 ) -> list[int]:
-    """Passage ids ranked by full-text match on any of the question's words.
+    """Passage ids ranked by BM25 over the question's words (experiment X2).
 
-    Words are joined with OR, as the SQLite search did; Postgres stems them and
-    drops stop words. Ties keep passage id order, so the result is deterministic.
+    Passages that share no word with the question score 0 and are left out, as a
+    full-text match leaves them out. Ties keep passage id order.
     """
-    words = re.findall(r"\w+", question.lower())
-    if not words:
+    if not re.search(r"\w", question):
         return []
+    score = sql.SQL("{} <@> to_bm25query({}, {})").format(
+        KEYWORD_TEXT, sql.Literal(question), sql.Literal(bm25_index(version_id))
+    )
     rows = conn.execute(
-        "SELECT id FROM passages, to_tsquery('english', %s) AS query "
-        "WHERE index_version_id = %s AND search @@ query "
-        "ORDER BY ts_rank(search, query) DESC, id LIMIT %s",
-        (" | ".join(words), version_id, limit),
+        sql.SQL(
+            "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
+            "ORDER BY {}, id LIMIT {}"
+        ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
     ).fetchall()
     return [row[0] for row in rows]
 

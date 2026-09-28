@@ -124,6 +124,15 @@ version's BM25 index, `store.keyword_ranking` using it, and the unused `tsvector
 column removed), then check 90/90 passage parity through the full search with the
 reranker.
 
+## Store implementation (28 September)
+
+Moved into the product: migration `20260928100000_bm25_keyword_search.sql` adds the
+extension and `english_keep_stop` and drops the `ts_rank` column; `store.write_version`
+creates each version's BM25 index; `store.keyword_ranking` uses it; `store.delete_version`
+removes a version with its index. Re-run with the gated arm calling
+`store.keyword_ranking`: every number identical to run 3, gate passed; run 1's arm,
+now computed without its dropped column, reproduced its original numbers exactly.
+
 ## Reproduce
 
 ```text
