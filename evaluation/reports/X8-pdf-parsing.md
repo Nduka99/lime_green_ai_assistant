@@ -92,3 +92,19 @@ Docling becomes the parser for born-digital pages if, pooled over the twenty pag
 
 A failure is diagnosed before any change (for example a Docling option, or keeping the
 text layer beside the tables for one format).
+
+## Amendment before the run (28 September 2026)
+
+Written while recording the ground truth, before either parser ran on these pages.
+Some declarations list their performance as a borderless two-column layout ("Reaction
+to fire: … Class A1") rather than a ruled table. Measure 1 counts only parsed tables, so
+it would penalise a parser that keeps each label and value together as text, which is
+as usable for answering. The truth therefore records such layouts as **pairs**
+(label, value), with a fifth measure:
+
+5. **Pairs kept:** the share of truth pairs whose label and value appear together in one
+   parsed table row or one parsed text element (for the text layer, one line), compared
+   with whitespace removed and case ignored.
+
+Gate 1 now reads: table cells ≥ 0.95 and pairs kept ≥ 0.95, with no table below 0.80
+left undiagnosed. Nothing else changes.
