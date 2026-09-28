@@ -120,6 +120,13 @@ def referral() -> Answer:
     )
 
 
+@pytest.fixture(autouse=True)
+def no_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests use SQLite unless they set the Postgres URL themselves, even when the
+    suite runs with the developer's .env loaded."""
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+
+
 # Postgres tests run against the development server started with
 # `docker compose -f deploy/compose.yaml --profile dev up -d` (settings in
 # deploy/.env), in a throwaway database, so development data is never touched.

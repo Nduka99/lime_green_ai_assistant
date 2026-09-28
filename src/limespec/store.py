@@ -15,8 +15,9 @@ from typing import Any
 import psycopg
 from psycopg import sql
 
+from limespec import config
 from limespec.models import Passage
-from limespec.retrieve import unit_vector
+from limespec.retrieve import Embed, Rerank, fuse, rerank_top, unit_vector
 
 Connection = psycopg.Connection[tuple[Any, ...]]
 PageRow = tuple[str, str, str, str]  # url, title, fetched_at (ISO 8601), sha256
@@ -172,6 +173,26 @@ def vector_ranking(
         (version_id, vector_text(query_vector), limit),
     ).fetchall()
     return [row[0] for row in rows]
+
+
+def search(
+    conn: Connection, version_id: int, question: str, embed: Embed, rerank: Rerank
+) -> list[Passage]:
+    """The top passages of one index version for a question, best first.
+
+    The same steps as the SQLite search (retrieve.search): keyword and vector
+    rankings, fused, then the reranker orders the best candidates.
+    """
+    query_vector = embed([config.QUERY_INSTRUCTION + question])[0]
+    limit = config.CANDIDATES_PER_METHOD
+    ranking = fuse(
+        [
+            keyword_ranking(conn, version_id, question, limit),
+            vector_ranking(conn, version_id, query_vector, limit),
+        ]
+    )
+    candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
+    return rerank_top(question, candidates, rerank)
 
 
 def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]:

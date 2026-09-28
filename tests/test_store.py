@@ -148,6 +148,22 @@ def test_each_version_has_its_own_bm25_index_removed_with_it(
     assert store.keyword_ranking(pg, second, "sample", 10) != []
 
 
+def test_search_fuses_both_rankings_then_reranks(pg: store.Connection) -> None:
+    version = build(pg)
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        return [padded([0.0, 1.0]) for _ in texts]  # nearest: Delivery, then Samples
+
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        return [1.0 if "sample pack" in d else 0.0 for d in documents]
+
+    found = store.search(pg, version, "When do you deliver?", embed, rerank)
+
+    # The reranker's pick first; the rest keep their fused order (Delivery matched
+    # both the keyword and the vector ranking, so it leads the fused list).
+    assert [p.heading for p in found] == ["Samples", "Delivery", "Duro Render"]
+
+
 def test_the_live_version_cannot_be_deleted(pg: store.Connection) -> None:
     version = build(pg)
     store.set_live(pg, version)

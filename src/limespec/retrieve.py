@@ -104,6 +104,16 @@ def search(
         load_passage(conn, passage_id)
         for passage_id in ranking[: config.RERANK_CANDIDATES]
     ]
+    return rerank_top(question, candidates, rerank)
+
+
+def rerank_top(
+    question: str, candidates: list[Passage], rerank: Rerank
+) -> list[Passage]:
+    """The reranker's best passages among the fused candidates, best first.
+
+    Shared by the SQLite and Postgres searches, so both rerank the same way.
+    """
     if not candidates:
         return []
     # The title tells the reranker which product a short passage is about.
