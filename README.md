@@ -263,6 +263,8 @@ uv run python -m evaluation verify                        # check every set's ha
 uv run python -m evaluation retrieval frozen90            # IR measures from saved runs
 uv run python -m evaluation grades heldout-v3 sitting-topk
 uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run v5
+uv run python -m evaluation blind heldout-v3 A.json B.json --seed 28 --out DIR   # differing answers, runs hidden
+uv run python -m evaluation unblind heldout-v3 A.json B.json --dir DIR           # after DIR/verdicts.json is written
 ```
 
 ## Results

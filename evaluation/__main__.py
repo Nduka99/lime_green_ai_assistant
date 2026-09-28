@@ -6,10 +6,14 @@
     uv run python -m evaluation retrieval SET                # saved TREC runs
     uv run python -m evaluation grades SET SITTING           # a grading sitting
     uv run python -m evaluation ask SET --target http://127.0.0.1:8090 --run v5
+    uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
+    uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
 A finished run is graded, then copied into a sitting folder of its set and
-registered, so the evidence behind every reported number is hashed.
+registered, so the evidence behind every reported number is hashed. Two runs are
+compared by `blind`, which writes the answers that differ for blind grading into
+DIR/pairs.json, and `unblind`, which reads the verdicts from DIR/verdicts.json.
 """
 
 import argparse
@@ -20,7 +24,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from evaluation import ask, grades, keys, retrieval, sets
+from evaluation import ask, grades, keys, pairs, retrieval, sets
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 
@@ -64,6 +68,18 @@ def parser() -> argparse.ArgumentParser:
     asked.add_argument("--target", required=True, help="e.g. http://127.0.0.1:8090")
     asked.add_argument("--endpoint", default="/api/answer")
     asked.add_argument("--run", required=True, help="a name for this run's file")
+    hidden = commands.add_parser("blind", help="write two runs' different answers")
+    hidden.add_argument("name")
+    hidden.add_argument("first", type=Path, help="the baseline run's answers file")
+    hidden.add_argument("second", type=Path, help="the candidate run's answers file")
+    hidden.add_argument("--seed", type=int, required=True)
+    hidden.add_argument("--out", type=Path, required=True)
+    shown = commands.add_parser("unblind", help="compare two runs from blind verdicts")
+    shown.add_argument("name")
+    shown.add_argument("first", type=Path)
+    shown.add_argument("second", type=Path)
+    shown.add_argument("--dir", type=Path, required=True)
+    shown.add_argument("--json", action="store_true")
     return main
 
 
@@ -121,6 +137,46 @@ def run_grades(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_runs(first: Path, second: Path) -> dict[str, pairs.Records]:
+    """Two answers files by run name (the file name without "answers-")."""
+    runs = {}
+    for path in (first, second):
+        records = grades.read_json(path)
+        runs[path.stem.removeprefix("answers-")] = {r["id"]: r for r in records}
+    if len(runs) != 2:
+        raise ValueError("the two runs need different file names")
+    return runs
+
+
+def run_blind(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    runs = load_runs(args.first, args.second)
+    first, second = runs.values()
+    ids = pairs.differing(first, second, [row["id"] for row in questions])
+    blinded, order = pairs.blind(ids, runs, args.seed)
+    ask.write_records(args.out / "pairs.json", blinded)
+    (args.out / "order.json").write_text(json.dumps(order, indent=1), encoding="utf-8")
+    print(f"{len(ids)} of {len(questions)} answers differ; pairs in {args.out}")
+    return 0
+
+
+def run_unblind(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    runs = load_runs(args.first, args.second)
+    order = grades.read_json(args.dir / "order.json")
+    if not (args.dir / "verdicts.json").exists():
+        raise ValueError(f"grade the pairs first: no verdicts.json in {args.dir}")
+    verdicts = grades.read_json(args.dir / "verdicts.json")
+    if set(verdicts) != set(order):
+        raise ValueError("verdicts.json must grade every pair in pairs.json")
+    result = pairs.compare(key, questions, runs, pairs.unblind(verdicts, order))
+    print(json.dumps(result, indent=1) if args.json else pairs.markdown(result))
+    return 0
+
+
 def run_ask(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")["questions"]
@@ -147,6 +203,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_retrieval(args)
         if args.command == "grades":
             return run_grades(args)
+        if args.command == "blind":
+            return run_blind(args)
+        if args.command == "unblind":
+            return run_unblind(args)
         return run_ask(args)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
