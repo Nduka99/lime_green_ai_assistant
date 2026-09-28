@@ -3,6 +3,7 @@ content-addressed store, politely, with failures reported. The site is invented.
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -22,6 +23,10 @@ def handler(request: httpx.Request) -> httpx.Response:
     """A stand-in site: robots.txt, two copies of one PDF, a moved one, a missing one,
     one that cannot be reached, a sized and an unsized image, and pages."""
     path = request.url.path
+    if request.url.host == "gov.test":  # an external host with its own rules
+        if path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /secret/\n")
+        return httpx.Response(200, content=b"%PDF guidance")
     if path == "/robots.txt":
         return httpx.Response(200, text=ROBOTS)
     if path in ("/docs/a.pdf", "/docs/copy-of-a.pdf"):
@@ -203,3 +208,96 @@ def test_the_command_line_measures_then_collects_pages_and_files(
     assert json.loads((config.FILE_STORE / "manifest.json").read_text())[0]["url"] == (
         SITE + "docs/a.pdf"
     )
+
+
+def test_external_documents_obey_their_own_hosts_robots_and_keep_a_licence(
+    site: list[str], tmp_path: Path
+) -> None:
+    listed = tmp_path / "external.txt"
+    listed.write_text(
+        "# a comment\n\nhttps://gov.test/guide.pdf OGL-3.0\n"
+        "https://gov.test/secret/plan.pdf OGL-3.0\n"
+    )
+    licences = acquire.read_external(listed)
+
+    results = acquire.acquire_files(list(licences), "external", licences=licences)
+
+    assert licences == {
+        "https://gov.test/guide.pdf": "OGL-3.0",
+        "https://gov.test/secret/plan.pdf": "OGL-3.0",
+    }
+    assert results[0]["licence"] == "OGL-3.0" and "sha256" in results[0]
+    assert results[1]["error"] == "disallowed by robots.txt"
+    assert site == ["GET /robots.txt", "GET /guide.pdf"]  # robots.txt read once
+
+
+def test_browse_gives_stored_files_readable_names(
+    site: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    acquire.acquire_files(
+        [SITE + "docs/a.pdf", SITE + "docs/copy-of-a.pdf", SITE + "other/a.pdf"],
+        "document",
+    )
+    acquire.acquire_files([SITE + "img/unsized.webp", SITE + "pages/x/"], "image")
+
+    made = acquire.browse()
+
+    folder = config.FILE_STORE.parent / "browse"
+    documents = sorted(p.name for p in (folder / "document").iterdir())
+    assert documents == ["a.pdf", "copy-of-a.pdf"]  # other/a.pdf: the same bytes
+    assert (folder / "document" / "a.pdf").read_bytes() == PDF
+    assert sorted(p.name for p in (folder / "image").iterdir()) == [
+        "unnamed",
+        "unsized.webp",
+    ]
+    assert made == 4
+    assert acquire.browse() == 0  # names already made are left alone
+
+
+def test_a_name_clash_gets_the_hash_and_a_copy_is_made_without_links(
+    site: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    acquire.write_manifest(
+        [
+            {"url": SITE + "one/sheet", "kind": "document", "sha256": "a" * 64},
+            {"url": SITE + "two/sheet", "kind": "document", "sha256": "b" * 64},
+            {"url": SITE + "one/tds.pdf", "kind": "document", "sha256": "c" * 64},
+            {"url": SITE + "two/tds.pdf", "kind": "document", "sha256": "d" * 64},
+        ]
+    )
+    for letter in "abcd":
+        acquire.store_path(letter * 64).write_bytes(letter.encode())
+
+    def no_links(source: Path, target: Path) -> None:
+        raise OSError("links not supported")
+
+    monkeypatch.setattr(os, "link", no_links)
+
+    assert acquire.browse() == 4
+    folder = config.FILE_STORE.parent / "browse" / "document"
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "sheet",
+        f"sheet-{'b' * 8}",
+        f"tds-{'d' * 8}.pdf",  # "-" sorts before "."
+        "tds.pdf",
+    ]
+    assert (folder / f"tds-{'d' * 8}.pdf").read_bytes() == b"d"
+
+
+def test_the_command_line_collects_external_documents_and_makes_names(
+    site: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    listed = tmp_path / "external.txt"
+    listed.write_text("https://gov.test/guide.pdf OGL-3.0\n")
+    monkeypatch.setattr(config, "EXTERNAL_SOURCES", listed)
+
+    assert cli.main(["acquire", "external", "--measure"]) == 0
+    assert capsys.readouterr().out.startswith("1 of 1 fine")
+    assert cli.main(["acquire", "external"]) == 0
+    assert capsys.readouterr().out.startswith("1 of 1 fine")
+    assert acquire.read_manifest()[0]["licence"] == "OGL-3.0"
+    assert cli.main(["browse"]) == 0
+    assert capsys.readouterr().out.startswith("1 new readable names in")

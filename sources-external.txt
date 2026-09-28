@@ -1,0 +1,8 @@
+# Openly licensed documents the Lime Green site cites, collected with
+# `limespec acquire external`. One per line: the URL, then its licence.
+# Reproduced with attribution: "Contains public sector information licensed under the
+# Open Government Licence v3.0." Cited but not collected: SPAB (reproduction needs
+# written permission), ASBP (no reuse terms found), BSI standards (copyright).
+https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/1019707/iwi-guidance.pdf OGL-3.0
+https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/1057372/ADL1.pdf OGL-3.0
+https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/693158/25-year-environment-plan.pdf OGL-3.0

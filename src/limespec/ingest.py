@@ -88,12 +88,13 @@ def fetch_page(client: httpx.Client, url: str) -> bytes:
     return response.content
 
 
-def load_robots(client: httpx.Client) -> RobotFileParser:
-    """The site's robots.txt rules, following RFC 9309: redirects are followed,
-    a 4xx response means no rules (everything allowed), and any other failure
-    stops the crawl. Pages, by contrast, never follow redirects: a moved page
-    is reported so that sources.txt can be corrected."""
-    url = config.SITE + "robots.txt"
+def load_robots(client: httpx.Client, site: str = "") -> RobotFileParser:
+    """A site's robots.txt rules (the Lime Green site's unless `site` is given),
+    following RFC 9309: redirects are followed, a 4xx response means no rules
+    (everything allowed), and any other failure stops the crawl. Pages, by
+    contrast, never follow redirects: a moved page is reported so that
+    sources.txt can be corrected."""
+    url = (site or config.SITE) + "robots.txt"
     response = get(client, url, follow_redirects=True)
     robots = RobotFileParser(url)
     if response.status_code == 200:

@@ -1,22 +1,26 @@
 """Collect the openly available sources the knowledge base draws on, politely.
 
 Pages go to the page cache that `limespec ingest` reads. The site's own documents
-(PDFs) and images go to a content-addressed store: each file once, named by its
-SHA-256, with a manifest recording its URL, type, size and when it was fetched.
-Every request identifies itself, obeys robots.txt and waits the polite delay. A
-failed URL is reported and the collection goes on; it is tried again next time.
-Nothing here is committed: data/ is git-ignored.
+(PDFs) and images, and the openly licensed external documents listed in
+sources-external.txt, go to a content-addressed store: each file once, named by its
+SHA-256, with a manifest recording its URL, type, size, licence (for external
+documents) and when it was fetched. Every request identifies itself, obeys the
+host's robots.txt and waits the polite delay. A failed URL is reported and the
+collection goes on; it is tried again next time. `browse` gives the stored files
+readable names. Nothing here is committed: data/ is git-ignored.
 """
 
 import hashlib
 import json
+import os
 import re
+import shutil
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -54,6 +58,29 @@ def linked_files(raw_html: str) -> tuple[list[str], list[str]]:
         if is_own(url):
             images.append(url)
     return documents, images
+
+
+def read_external(path: Path) -> dict[str, str]:
+    """External documents to collect, each line a URL then its licence."""
+    documents = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            url, licence = line.split(maxsplit=1)
+            documents[url] = licence.strip()
+    return documents
+
+
+def robots_for(
+    client: httpx.Client, url: str, known: dict[str, RobotFileParser]
+) -> RobotFileParser:
+    """The robots.txt rules of the URL's host, read once per host (then the polite
+    delay, as after any request)."""
+    parts = urlsplit(url)
+    root = f"{parts.scheme}://{parts.netloc}/"
+    if root not in known:
+        known[root] = load_robots(client, root)
+        time.sleep(config.REQUEST_DELAY_SECONDS)
+    return known[root]
 
 
 def store_path(sha256: str) -> Path:
@@ -104,12 +131,16 @@ def fetch_file(
 
 
 def acquire_files(
-    urls: Sequence[str], kind: str, transport: httpx.BaseTransport | None = None
+    urls: Sequence[str],
+    kind: str,
+    transport: httpx.BaseTransport | None = None,
+    licences: dict[str, str] | None = None,
 ) -> list[Record]:
     """Download every file not yet in the manifest; return this run's records.
 
     The manifest keeps successes only and is saved after each file, so a stopped
-    run resumes; failures are returned, and retried by the next run.
+    run resumes; failures are returned, and retried by the next run. A licence
+    given for a URL is kept in its record.
     """
     manifest = read_manifest()
     stored = {record["url"] for record in manifest}
@@ -118,11 +149,14 @@ def acquire_files(
     if not missing:
         return results
     config.FILE_STORE.mkdir(parents=True, exist_ok=True)
+    known: dict[str, RobotFileParser] = {}
     with polite_client(transport) as client:
-        robots = load_robots(client)
         for url in missing:
-            time.sleep(config.REQUEST_DELAY_SECONDS)
+            robots = robots_for(client, url, known)
             record = fetch_file(client, robots, url, kind)
+            if licences and url in licences:
+                record["licence"] = licences[url]
+            time.sleep(config.REQUEST_DELAY_SECONDS)
             results.append(record)
             if "sha256" in record:
                 manifest.append(record)
@@ -167,9 +201,10 @@ def measure(
 ) -> list[Record]:
     """Each URL's size from a HEAD request, so a download can be approved first."""
     results: list[Record] = []
+    known: dict[str, RobotFileParser] = {}
     with polite_client(transport) as client:
-        robots = load_robots(client)
         for url in dict.fromkeys(urls):
+            robots = robots_for(client, url, known)
             time.sleep(config.REQUEST_DELAY_SECONDS)
             if not robots.can_fetch(config.USER_AGENT, url):
                 results.append({"url": url, "error": "disallowed by robots.txt"})
@@ -202,3 +237,39 @@ def sitemap_pages() -> list[str]:
     """The pages the site's cached sitemap lists."""
     path = config.PAGE_CACHE / "sitemap.xml"
     return sitemap_urls(path.read_text(encoding="utf-8"))
+
+
+def readable_name(record: Record) -> str:
+    """The file name the URL ends with, decoded (spaces instead of %20)."""
+    return unquote(urlsplit(str(record["url"])).path.rsplit("/", 1)[-1]) or "unnamed"
+
+
+def browse() -> int:
+    """Give every stored file a readable name under data/browse/<kind>/, as a hard
+    link (no extra space) or a copy where links are not possible. Two different
+    files with the same name get the start of their hash added. Returns how many
+    names were made."""
+    made = 0
+    taken: dict[Path, str] = {}
+    for record in read_manifest():
+        folder = config.FILE_STORE.parent / "browse" / str(record["kind"])
+        name = readable_name(record)
+        target = folder / name
+        if taken.get(target, record["sha256"]) != record["sha256"]:
+            stem, dot, suffix = name.rpartition(".")
+            name = (
+                f"{stem}-{record['sha256'][:8]}{dot}{suffix}"
+                if dot
+                else f"{name}-{record['sha256'][:8]}"
+            )
+            target = folder / name
+        taken[target] = str(record["sha256"])
+        if target.exists():
+            continue
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(store_path(str(record["sha256"])), target)
+        except OSError:
+            shutil.copyfile(store_path(str(record["sha256"])), target)
+        made += 1
+    return made

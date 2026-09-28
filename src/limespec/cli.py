@@ -14,8 +14,17 @@ from limespec.view import AnswerView, view
 
 
 def run_acquire(what: str, measure_only: bool) -> None:
-    """Pages from the sitemap not yet cached, or the PDFs and images linked from
-    cached pages not yet stored; `measure_only` sizes them without downloading."""
+    """Pages from the sitemap not yet cached, the PDFs and images linked from
+    cached pages, or the external documents listed in sources-external.txt, not yet
+    stored; `measure_only` sizes them without downloading."""
+    if what == "external":
+        licences = acquire.read_external(config.EXTERNAL_SOURCES)
+        if measure_only:
+            stored = {record["url"] for record in acquire.read_manifest()}
+            report(acquire.measure([url for url in licences if url not in stored]))
+        else:
+            report(acquire.acquire_files(list(licences), "external", licences=licences))
+        return
     if what == "pages":
         pages = [url for url in acquire.sitemap_pages() if not cache_path(url).exists()]
         if measure_only:
@@ -112,11 +121,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="limespec", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     acquire_parser = commands.add_parser(
-        "acquire", help="collect sitemap pages, or the PDFs and images they link"
+        "acquire",
+        help="collect sitemap pages, their PDFs and images, or external documents",
     )
-    acquire_parser.add_argument("what", choices=["pages", "files"])
+    acquire_parser.add_argument("what", choices=["pages", "files", "external"])
     acquire_parser.add_argument(
         "--measure", action="store_true", help="only size them (HEAD requests)"
+    )
+    commands.add_parser(
+        "browse", help="give the collected files readable names in data/browse/"
     )
     commands.add_parser(
         "ingest", help="index the pages in sources.txt as a new live Postgres version"
@@ -131,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "acquire":
             run_acquire(args.what, args.measure)
+        elif args.command == "browse":
+            made = acquire.browse()
+            print(f"{made} new readable names in {config.FILE_STORE.parent / 'browse'}")
         elif args.command == "ingest":
             run_ingest()
         elif args.command == "ask":
