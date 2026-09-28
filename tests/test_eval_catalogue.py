@@ -85,6 +85,9 @@ def test_every_page_and_file_is_labelled_once(collected: Path) -> None:
     entries = {entry["id"]: entry for entry in catalogue.catalogue()}
 
     assert len(entries) == 5  # 2 pages and 3 distinct files
+    page = entries["page:products__lime-render__duro"]
+    assert page["url"] == SITE + "products/lime-render/duro"
+    assert catalogue.page_url("home") == SITE
     datasheet = entries["file:" + "a" * 64]
     assert (datasheet["format"], datasheet["topic"]) == ("pdf:safety", "lime-render")
     assert datasheet["text"] == "SDS"

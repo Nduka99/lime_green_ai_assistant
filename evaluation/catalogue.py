@@ -75,6 +75,11 @@ def page_topic(slug: str) -> str:
     return "company"
 
 
+def page_url(slug: str) -> str:
+    """The page's address, rebuilt from its cache name (the reverse of cache_path)."""
+    return config.SITE if slug == "home" else config.SITE + slug.replace("__", "/")
+
+
 def pdf_format(link_texts: list[str], url: str) -> str:
     """A PDF's format from how the site links to it, else from its decoded file
     name ("IWI%20Architect%20Reference" must read as words)."""
@@ -125,6 +130,7 @@ def catalogue() -> list[Entry]:
                 "format": page_format(slug),
                 "topic": page_topic(slug),
                 "source": str(page),
+                "url": page_url(slug),
             }
         )
         for _, url, text in links(page):

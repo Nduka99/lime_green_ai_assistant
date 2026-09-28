@@ -26,7 +26,16 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from evaluation import ask, catalogue, grades, keys, pairs, retrieval, sets
+from evaluation import (
+    ask,
+    catalogue,
+    conversations,
+    grades,
+    keys,
+    pairs,
+    retrieval,
+    sets,
+)
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 
@@ -65,6 +74,21 @@ def parser() -> argparse.ArgumentParser:
         "catalogue", help="label every collected source by format and topic"
     )
     listed.add_argument("--out", type=Path, required=True, help="a JSON file to write")
+    planned = commands.add_parser(
+        "plan-conversations", help="plan a conversation key and write its bundle"
+    )
+    planned.add_argument("--catalogue", type=Path, required=True)
+    planned.add_argument("--brief", type=Path, required=True)
+    planned.add_argument("--out", type=Path, required=True)
+    planned.add_argument("--seed", type=int, required=True)
+    planned.add_argument("--conversations", type=int, default=20)
+    planned.add_argument(
+        "--turns", type=int, default=4, help="sources per conversation"
+    )
+    planned.add_argument("--per-part", type=int, default=5)
+    planned.add_argument(
+        "--limit", type=int, default=8000, help="characters per source"
+    )
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -140,6 +164,27 @@ def run_catalogue(args: argparse.Namespace) -> int:
     for label, count in catalogue.strata(entries).items():
         print(f"{count:5}  {label}")
     print(f"{len(entries)} sources labelled in {args.out}")
+    return 0
+
+
+def run_plan_conversations(args: argparse.Namespace) -> int:
+    entries = grades.read_json(args.catalogue)
+    texts = {entry["id"]: conversations.source_text(entry) for entry in entries}
+    planned = conversations.plan(
+        entries, texts, args.conversations, args.turns, args.seed
+    )
+    brief = args.brief.read_text(encoding="utf-8")
+    parts = conversations.bundle(
+        planned, entries, texts, brief, args.out, args.per_part, args.limit, args.seed
+    )
+    by_id = {entry["id"]: entry for entry in entries}
+    used = [by_id[source]["format"] for c in planned for source in c["sources"]]
+    for label in sorted(set(used)):
+        print(f"{used.count(label):5}  {label}")
+    print(
+        f"{len(planned)} conversations, {len(used)} sources, "
+        f"{len(parts)} parts in {args.out}"
+    )
     return 0
 
 
@@ -222,6 +267,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_retrieval(args)
         if args.command == "catalogue":
             return run_catalogue(args)
+        if args.command == "plan-conversations":
+            return run_plan_conversations(args)
         if args.command == "grades":
             return run_grades(args)
         if args.command == "blind":
