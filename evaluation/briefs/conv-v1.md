@@ -41,8 +41,9 @@ photo. A source marked "another subject, for the topic change" is the one except
   - `message`: exactly what the customer types;
   - `standalone_question`: the same question rewritten so it makes sense with no
     history (names instead of "it", the product meant, every part kept);
-  - `dynamic`: `first question` for turn 1, otherwise which listed situation it is,
-    or `plain follow-up`;
+  - `dynamic`: `first question` for turn 1, otherwise `plain follow-up` or the
+    situation's name copied exactly as listed under "Include", without the examples in
+    brackets (`emergency arising mid-conversation`, not `emergency`);
   - `standalone`: true if `message` makes sense with no history, else false;
   - `expected_status`: `answered`, `insufficient_evidence` or `safety_referral`;
   - `expected_answer`: the ideal reply, stating only what the quotes support, with no
