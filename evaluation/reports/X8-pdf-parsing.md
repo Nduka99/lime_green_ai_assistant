@@ -745,3 +745,39 @@ and no position, so a drawing's notes are cut off from the drawing.
 3. The `docling` arm on `x8-pages`, `x8-pages-r2` and `x8-pages-r3` is no worse on any
    measure, page by page.
 4. `scripts/check.py` passes.
+
+**Amendment before any code** (28 September 2026, user approved). Measured over the whole
+corpus, the words Docling's reading lacks split into two groups:
+
+- **930 visible:** the Type 3 reports, running headers and SDS text;
+- **499 not visible:** 469 lie off the page and 30 are on the page with no ink in their box.
+  Almost all are the title block of a CAD drawing sheet placed into the IWI guides and cut
+  off by the page edge: contact details, "REFER TO …", "… ACCEPTS NO DUTY OF CARE …".
+
+Today's recovery indexes both groups, so the assistant could quote text no reader of the
+page can see.
+
+**Rule: index only what the page shows.** Recovered lines come from pdfium's lines. A line is
+used only when:
+
+- it holds a word the page's elements lack;
+- its box lies on the page;
+- the rendered page has ink inside its box.
+
+It is placed as designed above. The 60 words pypdf has and pdfium lacks are all pypdf joining
+neighbouring text ("01Standard", "34Page"), so the pypdf fallback is dropped. The per-page
+validation now compares Docling's reading with pdfium's visible words and counts invisible
+words separately. pdfium also opens the encrypted BDA Agrément, so its pages get checked
+too.
+
+**Gate, amended** (replacing items 1 and 3 above):
+
+1. Every visible pdfium word on every page of the corpus is in the reading's text, recovered
+   lines included: pooled ≥ 0.999, and no page below 0.99.
+2. No recovered element holds a word that lies only off the page or where there is no ink.
+3. On pages with at least one element in a section, ≥ 0.95 of recovered words carry a
+   section.
+4. The `docling` arm on the three X8 sets is no worse on cells, pairs, sentences, numbers or
+   grid, page by page. Text kept (against pypdf, which includes invisible text) is reported,
+   with the invisible words counted.
+5. `scripts/check.py` passes.
