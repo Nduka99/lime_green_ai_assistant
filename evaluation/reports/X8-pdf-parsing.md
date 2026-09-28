@@ -563,3 +563,37 @@ So its effect elsewhere must be measured too.
 
 If the gate passes, 7.22.1 becomes the ingest group's floor (`docling-parse>=7.22.1`).
 Otherwise the lockfile returns to 7.22.0.
+
+**Result** (28 September 2026). Outputs are in `data/runs/docling-parse-7221/`.
+
+| Item | 7.22.0 | 7.22.1 | Verdict |
+|---|---|---|---|
+| 1. Own-text words kept, 7 pages | 0.469–0.909 | 0.469–1.000 | **fails as written** (4 pages below 0.99) |
+| 2. `docling` arm, three sets, page by page | — | 5 page measures better, 0 worse | pass |
+| 3. `glm-ocr` on round 3 | 0.984 (lowest 0.800) | 0.984 (lowest 0.800) | pass |
+| 4. `scripts/check.py` | — | 339 tests, all checks | pass |
+
+On item 1, three pages recover fully:
+
+- Hemp Binder carbon footprint: 0.884 → 0.993;
+- Forte p2: 0.868 → 1.000;
+- Silicate Render p2: 0.909 → 1.000.
+
+Of the four below 0.99, none is caused by the update:
+
+- **Forte p1 (0.986) and Silicate Render p1 (0.945):** every missing word is a split in
+  the reference itself ("decora tive", "spra y", "o ther"). pypdf breaks kerned words and
+  Docling now reads them whole.
+- **Solo and Board Adhesive carbon footprints (0.469, 0.524, identical in both versions):**
+  whole regions are missing from Docling's reading, the left column's "Product Carbon
+  Footprint" and "Generated with One Click LCA…". This is a separate loss, which the recovery
+  step catches (63 lines each) and which needs its own diagnosis.
+
+**Finding about the comparison.** The first comparison used baselines run before round 3's
+code change, and seemed to show round 1's sentences dropping (0.989 → 0.978). At equal
+code, 7.22.0 gives the same 0.978. The drop comes from round 3's change: a table header now
+lives only in the whole-table element, which the recovery step counts as text but the scorer
+leaves out of the text measures (round 1 p16). Baselines for item 2 were therefore re-run
+at the same commit with 7.22.0, restored offline from the uv cache.
+
+Gate item 1 fails as written, so the decision on adoption goes to the user.
