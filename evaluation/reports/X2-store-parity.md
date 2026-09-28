@@ -1,6 +1,7 @@
 # X2. Does the Postgres store rank passages as well as SQLite?
 
-Measured 28 September 2026 with `experiments/x2_store_parity.py`. Gate, fixed before
+Measured 28 September 2026 with `experiments/x2_store_parity.py` (at tag
+`x2-store-parity`; removed from the platform at the Phase 1 exit). Gate, fixed before
 the run: no Postgres measure may be worse than SQLite beyond the paired bootstrap
 interval (95%, resampling questions), on the frozen 90 and held-out v2 answer keys.
 
@@ -169,6 +170,8 @@ the API and grading, plan Phases 4 and 6).
 ## Reproduce
 
 ```text
+git switch --detach x2-store-parity   # the code as it was when X2 ran
+uv sync --all-groups --locked
 uv run --env-file .env python -m experiments.x2_store_parity
 ```
 
