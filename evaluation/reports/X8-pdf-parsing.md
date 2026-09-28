@@ -354,3 +354,51 @@ cells are the six tick boxes, plus PaddleOCR-VL's ",0.5%". On these pages neithe
 improves on Docling alone, and the styled-header tables still score 0. Round 2 decides.
 
 **Code frozen for the round-2 run at `9d9eb35`.**
+
+## Result, round 2: every arm fails
+
+Run on 28 September 2026 at `62be340`, which has the same code as `9d9eb35`. Outputs are
+in `data/runs/x8-r2/<arm>/` (parsed elements, scores, and memory sampled every second).
+
+| Measure | pypdf | docling | glm-ocr | paddleocr-vl | Gate |
+|---|---|---|---|---|---|
+| Table cells | — | 0.047 | 0.016 | 0.016 | ≥ 0.95 |
+| Pairs kept | 0.571 | 0.610 | 0.610 | 0.610 | ≥ 0.95 |
+| Text kept | 1.000 | 0.995 | 0.995 | 0.995 | ≥ 0.99 |
+| Sentences whole | 1.000 | 0.957 | 0.957 | 0.957 | ≥ 0.95 and ≥ pypdf |
+| Table numbers | 1.000 | 1.000 | 1.000 | 1.000 | ≥ 0.99 |
+| Lowest table | — | 0.000 | 0.000 | 0.000 | ≥ 0.80 |
+| Cells unspelt | — | — | 110 of 204 | 111 of 219 | reported |
+| Seconds per page, mean (median) | — | 2.6 (1.3) | 3.8 (1.3) | 3.5 (1.3) | reported |
+| Hours for 573 pages | — | 0.4 | 0.6 | 0.6 | reported |
+| Peak RAM: reader + model server | — | 1.1 GB | 1.3 + 4.2 GB | 1.3 + 1.5 GB | reported |
+| Peak VRAM of the model | — | 0 | 3.9 GB | 2.3 GB | reported |
+
+Transcription check, over the 8 low-text pages: GLM-OCR had recall 0.769 and precision 0.952;
+PaddleOCR-VL had recall 0.865 and precision 0.928. Both fail the bar (recall ≥ 0.90 and
+precision ≥ 0.95). PaddleOCR-VL's first attempt ended without output: the known native Docling
+crash, since rendering reaches the IWI guide. The re-run completed.
+
+No arm passes, so by the selection rule the decision goes to the user after this diagnosis.
+
+**Diagnosis,** page by page, from the saved outputs:
+
+| Cause | Pages (cells) | Arms | Owner |
+|---|---|---|---|
+| Header rows not recognised. Docling flags only the top row of the two-level system-boundary tables (stage names over module codes), and no row of the ruled mix-designation table. Neither VLM marks header cells, and both take Docling's flags, so values lose their column names. | 1, 2, 3, 10 (61 of 64) | all | Docling's TableFormer; the VLMs give no header marks |
+| Docling's PDF parser drops glyphs in the One Click LCA reports' font: every "u" and "f" is missing ("Man fact rer", "GWP- ossil", "M ch Wenlock"), while pypdf reads them. Sentences on page 1: 1 of 5. The VLM arms spell from the same words, so they inherit it. | 1 (sentences, pairs) | all | docling-parse 7.22.0 |
+| Rotated column labels (the system-boundary table's names row) | 2, 3 | all | structure |
+| The VLMs split a row with multi-line cells into sub-rows, pairing "EC No." with "Eye Irrit. 2" | 11 | glm-ocr, paddleocr-vl | the models |
+| Unspelt cells are mostly the rotated labels and the glyph-dropped words above | 1, 2, 3 | glm-ocr, paddleocr-vl | inherited |
+| Measurement: truth written "CO2e" where the PDF has "CO₂e" (subscript two); the scorer folds typography but not compatibility forms. SDS pairs whose label includes its section number ("6.1. …") are missed by the text layer too. | 1–3, 13 (pairs) | all, including pypdf | truth and scorer |
+
+What round 2 establishes:
+
+1. **The bottleneck is recognising header rows, not reading cells.** Every VLM read the
+   cells' structure correctly where Docling did, but neither model marks headers, so the
+   hybrid cannot fix it as designed.
+2. **Docling's text is not always the PDF's own characters.** On one font family it loses
+   letters that the text layer keeps, which contradicts the premise in §0f that Docling
+   reads the PDF's own characters.
+3. **Memory and speed would allow either VLM** (under 4 GB of VRAM, at most 0.6 h for the
+   corpus). Quality rules them out.
