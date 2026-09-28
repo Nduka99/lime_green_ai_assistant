@@ -33,8 +33,9 @@ def words(text: str) -> list[str]:
 
 
 def text_lines(textpage: Any, height: float) -> list[Line]:
-    """The page's text as pdfium reads it, one line per line break, each with the box
-    around its characters (measured from the page's top-left corner)."""
+    """The page's text as pdfium reads it, one line per line break with its spacing
+    (tabs included) made single spaces, each with the box around its characters
+    (measured from the page's top-left corner)."""
     text = textpage.get_text_range()
     lines = []
     for match in re.finditer(r"[^\r\n]+", text):
@@ -47,7 +48,10 @@ def text_lines(textpage: Any, height: float) -> list[Line]:
         right = max(box[2] for box in boxes)
         top = max(box[3] for box in boxes)
         lines.append(
-            (match.group().strip(), (left, height - top, right, height - bottom))
+            (
+                " ".join(match.group().split()),
+                (left, height - top, right, height - bottom),
+            )
         )
     return lines
 
