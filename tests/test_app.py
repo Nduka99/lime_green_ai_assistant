@@ -221,7 +221,9 @@ def test_v1_refuses_an_empty_or_overlong_question(
     assert asked == [longest]
 
 
-def test_v1_operational_error_is_a_clear_503(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_v1_operational_error_is_a_clear_503_and_a_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     def unavailable(question: str) -> tuple[Answer, int]:
         raise IngestError("no live Postgres index")
 
@@ -231,6 +233,7 @@ def test_v1_operational_error_is_a_clear_503(monkeypatch: pytest.MonkeyPatch) ->
 
     assert response.status_code == 503
     assert response.json() == {"detail": "no live Postgres index"}
+    assert caplog.messages == ["answer failed: no live Postgres index"]
 
 
 def test_the_stream_sends_each_stage_then_the_verified_answer(
@@ -250,7 +253,7 @@ def test_the_stream_sends_each_stage_then_the_verified_answer(
 
 
 def test_the_stream_ends_with_an_error_event_not_an_answer(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def unavailable(
         question: str, on_stage: Callable[[str], None]
@@ -265,6 +268,9 @@ def test_the_stream_ends_with_an_error_event_not_an_answer(
     assert sse_events(response.text) == [
         ("stage", {"stage": "understanding"}),
         ("error", {"detail": "generation server at http://127.0.0.1:8080 failed"}),
+    ]
+    assert caplog.messages == [
+        "answer failed: generation server at http://127.0.0.1:8080 failed"
     ]
 
 
@@ -350,3 +356,19 @@ def test_health_probes_are_not_traced(
     client.get("/readyz")
 
     assert spans.get_finished_spans() == ()
+
+
+def test_questions_in_a_url_never_reach_a_trace(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter, answered: Answer
+) -> None:
+    answers_with(monkeypatch, answered)
+
+    client.get("/", params={"q": "secret question"})
+    client.get("/api/answer", params={"q": "secret question"})
+    records_with(monkeypatch, answered)
+    client.post("/api/v1/answers", json={"question": "secret question"})
+
+    finished = spans.get_finished_spans()
+    assert [span.name for span in finished] == ["POST /api/v1/answers"]
+    for span in finished:
+        assert "secret" not in str(dict(span.attributes or {}))

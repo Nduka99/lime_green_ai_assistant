@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, llm, store
+from limespec import assistant, cli, config, llm, store, telemetry
 from limespec.app import app
 from limespec.ingest import build_index
 from limespec.models import Answer
@@ -142,9 +142,10 @@ def test_serve_runs_the_web_page_on_this_machine_only(
 
     assert cli.main(["serve"]) == 0
     assert cli.main(["serve", "--port", "8123"]) == 0
+    logging = {"log_config": telemetry.LOG_CONFIG, "access_log": False}
     assert calls == [
-        (app, {"host": "127.0.0.1", "port": 8090}),
-        (app, {"host": "127.0.0.1", "port": 8123}),
+        (app, {"host": "127.0.0.1", "port": 8090, **logging}),
+        (app, {"host": "127.0.0.1", "port": 8123, **logging}),
     ]
 
 

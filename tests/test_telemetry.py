@@ -1,6 +1,9 @@
 """Traces and metrics: export over OTLP/HTTP, errors on spans, reply details and
 answer outcomes."""
 
+import json
+import logging
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -122,3 +125,34 @@ def test_an_https_model_server_defaults_to_port_443(
         "rerank.test",
         443,
     )
+
+
+def log_line(message: str, exc_info: Any = None) -> dict[str, str]:
+    record = logging.LogRecord("limespec", logging.ERROR, "", 0, message, (), exc_info)
+    parsed: dict[str, str] = json.loads(telemetry.JsonFormatter().format(record))
+    return parsed
+
+
+def test_a_log_line_inside_a_span_carries_its_trace_id(
+    spans: InMemorySpanExporter,
+) -> None:
+    with telemetry.span("answer") as step:
+        line = log_line("model server slow")
+
+    context = step.get_span_context()
+    assert line["message"] == "model server slow"
+    assert (line["level"], line["logger"]) == ("ERROR", "limespec")
+    assert line["trace_id"] == format(context.trace_id, "032x")
+    assert line["span_id"] == format(context.span_id, "016x")
+    assert line["trace_flags"] == format(context.trace_flags, "02x")
+    assert line["time"].endswith("+00:00")
+
+
+def test_a_log_line_outside_a_span_has_no_trace_id_but_keeps_the_error() -> None:
+    try:
+        raise ValueError("no index")
+    except ValueError:
+        line = log_line("startup failed", sys.exc_info())
+
+    assert "trace_id" not in line
+    assert line["exception"].endswith("ValueError: no index")

@@ -8,7 +8,7 @@ from contextlib import closing
 import psycopg
 import uvicorn
 
-from limespec import assistant, config, llm
+from limespec import assistant, config, llm, telemetry
 from limespec.app import app
 from limespec.ingest import IngestError, ingest, ingest_postgres
 from limespec.retrieve import search
@@ -77,8 +77,16 @@ def run_search(question: str) -> None:
 
 
 def run_serve(port: int) -> None:
-    # uvicorn prints the address once it is listening, or why it could not start.
-    uvicorn.run(app, host=config.APP_HOST, port=port)
+    # uvicorn logs the address once it is listening, or why it could not start. Its
+    # access lines are off: request spans and metrics record every request, and the
+    # page's query string would put questions in the log.
+    uvicorn.run(
+        app,
+        host=config.APP_HOST,
+        port=port,
+        log_config=telemetry.LOG_CONFIG,
+        access_log=False,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

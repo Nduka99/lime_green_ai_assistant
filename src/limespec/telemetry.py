@@ -1,5 +1,6 @@
-"""Traces and metrics: a span for each answer stage and model call, and metrics for
-model-call durations, tokens and answer outcomes.
+"""Traces, metrics and logs: a span for each answer stage and model call, metrics
+for model-call durations, tokens and answer outcomes, and JSON log lines that carry
+the current trace id.
 
 Spans go over OTLP/HTTP to OTEL_EXPORTER_OTLP_TRACES_ENDPOINT and metrics to
 OTEL_EXPORTER_OTLP_METRICS_ENDPOINT when they are set (deploy/compose.yaml runs
@@ -21,11 +22,15 @@ One answer's trace:
           chat                    the answer request
 """
 
+import json
+import logging
 import os
 import time
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -116,6 +121,44 @@ def meter_provider() -> MeterProvider:
     return MeterProvider(metric_readers=readers, resource=RESOURCE)
 
 
+class JsonFormatter(logging.Formatter):
+    """One JSON object per log line. Inside a span it carries `trace_id`, `span_id`
+    and `trace_flags`, OpenTelemetry's stable fields for JSON logs, so a line leads
+    to its trace."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        line: dict[str, str] = {
+            "time": datetime.fromtimestamp(record.created, UTC).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        context = get_current_span().get_span_context()
+        if context.is_valid:
+            line["trace_id"] = format(context.trace_id, "032x")
+            line["span_id"] = format(context.span_id, "016x")
+            line["trace_flags"] = format(context.trace_flags, "02x")
+        if record.exc_info:
+            line["exception"] = self.formatException(record.exc_info)
+        return json.dumps(line)
+
+
+# The server's logging: JSON lines on stdout. Where they are kept is the deployment's
+# job (Twelve-Factor); in containers the engine collects stdout.
+LOG_CONFIG: dict[str, Any] = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"json": {"()": JsonFormatter}},
+    "handlers": {
+        "stdout": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+            "stream": "ext://sys.stdout",
+        }
+    },
+    "root": {"handlers": ["stdout"], "level": "INFO"},
+}
+
 tracers = tracer_provider()
 tracer = tracers.get_tracer("limespec")
 meters = meter_provider()
@@ -125,12 +168,13 @@ metrics = instruments(meters.get_meter("limespec"))
 def instrument(app: FastAPI) -> None:
     """A server span and duration metric for every request, parent of the answer's
     spans. Health probes and the ASGI per-message spans (one per streamed event) are
-    left out as noise."""
+    left out as noise. So are the page and /api/answer: they carry the question in
+    the query string, which a request span records (their answers are still traced)."""
     FastAPIInstrumentor.instrument_app(
         app,
         tracer_provider=tracers,
         meter_provider=meters,
-        excluded_urls="healthz,readyz",
+        excluded_urls=r"healthz,readyz,/api/answer$,://[^/]+/$",
         exclude_spans=["receive", "send"],
     )
 

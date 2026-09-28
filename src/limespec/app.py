@@ -7,6 +7,7 @@ an operational error: a clear message with HTTP 503, never an answer.
 """
 
 import contextvars
+import logging
 import queue
 import threading
 from collections.abc import Iterator
@@ -26,6 +27,7 @@ from limespec.view import AnswerView, view
 
 app = FastAPI(title="Lime Green Assistant")
 telemetry.instrument(app)
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
@@ -87,6 +89,7 @@ def create_answer(request: AnswerRequest) -> RecordedAnswer:
     try:
         result, answer_id = assistant.ask_and_record(request.question)
     except (IngestError, ModelServerError) as problem:
+        logger.warning("answer failed: %s", problem)
         raise HTTPException(status_code=503, detail=str(problem)) from problem
     return {"id": answer_id, "answer": view(result)}
 
@@ -104,6 +107,7 @@ def stream_answer(request: AnswerRequest) -> Iterator[ServerSentEvent]:
         try:
             result, answer_id = assistant.ask_and_record(request.question, report)
         except (IngestError, ModelServerError) as problem:
+            logger.warning("answer failed: %s", problem)
             events.put(ServerSentEvent(event="error", data={"detail": str(problem)}))
         except Exception as error:  # a bug: raised below, where the server logs it
             events.put(error)

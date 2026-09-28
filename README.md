@@ -230,6 +230,8 @@ To trace and measure answers, start VictoriaTraces and VictoriaMetrics inside WS
 stage and per model call (token counts, no question or answer text), at
 http://localhost:10428/select/vmui. Metrics (model-call durations, tokens, answers by
 status, claims kept and removed, request durations) are at http://localhost:8428/vmui.
+`limespec serve` writes its log as JSON lines on stdout; a line written during an
+answer carries that answer's `trace_id`.
 
 ## Tests
 
