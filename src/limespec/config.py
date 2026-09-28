@@ -3,12 +3,17 @@
 Paths are relative to the repository root, where every command is run.
 """
 
+import os
 from pathlib import Path
 
 SITE = "https://www.lime-green.co.uk/"
 SOURCES_FILE = Path("sources.txt")
 PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
-DATABASE = Path("data/limespec.db")  # the local index; never committed
+# The Postgres index (deploy/compose.yaml). It holds a password, so it comes from the
+# environment: copy .env.example to .env and run `uv run --env-file .env ...`.
+DATABASE_URL = os.environ.get("LIMESPEC_DATABASE_URL", "")
+# The database is on this machine; psycopg's own default waits 130 s before failing.
+DATABASE_CONNECT_TIMEOUT_SECONDS = 5
 
 USER_AGENT = "lime-green-assistant/0.1 (technical interview exercise)"
 REQUEST_DELAY_SECONDS = 1.0
@@ -25,6 +30,9 @@ QUERY_INSTRUCTION = (
 )
 
 RERANK_URL = "http://127.0.0.1:8082/v1/rerank"
+# The model servers' key (llama-server --api-key), a secret, so it comes from the
+# environment (.env). Without it no key is sent.
+MODEL_API_KEY = os.environ.get("LIMESPEC_MODEL_API_KEY", "")
 SEARCH_TIMEOUT_SECONDS = 120.0  # embedding or reranking one request
 
 # Longer sections split between paragraphs, and a long paragraph at sentence ends;
@@ -57,3 +65,8 @@ CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
 # another.
 APP_HOST = "127.0.0.1"
 APP_PORT = 8090
+# The API refuses longer questions (OWASP LLM10, unbounded consumption). The longest
+# question in the evaluation sets is 237 characters.
+MAX_QUESTION_CHARS = 1000
+# /readyz asks each model server's /health; a loaded server answers at once.
+HEALTH_TIMEOUT_SECONDS = 2.0

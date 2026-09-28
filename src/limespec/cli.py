@@ -3,19 +3,20 @@ web page, and search shows what retrieval finds."""
 
 import argparse
 import sys
-from contextlib import closing
 
+import psycopg
 import uvicorn
 
-from limespec import assistant, config, llm
+from limespec import assistant, config, llm, store, telemetry
 from limespec.app import app
 from limespec.ingest import IngestError, ingest
-from limespec.retrieve import search
 from limespec.view import AnswerView, view
 
 
 def run_ingest() -> None:
-    manifest = ingest(llm.embed)
+    with assistant.connect() as conn:
+        version, manifest = ingest(conn, llm.embed)
+    print(f"index version: {version} (live)")
     for key, value in manifest.items():
         print(f"{key}: {value}")
 
@@ -56,22 +57,33 @@ def run_ask(question: str | None) -> None:
 
 
 def run_search(question: str) -> None:
-    with closing(assistant.open_index()) as conn:
-        passages = search(conn, question, llm.embed, llm.rerank)
+    with assistant.connect() as conn:
+        version = assistant.live_index(conn)
+        passages = store.search(conn, version, question, llm.embed, llm.rerank)
     for rank, passage in enumerate(passages, start=1):
         print(f"{rank}. {passage.title} › {passage.heading}\n   {passage.url}")
         print(f"   {passage.text[:200]!r}")
 
 
 def run_serve(port: int) -> None:
-    # uvicorn prints the address once it is listening, or why it could not start.
-    uvicorn.run(app, host=config.APP_HOST, port=port)
+    # uvicorn logs the address once it is listening, or why it could not start. Its
+    # access lines are off: request spans and metrics record every request, and the
+    # page's query string would put questions in the log.
+    uvicorn.run(
+        app,
+        host=config.APP_HOST,
+        port=port,
+        log_config=telemetry.LOG_CONFIG,
+        access_log=False,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="limespec", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("ingest", help="fetch the pages in sources.txt and index them")
+    commands.add_parser(
+        "ingest", help="index the pages in sources.txt as a new live Postgres version"
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -88,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             run_serve(args.port)
         else:
             run_search(args.question)
-    except (IngestError, llm.ModelServerError) as error:
+    except (IngestError, llm.ModelServerError, psycopg.Error) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

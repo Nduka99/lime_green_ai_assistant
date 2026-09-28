@@ -4,34 +4,26 @@ from typing import Any
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, llm
+from limespec import assistant, cli, config, llm, store, telemetry
 from limespec.app import app
-from limespec.ingest import build_index
+from limespec.ingest import ingest
 from limespec.models import Answer
 from limespec.retrieve import Embed, Rerank
 
 
-def test_ingest_prints_the_manifest(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(cli, "ingest", lambda embed: {"pages": "68"})
-
-    assert cli.main(["ingest"]) == 0
-    assert "pages: 68" in capsys.readouterr().out
-
-
 def test_search_prints_ranked_passages_with_their_pages(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    fixture_pages: list[tuple[str, bytes, str]],
-    fake_embed: Embed,
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
     fake_rerank: Rerank,
 ) -> None:
-    database = tmp_path / "index.db"
-    build_index(database, fixture_pages, fake_embed)
-    monkeypatch.setattr(config, "DATABASE", database)
-    monkeypatch.setattr(llm, "embed", fake_embed)
+    ingest(pg, fake_embed_1024)
+    pg.commit()
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
     monkeypatch.setattr(llm, "rerank", fake_rerank)
 
     assert cli.main(["search", "Do you deliver on Saturdays?"]) == 0
@@ -40,26 +32,16 @@ def test_search_prints_ranked_passages_with_their_pages(
     assert "https://example.test/support/faq" in output
 
 
-def test_search_without_an_index_explains_what_to_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(config, "DATABASE", tmp_path / "missing.db")
-
-    assert cli.main(["search", "anything"]) == 1
-    assert "run `limespec ingest` first" in capsys.readouterr().err
-
-
-def test_a_damaged_index_is_an_operational_error(
-    tmp_path: Path,
+def test_search_without_a_live_index_explains_what_to_run(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    postgres_url: str,
+    pg: store.Connection,
 ) -> None:
-    database = tmp_path / "damaged.db"
-    database.write_bytes(b"not a SQLite database")
-    monkeypatch.setattr(config, "DATABASE", database)
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
 
-    assert cli.main(["ask", "anything"]) == 1
-    assert "run `limespec ingest` to rebuild it" in capsys.readouterr().err
+    assert cli.main(["search", "anything"]) == 1
+    assert "no live Postgres index" in capsys.readouterr().err
 
 
 def test_ask_prints_the_answer_then_numbered_sources(
@@ -142,18 +124,65 @@ def test_serve_runs_the_web_page_on_this_machine_only(
 
     assert cli.main(["serve"]) == 0
     assert cli.main(["serve", "--port", "8123"]) == 0
+    logging = {"log_config": telemetry.LOG_CONFIG, "access_log": False}
     assert calls == [
-        (app, {"host": "127.0.0.1", "port": 8090}),
-        (app, {"host": "127.0.0.1", "port": 8123}),
+        (app, {"host": "127.0.0.1", "port": 8090, **logging}),
+        (app, {"host": "127.0.0.1", "port": 8123, **logging}),
     ]
 
 
-def test_model_server_errors_are_reported_not_raised(
+def test_ingest_needs_its_database_url(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def failing_ingest(embed: Embed) -> dict[str, str]:
+    monkeypatch.setattr(config, "DATABASE_URL", "")
+
+    assert cli.main(["ingest"]) == 1
+    assert "LIMESPEC_DATABASE_URL is not set" in capsys.readouterr().err
+
+
+def test_ingest_writes_a_live_version_and_prints_its_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+
+    assert cli.main(["ingest"]) == 0
+    live = store.live_version(pg)
+    assert live is not None
+    output = capsys.readouterr().out
+    assert output.startswith(f"index version: {live[0]} (live)\n")
+    assert "passages: 2" in output
+
+
+def test_an_unreachable_postgres_is_reported_not_raised(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+) -> None:
+    # Nothing listens on port 9; on Windows the attempt waits out the timeout.
+    monkeypatch.setattr(config, "DATABASE_URL", "postgresql://x:y@127.0.0.1:9/z")
+    monkeypatch.setattr(config, "DATABASE_CONNECT_TIMEOUT_SECONDS", 1)
+
+    assert cli.main(["ingest"]) == 1
+    assert capsys.readouterr().err.startswith("error: cannot reach the Postgres index")
+
+
+def test_model_server_errors_are_reported_not_raised(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    postgres_url: str,
+) -> None:
+    def failing_ingest(
+        conn: store.Connection, embed: Embed
+    ) -> tuple[int, dict[str, str]]:
         raise llm.ModelServerError("embedding server at http://127.0.0.1:8081 failed")
 
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
     monkeypatch.setattr(cli, "ingest", failing_ingest)
 
     assert cli.main(["ingest"]) == 1

@@ -8,6 +8,12 @@ Quotation checks establish where the words came from. They do not prove that a
 claim interprets them correctly or answers every part of a question. The results
 below show both successes and remaining failures.
 
+> **Status, September 2026.** This repository is being developed into a
+> production platform. The interview submission is tag `submission-v2`; the
+> version every later change is measured against is tag `v5-baseline`. The
+> submission's evaluation notebook and result files stay at that commit,
+> [`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe).
+
 ```text
 question -> keyword + vector search -> reranking -> local LLM
          -> quote, number and regulation checks -> answer with sources
@@ -19,7 +25,7 @@ Real output from the shipped setup (Qwen3.6-35B-A3B on an 8 GB laptop GPU), one
 question for each kind the brief asks to test. Links are shortened here; each
 opens the live page at the quoted sentence.
 
-**Straightforward:** `uv run limespec ask "Does Duro lime render base coat contain any cement?"`
+**Straightforward:** `uv run --env-file .env limespec ask "Does Duro lime render base coat contain any cement?"`
 
 ```text
 Answer:
@@ -31,7 +37,7 @@ Sources:
     https://www.lime-green.co.uk/products/lime-render/duro#:~:text=Duro%20lime%20render…
 ```
 
-**Several sources** (the brief's example question): `uv run limespec ask "What products are suitable for lime-based external finishes?"`
+**Several sources** (the brief's example question): `uv run --env-file .env limespec ask "What products are suitable for lime-based external finishes?"`
 
 ```text
 Answer:
@@ -61,7 +67,7 @@ This answer is supported but incomplete. It misses Tradirend, the third finish
 coat, and its first claim joins a general line about the range to a Natural
 Finish detail. Every model tested missed Tradirend; *Results* explains why.
 
-**Insufficient information:** `uv run limespec ask "How much does a bag of Natural Lime Mortar cost, and do you offer free delivery?"`
+**Insufficient information:** `uv run --env-file .env limespec ask "How much does a bag of Natural Lime Mortar cost, and do you offer free delivery?"`
 
 ```text
 Answer:
@@ -98,13 +104,15 @@ application is about 1,400 lines in `src/limespec/`.
   level and Nemotron behind, so Qwen stayed. It uses about 3 billion of its 35
   billion parameters per token, so its expert layers sit in system RAM while search
   stays on the 8 GB graphics card.
-- **Two kinds of search, then a reranker.** Keyword search (SQLite FTS5) finds exact
+- **Two kinds of search, then a reranker.** Keyword search (BM25) finds exact
   product names and vector search (Qwen3-Embedding 0.6B) finds the same idea in
   other words; reciprocal-rank fusion merges the two lists, and a cross-encoder
   (BGE v2-m3) reorders the best 20 so the answer passage comes first more often.
-- **SQLite, not a vector database or RAG framework.** 315 passages fit in one file
-  with no database service to run; every step is plain Python that can be read and
-  tested.
+- **Postgres, not a separate vector database or RAG framework.** The submission kept
+  its 315 passages in one SQLite file; the platform keeps them in Postgres (pgvector
+  and BM25), with every index version and answer recorded, measured to rank as well
+  (`evaluation/reports/X2-store-parity.md`). Every step is plain Python that can be read
+  and tested.
 - **Evidence checked by code, not trusted.** The model must quote; code decides what
   the reader sees. A claim whose quote, numbers or named regulations are not in the
   cited passage is removed, never repaired, and the reader sees a caution.
@@ -130,32 +138,25 @@ application is about 1,400 lines in `src/limespec/`.
   describes an exposure. These decisions can fail even when quotation checks pass.
 - A fresh ingest reads the current website. Page counts, passage counts and
   answers can change if the site changes; the saved evaluation describes the
-  September 2026 snapshot, whose fingerprints are recorded in the notebook.
+  September 2026 snapshot, whose fingerprints are recorded in the submission's
+  notebook (commit `377a4fe`).
 
 ## Install
 
 You need Python 3.12, a recent
 [llama.cpp release](https://github.com/ggml-org/llama.cpp/releases) with GPU
-support (tested with build b10298), and [uv](https://docs.astral.sh/uv/) or pip.
+support (tested with build b10298), and [uv](https://docs.astral.sh/uv/).
 Put `llama-server` on your `PATH`. The tested setup used Windows, an 8 GB NVIDIA
 GPU and 64 GB of RAM; the Python application itself has no platform-specific
 paths.
 
-One command installs everything: the application, its tests and the notebook.
+One command installs everything: the application and its tests.
 
 ```powershell
 uv sync --all-groups --locked
 ```
 
-Without uv, `requirements.txt` pins the same versions (generated from `uv.lock`):
-
-```powershell
-python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-With pip, drop the `uv run` prefix from the commands below.
+`uv.lock` pins every version; uv recommends it over a second `requirements.txt`.
 
 ## Build the search index
 
@@ -170,18 +171,20 @@ pages and the index (`data/`) stay on your machine and are never committed.
    llama-server -m models/Qwen3-Embedding-0.6B-f16.gguf --embedding --pooling last -c 2048 -b 2048 -ub 2048 -ngl all --fit off --port 8081
    ```
 
-2. Fetch the pages listed in `sources.txt` (cached in `data/site/`, one second
-   apart) and build the index in `data/limespec.db`:
+2. Start Postgres inside WSL (`docker compose -f deploy/compose.yaml --profile dev
+   up -d`), copy `.env.example` to `.env` and set its values, then fetch the pages
+   listed in `sources.txt` (cached in `data/site/`, one second apart) and index them.
+   Each run adds a new index version and makes it live:
 
    ```powershell
-   uv run limespec ingest
+   uv run --env-file .env limespec ingest
    ```
 
 3. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 
    ```powershell
-   uv run limespec search "What is Grippa used for?"
+   uv run --env-file .env limespec search "What is Grippa used for?"
    ```
 
 ## Ask questions
@@ -211,21 +214,32 @@ llama-server -m models/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf -c 8192 -np 1 -ngl 
 Then ask on the command line, or run the web page:
 
 ```powershell
-uv run limespec ask "What is Grippa used for?"
-uv run limespec ask      # prompts "Ask a question:"
-uv run limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
+uv run --env-file .env limespec ask "What is Grippa used for?"
+uv run --env-file .env limespec ask      # prompts "Ask a question:"
+uv run --env-file .env limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
 ```
 
-The command line, page and JSON endpoint (`/api/answer?q=...`) call the same
-`assistant.ask()` and use the same checks and presentation data. Separate model
-requests can still produce different wording, even with a fixed seed.
+The command line, the page and the JSON API (`POST /api/v1/answers`, or
+`/api/v1/answers/stream` for stage-by-stage progress) give the same answer from the
+same checks and presentation data. Separate model requests can still produce
+different wording, even with a fixed seed.
+
+To trace and measure answers, start VictoriaTraces and VictoriaMetrics inside WSL
+(`docker compose -f deploy/compose.yaml --profile observability up -d`) and serve with
+`uv run --env-file .env limespec serve`. Each request is one trace, with a span per
+stage and per model call (token counts, no question or answer text), at
+http://localhost:10428/select/vmui. Metrics (model-call durations, tokens, answers by
+status, claims kept and removed, request durations) are at http://localhost:8428/vmui.
+`limespec serve` writes its log as JSON lines on stdout; a line written during an
+answer carries that answer's `trace_id`.
 
 ## Tests
 
 ```powershell
-uv run pytest                  # 151 tests, 100% coverage, no servers or models needed
+uv run python scripts/check.py # every check a change must pass, in one command
+uv run pytest                  # 196 tests, 100% coverage; no models, but the dev Postgres
 uv run pytest -m live --no-cov # the brief's three kinds of question, with the servers running
-uv run ruff check . ; uv run mypy src tests
+uv run ruff check . ; uv run mypy src tests evaluation
 ```
 
 The offline tests use invented pages and a fake model, so they check the rules
@@ -233,18 +247,34 @@ themselves: quote matching, number and regulation checks, refusals, safety
 routing, retrieval fusion and reranking, page parsing, malformed server replies,
 and that the command line and web page render the same answer data.
 
-## Results
+The Postgres tests (`tests/test_store.py`) use a throwaway database on the
+development server, so start it first, from the repository root inside WSL:
+`docker compose -f deploy/compose.yaml --profile dev up -d`.
 
-`notebook/engine_evaluation.ipynb` shows the measurement behind each engine change,
-then both evaluations below. It reads the small files in `evaluation/results/`,
-opens on GitHub with its charts, and needs no models or GPU to run:
+### Measurement harness
+
+`evaluation/` scores keyed question sets. Keys and saved runs stay in git-ignored
+`data/eval/`; `evaluation/sets.json` records each file's SHA-256, and every
+command refuses a set whose files have changed. Reports are in
+`evaluation/reports/`.
 
 ```powershell
-uv run jupyter lab notebook/engine_evaluation.ipynb
+uv run python -m evaluation verify                        # check every set's hashes
+uv run python -m evaluation retrieval frozen90            # IR measures from saved runs
+uv run python -m evaluation grades heldout-v3 sitting-topk
+uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8095 --run platform
+uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run v5 --endpoint /api/answer   # the submitted v5
+uv run python -m evaluation blind heldout-v3 A.json B.json --seed 28 --out DIR   # differing answers, runs hidden
+uv run python -m evaluation unblind heldout-v3 A.json B.json --dir DIR           # after DIR/verdicts.json is written
 ```
 
-In VS Code, open the notebook and choose the `.venv` Python environment as its
-kernel.
+## Results
+
+These are the submission's results. Its notebook, which shows the measurement behind
+each engine change and charts both evaluations below, and the result files it reads
+are at commit
+[`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe)
+(`notebook/engine_evaluation.ipynb`, `evaluation/results/`).
 
 **Held-out comparison (run last).** 60 new questions (12 cases, each asked five ways,
 including rushed and misspelt wordings) were typed into the running web page one at
@@ -268,7 +298,8 @@ The held-out questions are harder than the frozen set: 40 of the 60 need several
 pages or several parts, and 15 are answered only outside the indexed pages (image
 descriptions and the sample-order and colour pages). Every held-out answer was also
 graded against the locked key by a blind LLM grader, on the frozen evaluation's
-sound / partial / wrong scale (`evaluation/results/heldout-v2-graded.json`):
+sound / partial / wrong scale (`evaluation/results/heldout-v2-graded.json` at
+`377a4fe`):
 
 | Generator | Sound / partial / wrong, 45 answerable from the indexed pages | All 60 |
 |---|---|---|
@@ -291,7 +322,7 @@ judges graded every answer, and I settled their disagreements.
 | Nemotron 3 Nano 4B | 36 / 23 / 31 | 5.2 s |
 
 The readable record of these questions and expected answers is
-`evaluation/questions.md`.
+`evaluation/questions.md` at `377a4fe`.
 
 **What worked**
 

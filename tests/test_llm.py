@@ -1,8 +1,11 @@
 import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind, StatusCode
 
 from limespec import config, llm
 
@@ -305,3 +308,152 @@ def test_unreachable_embedding_server_is_a_clear_error(
 
     with pytest.raises(llm.ModelServerError, match=config.EMBEDDING_URL):
         llm.embed(["question"])
+
+
+def test_a_server_is_healthy_only_when_its_health_route_answers_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+    statuses = {
+        "http://127.0.0.1:8081/health": 200,
+        "http://127.0.0.1:8080/health": 503,
+    }
+
+    def get(url: str, **kwargs: Any) -> httpx.Response:
+        asked.append(url)
+        return httpx.Response(statuses[url], request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", get)
+
+    assert llm.healthy("http://127.0.0.1:8081/v1/embeddings") is True
+    assert llm.healthy("http://127.0.0.1:8080/v1/chat/completions") is False  # loading
+    assert asked == list(statuses)
+
+
+def test_an_unreachable_server_is_not_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get(url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", get)
+
+    assert llm.healthy(config.RERANK_URL) is False
+
+
+def test_a_chat_request_is_traced_with_its_tokens_but_no_text(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        body = chat_reply(json.dumps({"claims": []}))
+        body.update(
+            model="qwen.gguf", usage={"prompt_tokens": 812, "completion_tokens": 9}
+        )
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.chat("secret system text", "secret user text", SCHEMA)
+
+    [chat] = spans.get_finished_spans()
+    assert (chat.name, chat.kind) == ("chat", SpanKind.CLIENT)
+    assert chat.attributes is not None
+    attributes = dict(chat.attributes)
+    assert attributes["gen_ai.operation.name"] == "chat"
+    assert attributes["gen_ai.provider.name"] == "llama.cpp"
+    assert attributes["gen_ai.response.model"] == "qwen.gguf"
+    assert attributes["gen_ai.response.finish_reasons"] == ("stop",)
+    assert attributes["gen_ai.usage.input_tokens"] == 812
+    assert attributes["gen_ai.usage.output_tokens"] == 9
+    assert attributes["server.port"] == 8080
+    assert not any("secret" in str(value) for value in attributes.values())
+
+
+def test_search_requests_are_traced_as_embeddings_and_rerank(
+    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        else:
+            body = {"results": [{"index": 0, "relevance_score": 1.0}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.embed(["question"])
+    llm.rerank("question", ["passage"])
+
+    names = [span.name for span in spans.get_finished_spans()]
+    assert names == [f"embeddings {config.EMBEDDING_MODEL}", "rerank"]
+
+
+def test_a_failed_model_request_ends_its_span_with_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    spans: InMemorySpanExporter,
+    metric_points: Callable[[str], list[Any]],
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    with pytest.raises(llm.ModelServerError):
+        llm.chat("s", "u", SCHEMA)
+
+    [chat] = spans.get_finished_spans()
+    assert chat.status.status_code is StatusCode.ERROR
+    assert chat.attributes is not None
+    assert chat.attributes["error.type"] == "ModelServerError"
+    [duration] = metric_points("gen_ai.client.operation.duration")
+    assert duration.attributes["error.type"] == "ModelServerError"
+
+
+def test_model_requests_are_measured_by_operation_with_their_tokens(
+    monkeypatch: pytest.MonkeyPatch, metric_points: Callable[[str], list[Any]]
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        else:
+            body = chat_reply(json.dumps({"claims": []}))
+            body["usage"] = {"prompt_tokens": 812, "completion_tokens": 9}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.embed(["question"])
+    llm.chat("s", "u", SCHEMA)
+
+    durations = metric_points("gen_ai.client.operation.duration")
+    operations = sorted(p.attributes["gen_ai.operation.name"] for p in durations)
+    assert operations == ["chat", "embeddings"]
+    [inputs] = metric_points("gen_ai.client.inference.operation.input_tokens")
+    [outputs] = metric_points("gen_ai.client.inference.operation.output_tokens")
+    assert (inputs.sum, outputs.sum) == (812, 9)
+
+
+def test_model_requests_carry_the_key_when_one_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, str]] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.append(kwargs["headers"])
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        elif url == config.RERANK_URL:
+            body = {"results": [{"index": 0, "relevance_score": 1.0}]}
+        else:
+            body = chat_reply(json.dumps({"claims": []}))
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(config, "MODEL_API_KEY", "")
+
+    llm.embed(["question"])
+    monkeypatch.setattr(config, "MODEL_API_KEY", "k3y")
+    llm.embed(["question"])
+    llm.rerank("question", ["passage"])
+    llm.chat("s", "u", SCHEMA)
+
+    bearer = {"Authorization": "Bearer k3y"}
+    assert sent == [{}, bearer, bearer, bearer]

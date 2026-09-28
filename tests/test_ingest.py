@@ -1,5 +1,4 @@
 import hashlib
-import sqlite3
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -7,10 +6,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from limespec import config
+from limespec import config, store
 from limespec.ingest import (
     IngestError,
-    build_index,
     cache_path,
     corpus_hash,
     extract_sections,
@@ -18,6 +16,7 @@ from limespec.ingest import (
     fetch_page,
     ingest,
     page_passages,
+    prepare_index,
     read_sources,
     split_section,
 )
@@ -129,34 +128,28 @@ def test_repeated_text_within_a_page_is_kept_once() -> None:
 # --- Index --------------------------------------------------------------------
 
 
-def test_build_index_stores_passages_per_page_with_exact_byte_hashes(
-    tmp_path: Path, fixture_pages: list[tuple[str, bytes, str]], fake_embed: Embed
+def test_an_index_keeps_passages_per_page_with_exact_byte_hashes(
+    fixture_pages: list[tuple[str, bytes, str]], fake_embed: Embed
 ) -> None:
-    database = tmp_path / "index.db"
     # The same page under a second URL keeps its own passages and provenance.
     copy_url = "https://example.test/copy"
     windows_bytes = fixture_pages[0][1].replace(b"\n", b"\r\n")
     copy = (copy_url, windows_bytes, fixture_pages[0][2])
 
-    manifest = build_index(database, [*fixture_pages, copy], fake_embed)
+    prepared = prepare_index([*fixture_pages, copy], fake_embed)
 
-    assert manifest["pages"] == "5"
-    assert manifest["passages"] == "10"
-    with sqlite3.connect(database) as conn:
-        stored = dict(conn.execute("SELECT url, sha256 FROM pages"))
-        copy_passages = conn.execute(
-            "SELECT count(*) FROM passages WHERE url = ?", (copy_url,)
-        ).fetchone()[0]
-        faq_text = conn.execute(
-            "SELECT text FROM passages WHERE heading LIKE 'How long%'"
-        ).fetchone()[0]
-        stored_manifest = dict(conn.execute("SELECT key, value FROM meta"))
-    assert stored[copy_url] == hashlib.sha256(windows_bytes).hexdigest()
-    assert copy_passages == 2
+    assert prepared.manifest["pages"] == "5"
+    assert prepared.manifest["passages"] == "10"
+    assert len(prepared.vectors) == 10
+    hashes = {url: sha256 for url, _, _, sha256 in prepared.pages}
+    assert hashes[copy_url] == hashlib.sha256(windows_bytes).hexdigest()
+    assert sum(url == copy_url for url, _, _, _ in prepared.passages) == 2
+    faq_text = next(
+        text for _, _, heading, text in prepared.passages if heading.startswith("How")
+    )
     assert (
         faq_text == "How long does Mortex take to set?\nAbout two days in mild weather."
     )
-    assert stored_manifest == manifest
 
 
 def test_corpus_hash_depends_on_urls_and_hashes_not_order() -> None:
@@ -175,39 +168,40 @@ def test_passage_hash_ignores_byte_changes_that_do_not_change_the_text(
     url, raw, fetched = fixture_pages[0]
     stamped = raw.replace(b"</main>", b'<span data-rt="0.02"></span></main>')
 
-    first = build_index(tmp_path / "a.db", [(url, raw, fetched)], fake_embed)
-    second = build_index(tmp_path / "b.db", [(url, stamped, fetched)], fake_embed)
+    first = prepare_index([(url, raw, fetched)], fake_embed).manifest
+    second = prepare_index([(url, stamped, fetched)], fake_embed).manifest
 
     assert first["corpus_sha256"] != second["corpus_sha256"]
     assert first["passages_sha256"] == second["passages_sha256"]
 
 
-def test_a_failed_rebuild_leaves_the_previous_index_intact(
-    tmp_path: Path, fixture_pages: list[tuple[str, bytes, str]], fake_embed: Embed
+def test_a_failed_rebuild_leaves_the_live_index_intact(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
 ) -> None:
-    database = tmp_path / "index.db"
-    first = build_index(database, fixture_pages, fake_embed)
+    first, _ = ingest(pg, fake_embed_1024)
+    pg.commit()
 
     def one_vector_short(texts: list[str]) -> list[list[float]]:
-        return fake_embed(texts)[:-1]
+        return fake_embed_1024(texts)[:-1]
 
     with pytest.raises(ValueError):
-        build_index(database, fixture_pages, one_vector_short)
+        ingest(pg, one_vector_short)
+    pg.rollback()
 
-    with sqlite3.connect(database) as conn:
-        assert dict(conn.execute("SELECT key, value FROM meta")) == first
+    assert store.live_version(pg) == (first, config.EMBEDDING_MODEL)
+    assert pg.execute("SELECT count(*) FROM index_versions").fetchone() == (1,)
 
 
 @pytest.mark.parametrize(
     ("raw", "reason"), [(b"\xff\xfe not utf-8", "utf-8"), (b"", "no <body>")]
 )
 def test_an_unreadable_page_is_reported_with_its_url(
-    tmp_path: Path, fake_embed: Embed, raw: bytes, reason: str
+    fake_embed: Embed, raw: bytes, reason: str
 ) -> None:
     pages = [("https://example.test/broken", raw, "2026-09-12T10:00:00+00:00")]
 
     with pytest.raises(IngestError, match=f"https://example.test/broken: .*{reason}"):
-        build_index(tmp_path / "index.db", pages, fake_embed)
+        prepare_index(pages, fake_embed)
 
 
 # --- Sources and the whole ingest --------------------------------------------
@@ -223,22 +217,19 @@ def test_read_sources_ignores_comments_and_blank_lines(tmp_path: Path) -> None:
     assert read_sources(sources) == ["https://example.test/a", "https://example.test/b"]
 
 
-def test_ingest_reads_settings_when_called_and_builds_from_the_cache(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_embed: Embed
+def test_ingest_makes_a_new_version_live_from_the_cache(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
 ) -> None:
-    url = "https://example.test/support/faq"
-    sources = tmp_path / "sources.txt"
-    sources.write_text(f"# test\n{url}\n")
-    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path / "site")
-    monkeypatch.setattr(config, "SOURCES_FILE", sources)
-    monkeypatch.setattr(config, "DATABASE", tmp_path / "index.db")
-    cache_path(url).parent.mkdir()
-    cache_path(url).write_bytes((FIXTURES / "faq.html").read_bytes())
+    first, _ = ingest(pg, fake_embed_1024)
+    second, manifest = ingest(pg, fake_embed_1024)
 
-    manifest = ingest(fake_embed)
-
-    assert (tmp_path / "index.db").exists()
+    assert store.live_version(pg) == (second, config.EMBEDDING_MODEL)
+    assert second != first
     assert (manifest["pages"], manifest["passages"]) == ("1", "2")
+    found = store.keyword_ranking(pg, second, "Do you deliver on Saturdays?", 5)
+    [top] = store.load_passages(pg, found[:1])
+    assert top.url == "https://example.test/support/faq"
+    assert top.heading == "Do you deliver on Saturdays?"
 
 
 # --- Polite acquisition --------------------------------------------------------

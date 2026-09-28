@@ -1,7 +1,7 @@
 """What a reader sees for one answer, as plain data shared by every interface.
 
-The command line prints it, the web page renders it and `/api/answer` returns it
-as JSON, so all three show the same status, claims and sources. It holds only
+The command line prints it, the web page renders it and the v1 API returns it as
+JSON, so all three show the same status, claims and sources. It holds only
 verified claims, their numbered citations, the fixed notice and, for a refusal,
 the closest pages. Claims removed by verification are never shown.
 """
