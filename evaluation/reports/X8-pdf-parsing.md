@@ -120,3 +120,9 @@ Class i"), so it must *end with* the truth header rather than contain it ("Class
 contained in "Class ii"; this is stricter than registered and can only lower Docling's
 score); and words are compared without punctuation at their edges, on both sides alike,
 because a rebuilt table row adds separators ("A1;").
+
+**Fix before any score, recorded here:** the first run stopped on the contents page
+(guide, page 2), which Docling returns as a table labelled `document_index`, not
+`table`. The reader now reads every item by what it carries (table rows, a figure's
+caption, text, or a key-value region's text cells), tested on invented items of each
+kind (`264784e` + this commit). No score had been computed.

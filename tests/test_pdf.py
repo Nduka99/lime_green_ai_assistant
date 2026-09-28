@@ -10,8 +10,9 @@ from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
 from docling_core.types.doc.common.content_layer import ContentLayer
 from docling_core.types.doc.common.reference import ProvenanceItem
 from docling_core.types.doc.document import DoclingDocument
+from docling_core.types.doc.items.key_value import GraphCell, GraphData
 from docling_core.types.doc.items.table.table_data import TableCell, TableData
-from docling_core.types.doc.labels import DocItemLabel
+from docling_core.types.doc.labels import DocItemLabel, GraphCellLabel
 
 from limespec import pdf
 from limespec.elements import Element, row_text
@@ -77,6 +78,17 @@ def datasheet() -> DoclingDocument:
     )
     doc.add_text(label=DocItemLabel.TEXT, text="no position")  # no provenance
     doc.add_table(data=TableData(num_rows=0, num_cols=0), prov=prov(page=2, top=300))
+    contents = TableData(
+        num_rows=1, num_cols=2, table_cells=[cell("Mixing", 0, 0), cell("1", 0, 1)]
+    )
+    doc.add_table(
+        data=contents, prov=prov(page=2, top=250), label=DocItemLabel.DOCUMENT_INDEX
+    )
+    pairs = [
+        GraphCell(label=GraphCellLabel.KEY, cell_id=0, text="pH", orig="pH"),
+        GraphCell(label=GraphCellLabel.VALUE, cell_id=1, text="11.2", orig="11.2"),
+    ]
+    doc.add_key_values(graph=GraphData(cells=pairs, links=[]), prov=prov(2, 200))
     return doc  # fmt: skip
 
 
@@ -96,6 +108,8 @@ def test_a_document_becomes_elements_in_reading_order() -> None:
         (2, "figure", ""),
         (2, "paragraph", "Mesh here"),
         (2, "furniture", "Page 2 of 2"),
+        (2, "table_row", "Mixing — 1"),
+        (2, "paragraph", "pH 11.2"),
     ]
 
 

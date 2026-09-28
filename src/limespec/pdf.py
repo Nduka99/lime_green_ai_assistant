@@ -128,11 +128,19 @@ def elements(document: DoclingDocument) -> list[Element]:
         if not getattr(item, "prov", None):
             continue
         path = tuple(heading for _, heading in section)
-        if label == "table":
+        # Read each item by what it carries: rows (a table, or a contents page read
+        # as one), a caption (a figure), text, or text cells (key-value and form
+        # regions).
+        if hasattr(item, "data"):
             tables += 1
             found += table_rows(item, tables, path, document)
             continue
-        text = item.caption_text(document) if label in FIGURES else item.text
+        if label in FIGURES:
+            text = item.caption_text(document)
+        elif hasattr(item, "text"):
+            text = item.text
+        else:
+            text = " ".join(cell.text for cell in item.graph.cells)
         if label in HEADINGS:
             level = 0 if label == "title" else item.level
             section = [(lvl, h) for lvl, h in section if lvl < level] + [(level, text)]
