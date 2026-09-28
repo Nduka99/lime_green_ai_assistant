@@ -781,3 +781,36 @@ too.
    grid, page by page. Text kept (against pypdf, which includes invisible text) is reported,
    with the invisible words counted.
 5. `scripts/check.py` passes.
+
+**Second amendment before code** (29 September 2026, after the first corpus run of the
+visible-only recovery, `f02d624`–`7157b5a`). Measured at word level over all 584 pages:
+
+- Item 1: pooled 0.99979; two pages below 0.99 (IWI guide p8, 36/37; EN classification
+  report p3, 141/143). Both are the gate script's fault: pdfium writes a hyphen that ends a
+  line it joins as U+FFFE (`EUI-22-SBI￾000041`), which the reader already writes back
+  as "-" and the script did not.
+- Item 2: 6 recovered lines (IWI guide p17) hold words the page does not show. A paragraph
+  of a placed drawing is clipped out of view, and the drawing's frame line crosses the
+  lines' boxes, so the line-level ink test accepted them. Docling's own reading also holds
+  fragments of that paragraph ("hat the stainless steel").
+- Item 3: 0.9977.
+- Not in the gate: 194 recovered lines repeat text Docling already has. Their only missing
+  "word" is a list bullet, which Docling leaves out of list items.
+- Also found: on the two Figma-exported carbon-footprint pages, the reader sees vector
+  outlines; the Type 3 text is an invisible layer over them (removing the path objects
+  erases the words; hiding or removing the text changes no pixel).
+
+**Change.** Visibility is decided per word, not per line:
+
+1. A word is visible when its centre lies on the page and drawing the page's text changes
+   the page's pixels inside the word's box (the page drawn with and without its text
+   objects, pdfium, 144 DPI).
+2. Text that draws nothing itself is a layer over another rendition (outlines, a scan):
+   invisible render mode, or a Type 3 font (the only font type with no `BaseFont`, PDF
+   32000-1 §9.6.5). Such a word is visible when the drawn page has ink in its box.
+3. A word must hold a letter or a digit; bullets and other symbols are never compared.
+4. A recovered line keeps only its visible words.
+5. The reader and the gate script both write U+FFFE as "-".
+
+The gate is unchanged. The gate script measures visibility with rules 1–3 and 5, in its
+own code.
