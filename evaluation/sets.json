@@ -40,7 +40,12 @@
     "sitting-topk/answers-k12.json": "d463ebdb0c73ab0c150c91d575663c7481497d8bdb850aa4ca2e5f00f1ee1885",
     "sitting-topk/answers-k20.json": "e428f003f0248912723d38b13b97e5b5b8d2b6665ae8b59fc869b5d4854881c7",
     "sitting-topk/answers-k8.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
-    "sitting-topk/grades.json": "dbeb1e41970bb3a197ab73e4389f6d3ad799882b9a10f070fbf34370329780dc"
+    "sitting-topk/grades.json": "dbeb1e41970bb3a197ab73e4389f6d3ad799882b9a10f070fbf34370329780dc",
+    "sitting-x2-answers/answers-x2-pg.json": "ff07b8bd885c126991bec0c22816810b5a85a0291e56e5431711f138e9c4442b",
+    "sitting-x2-answers/answers-x2-v5.json": "b04d8f06aa95d815c37394367d733c57e46ea06d93272063e13b8254e0651f41",
+    "sitting-x2-answers/order.json": "e3a396812a876ba7ac224a15b34ea9ca8c662881445f95f4e7542b684ed9c2f0",
+    "sitting-x2-answers/pairs.json": "5d759f6dae92f3a3fcf82a6b115fd0fb6456cc8a2831ab15f9aa18e649bdbf9a",
+    "sitting-x2-answers/verdicts.json": "b196886bedafb314fa9c78787bb175ada521d8b1007bbf3cff2d244f01352c5a"
    }
   }
  }

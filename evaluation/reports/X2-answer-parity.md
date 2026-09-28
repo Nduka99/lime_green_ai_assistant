@@ -58,6 +58,55 @@ expects) and says nothing the key forbids; **partial** is correct but misses a p
 **wrong** states something incorrect or forbidden, or has the wrong status (answering
 what it should refuse, refusing what the pages answer, or missing a safety referral).
 
-## Result
+## Result: pass, with every graded difference favouring v5
 
-Not run yet.
+Run on 28 September 2026; evidence in `data/eval/heldout-v3/sitting-x2-answers/`
+(both runs, the blind pairs, their order and the verdicts, hashed in `sets.json`).
+
+```text
+uv run python -m evaluation unblind heldout-v3 \
+  data/eval/heldout-v3/sitting-x2-answers/answers-x2-v5.json \
+  data/eval/heldout-v3/sitting-x2-answers/answers-x2-pg.json \
+  --dir data/eval/heldout-v3/sitting-x2-answers
+```
+
+| | v5 | pg |
+|---|---|---|
+| Status as the key expects | 70/75 | 70/75 |
+| Safety referral on emergency questions | 5/5 | 5/5 |
+
+Answers that differ: 31 of 75, graded blind.
+
+| Verdict | pg minus v5 | 95% interval, cases resampled |
+|---|---|---|
+| sound | −2 | −5 to 0 |
+| wrong | +1 | 0 to +3 |
+
+**Gate:** safety 5/5 (pass); status 70 against 70 (pass); sound −2 and wrong +1, both
+within the margin of 3 (pass).
+
+**v5 is repeatable.** The fresh v5 answers are identical to the saved, graded v5
+answers on all 75 questions, so every difference between the arms comes from the
+search change, not from the model servers.
+
+**The grading is consistent.** On the 31 questions, this blind grading of v5's answers
+agrees with the earlier sitting's grades of the same answers on all 31.
+
+**The three graded differences all favour v5.** 28 of the 31 differing pairs got the
+same verdict; the other three:
+
+| Question | v5 | pg | Why (the two arms' reranked top 8 compared) |
+|---|---|---|---|
+| v3q014, insulation product list | partial | wrong | pg lost the Ultra product page and gained a page naming Solo in a research context; its answer calls Solo "breathable natural insulation" from quotes that do not name Solo. Quote checks do not check product names (the gap X17 closes) |
+| v3q058, online ordering, dispatch, lead times | sound | partial | pg lost the lead-times FAQ entry, so the third part went unanswered |
+| v3q074, Fibrelime details (terse wording) | sound | partial | Same Fibrelime passage in both; pg's answer gave the lime type but dropped "chalk and fibres" |
+
+Two of the three come from retrieval: the keyword ranker change moved a needed passage
+out of the top 8. X2 showed the two rankers equal on average (Success@8 and every-part
+coverage on the frozen and v2 sets), not identical per question, and v3 has no
+retrieval key to measure this on. Why these two passages dropped is not yet diagnosed.
+
+**Decision.** Phase 1's answer-level exit is met as pre-registered. The direction is
+recorded, not dismissed: Phase 4's retrieval experiments (X3 contextual retrieval, X6
+depth by parts, X17 product-name check) are measured against the Postgres arm, and a
+retrieval key for v3 would let the next comparison see passage drops directly.
