@@ -477,3 +477,51 @@ lists do not count, whatever their alignment.
 
 Because of this mix, results are also reported table by table, and the lowest-table item
 guards against any single table carrying the pooled score.
+
+## Result, round 3: GLM-OCR passes and is selected
+
+Run on 28 September 2026 at `409ed54`, with code unchanged since `439de2f`. Outputs are in
+`data/runs/x8-r3/<arm>/`.
+
+| Measure | pypdf | docling | glm-ocr | paddleocr-vl | Gate |
+|---|---|---|---|---|---|
+| Table values placed | — | 0.875 | **0.984** | 0.932 | ≥ 0.95 |
+| Lowest table | — | 0.333 | **0.800** | 0.429 | ≥ 0.80 |
+| Text kept | 1.000 | 0.996 | 0.996 | 0.996 | ≥ 0.99 |
+| Table numbers | 1.000 | 1.000 | 1.000 | 1.000 | ≥ 0.99 |
+| Cells, header-dependent (round 1's measure) | — | 0.782 | 0.891 | 0.845 | reported |
+| Pairs / sentences | 0.759 / 0.988 | 0.621 / 0.988 | 0.621 / 0.988 | 0.621 / 0.988 | reported |
+| Cells unspelt | — | — | 5 of 600 | 8 of 621 | reported |
+| Seconds per page, mean (median) | — | 3.5 (2.2) | 7.1 (5.0) | 6.0 (4.1) | reported |
+| Hours for 573 pages | — | 0.6 | 1.1 | 1.0 | reported |
+| Peak RAM: reader + model server | — | 1.2 GB | 1.2 + 3.3 GB | 1.2 + 1.9 GB | reported |
+
+**Selection (rule fixed before the run):** only `glm-ocr` passes every gate item, so it wins.
+Docling reads the document, and GLM-OCR reads each table's structure, spelt in the PDF's own
+words.
+
+**Diagnosis, table by table:**
+
+- **Docling alone:** the four SDS transport tables score 0.333–0.500. Their two-line header
+  ("14.1 / UN / ID") and columns of dashes are misaligned by TableFormer. The GLM-OCR grid
+  reads all four fully.
+- **PaddleOCR-VL:** loses rows in three mixture tables (0.429–0.667) and one datasheet table
+  (0.750).
+- **Misses common to every arm, from the truth side:**
+  - the AMAGEL exposure table's dashes are drawn lines with no text layer, so no parser can
+    spell them (that table is 0.800 for all arms);
+  - the Eco-render Natural Finish datasheet's "W1" is printed in a font where 1 and I look alike, and the text layer differs from
+    the truth.
+- **GLM-OCR's one real miss:** a UK-REACH number wrapped across two lines (c068, 0.833).
+
+**Also decided by this experiment:**
+
+- Neither model's transcription passed its bar in round 2. The 8 low-text pages therefore
+  stay figures, found through alt text and image search (S3), and are not transcribed.
+- Known risks carried into S2 ingestion:
+  - docling-parse drops glyphs in the One Click LCA font; test docling-parse 7.22.1 first,
+    measured before any upgrade;
+  - the Docling crash on the IWI Installation Guide needs a retry, or another document
+    converted first, in a fresh process;
+  - GLM-OCR must run with the generator stopped: about 3 GB of VRAM and 3.3 GB of RAM, about
+    1.1 h for Lime Green's PDFs.
