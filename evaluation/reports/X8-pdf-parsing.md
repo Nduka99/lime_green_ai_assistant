@@ -638,3 +638,41 @@ reads), which is why the pairs on these pages fail in every arm.
 - S2's per-document validation report flags any page whose parser text keeps fewer than
   0.95 of the text layer's words, with its cause, so such pages stay visible.
 - To revisit when docling-parse fixes Type 3 decoding.
+
+## After X8: page images from pdfium (design and gate)
+
+Written on 28 September 2026, before pypdfium2 was installed.
+
+**Problem.** On Windows, docling-parse's threaded page renderer corrupts memory when its
+worker threads exit ([#357](https://github.com/docling-project/docling-parse/issues/357),
+open). The cause is thread-local objects in the renderer, freed after MinGW's emulated TLS
+storage. The reporter saw access violations with no crash, then unrelated Python objects
+corrupted.
+
+Measured here, with Python's fault handler on:
+
+- 20 Lime Green PDFs converted in one process gave **1 access violation, and the process
+  carried on**, so corruption would have been silent;
+- the IWI Installation Guide crashes a fresh process every time (6 of 6, with 7.22.1 too),
+  the same code path (`iterate_results` → `get_task`).
+
+Linux builds are unaffected.
+
+**Fix (the reporter's workaround).** docling-parse still reads each page's text; its
+renderer is switched off (`render_pages=False`), and page images come from pdfium through
+pypdfium2 5.13.0 (BSD-3-Clause/Apache-2.0, within Docling's supported range). pdfium was
+Docling's own renderer until v2.128.0 (16 September 2026, "Refactor the docling-parse backend
+to remove pypdfium"), so this returns to its established path. pdfium isn't thread-safe, so
+every call goes through Docling's `pypdfium2_lock`.
+
+**Gate:**
+
+1. 0 access violations with the fault handler on, over all 97 readable Lime Green PDFs
+   converted in one process.
+2. The IWI Installation Guide converts in 6 of 6 fresh processes.
+3. The `docling` arm on `x8-pages`, `x8-pages-r2` and `x8-pages-r3`, and `glm-ocr` on
+   `x8-pages-r3`, are no worse on any measure, page by page, than with docling-parse's
+   renderer at the same code (7.22.1 runs in `data/runs/docling-parse-7221/`).
+4. `scripts/check.py` passes.
+
+Otherwise pypdfium2 is removed and the adapter reverted.
