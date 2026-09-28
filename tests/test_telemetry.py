@@ -1,19 +1,26 @@
-"""Tracing: export over OTLP/HTTP, errors on spans, and reply details."""
+"""Traces and metrics: export over OTLP/HTTP, errors on spans, reply details and
+answer outcomes."""
 
 import threading
+from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
 from limespec import config, telemetry
+from limespec.models import Answer
+
+Received = list[tuple[str, str]]
 
 
-def test_spans_are_sent_over_otlp_http_when_an_endpoint_is_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    received: list[tuple[str, str]] = []
+@pytest.fixture
+def collector() -> Iterator[tuple[str, Received]]:
+    """A local OTLP/HTTP endpoint: its base URL, and the path and content type of
+    every request it receives."""
+    received: Received = []
 
     class Collector(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -27,19 +34,55 @@ def test_spans_are_sent_over_otlp_http_when_an_endpoint_is_set(
 
     server = HTTPServer(("127.0.0.1", 0), Collector)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}", received
+    server.shutdown()
+
+
+def test_spans_are_sent_over_otlp_http_when_an_endpoint_is_set(
+    monkeypatch: pytest.MonkeyPatch, collector: tuple[str, Received]
+) -> None:
+    base, received = collector
     path = "/insert/opentelemetry/v1/traces"
-    monkeypatch.setenv(
-        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
-        f"http://127.0.0.1:{server.server_port}{path}",
-    )
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", base + path)
 
     provider = telemetry.tracer_provider()
     with provider.get_tracer("test").start_as_current_span("answer"):
         pass
     provider.shutdown()  # sends what is waiting
-    server.shutdown()
 
     assert received == [(path, "application/x-protobuf")]
+
+
+def test_metrics_are_sent_over_otlp_http_when_an_endpoint_is_set(
+    monkeypatch: pytest.MonkeyPatch, collector: tuple[str, Received]
+) -> None:
+    base, received = collector
+    path = "/opentelemetry/v1/metrics"
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", base + path)
+
+    provider = telemetry.meter_provider()
+    provider.get_meter("test").create_counter("answers").add(1)
+    provider.shutdown()  # sends what is waiting
+
+    assert received == [(path, "application/x-protobuf")]
+
+
+def test_an_answer_is_counted_by_status_with_its_claims(
+    metric_points: Callable[[str], list[Any]], answered: Answer
+) -> None:
+    telemetry.record_answer(answered, 7, 4, 12.5)
+
+    [answers] = metric_points("limespec.answers")
+    assert (dict(answers.attributes), answers.value) == (
+        {"limespec.answer.status": "answered"},
+        1,
+    )
+    [duration] = metric_points("limespec.answer.duration")
+    assert duration.sum == 12.5
+    claims = {}
+    for point in metric_points("limespec.claims"):
+        claims[point.attributes["limespec.claim.outcome"]] = point.value
+    assert claims == {"kept": 2, "removed": 1}
 
 
 def test_an_error_marks_the_span_with_its_type(spans: InMemorySpanExporter) -> None:

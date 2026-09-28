@@ -1,11 +1,14 @@
 import re
 import uuid
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from psycopg import sql
@@ -132,7 +135,7 @@ def no_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(scope="session")
 def span_store() -> InMemorySpanExporter:
     exporter = InMemorySpanExporter()
-    telemetry.provider.add_span_processor(SimpleSpanProcessor(exporter))
+    telemetry.tracers.add_span_processor(SimpleSpanProcessor(exporter))
     return exporter
 
 
@@ -141,6 +144,31 @@ def spans(span_store: InMemorySpanExporter) -> InMemorySpanExporter:
     """Every span finished during the test, oldest first."""
     span_store.clear()
     return span_store
+
+
+MetricPoints = Callable[[str], list[Any]]
+
+
+@pytest.fixture
+def metric_points(monkeypatch: pytest.MonkeyPatch) -> MetricPoints:
+    """A function giving the data points recorded so far for one metric name."""
+    reader = InMemoryMetricReader()
+    meters = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(
+        telemetry, "metrics", telemetry.instruments(meters.get_meter("t"))
+    )
+
+    def points(name: str) -> list[Any]:
+        found: list[Any] = []
+        data = reader.get_metrics_data()
+        for resource in data.resource_metrics if data else []:
+            for scope in resource.scope_metrics:
+                for metric in scope.metrics:
+                    if metric.name == name:
+                        found.extend(metric.data.data_points)
+        return found
+
+    return points
 
 
 # Postgres tests run against the development server started with

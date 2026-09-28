@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -386,7 +387,9 @@ def test_search_requests_are_traced_as_embeddings_and_rerank(
 
 
 def test_a_failed_model_request_ends_its_span_with_an_error(
-    monkeypatch: pytest.MonkeyPatch, spans: InMemorySpanExporter
+    monkeypatch: pytest.MonkeyPatch,
+    spans: InMemorySpanExporter,
+    metric_points: Callable[[str], list[Any]],
 ) -> None:
     def post(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
@@ -400,3 +403,29 @@ def test_a_failed_model_request_ends_its_span_with_an_error(
     assert chat.status.status_code is StatusCode.ERROR
     assert chat.attributes is not None
     assert chat.attributes["error.type"] == "ModelServerError"
+    [duration] = metric_points("gen_ai.client.operation.duration")
+    assert duration.attributes["error.type"] == "ModelServerError"
+
+
+def test_model_requests_are_measured_by_operation_with_their_tokens(
+    monkeypatch: pytest.MonkeyPatch, metric_points: Callable[[str], list[Any]]
+) -> None:
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        else:
+            body = chat_reply(json.dumps({"claims": []}))
+            body["usage"] = {"prompt_tokens": 812, "completion_tokens": 9}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    llm.embed(["question"])
+    llm.chat("s", "u", SCHEMA)
+
+    durations = metric_points("gen_ai.client.operation.duration")
+    operations = sorted(p.attributes["gen_ai.operation.name"] for p in durations)
+    assert operations == ["chat", "embeddings"]
+    [inputs] = metric_points("gen_ai.client.inference.operation.input_tokens")
+    [outputs] = metric_points("gen_ai.client.inference.operation.output_tokens")
+    assert (inputs.sum, outputs.sum) == (812, 9)

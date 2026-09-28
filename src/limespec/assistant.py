@@ -118,7 +118,7 @@ def ask_and_record(
             prompt_sha256=PROMPT_SHA256,
             seconds=seconds,
         )
-        telemetry.record_answer(result, answer_id, version_id)
+        telemetry.record_answer(result, answer_id, version_id, seconds)
     return result, answer_id
 
 
