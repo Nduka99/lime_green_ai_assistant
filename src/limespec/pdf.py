@@ -75,7 +75,9 @@ def box(item: Any, document: DoclingDocument) -> tuple[float, float, float, floa
 def table_rows(
     item: Any, number: int, section: tuple[str, ...], document: DoclingDocument
 ) -> list[Element]:
-    """One element per data row, each cell paired with its column's header."""
+    """The table's header row as one element, then one element per data row with
+    each cell paired with its column's header. A header of several levels keeps its
+    parts, top first, joined by " › " ("Performance › Class i")."""
     grid = item.data.grid
     if not grid:
         return []
@@ -86,9 +88,22 @@ def table_rows(
             cell = row[column]
             if cell.column_header and cell.text and cell.text not in texts:
                 texts.append(cell.text)
-        headers.append(" ".join(texts))
+        headers.append(" › ".join(texts))
     caption = item.caption_text(document)
     rows = []
+    if any(headers):
+        # Kept as its own element, so header text is never lost, even over a column
+        # of empty cells (a checklist's tick boxes).
+        rows.append(
+            Element(
+                page=item.prov[0].page_no,
+                kind="table_header",
+                text=" | ".join(header for header in headers if header),
+                section=section,
+                bbox=box(item, document),
+                table=number,
+            )
+        )
     for index, row in enumerate(grid):
         # A header row can hold empty, unflagged cells (a blank corner above the
         # row labels), but a data row never holds a column header.
@@ -138,7 +153,9 @@ def elements(document: DoclingDocument) -> list[Element]:
         if label in FIGURES:
             text = item.caption_text(document)
         elif hasattr(item, "text"):
-            text = item.text
+            # `orig` is the text as it stands on the page, a list's numbering ("5.",
+            # "ii.") included; `text` drops the numbering.
+            text = item.orig or item.text
         else:
             text = " ".join(cell.text for cell in item.graph.cells)
         if label in HEADINGS:

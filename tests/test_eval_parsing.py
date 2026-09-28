@@ -16,8 +16,8 @@ TABLE = {"header": ["Property", "Class i", "Class ii"], "rows": [["Fire", "A1", 
 def test_a_cell_is_found_by_its_row_label_column_header_and_value() -> None:
     rows: parsing.Rows = [
         (),
-        (("Property", "Fire"), ("Performance Class i", "A1"),
-         ("Performance Class ii", "A 2")),
+        (("Property", "Fire"), ("Performance › Class i", "A1"),
+         ("Performance › Class ii", "A 2")),
     ]  # fmt: skip
     wrong: parsing.Rows = [
         (("Property", "Fire"), ("Class ii", "A1"), ("Class i", "A2"))
@@ -25,6 +25,8 @@ def test_a_cell_is_found_by_its_row_label_column_header_and_value() -> None:
 
     assert parsing.table_cells([TABLE], rows) == (2, 2, [1.0])
     assert parsing.table_cells([TABLE], wrong) == (0, 2, [0.0])
+    any_column = {"header": ["", ""], "rows": [["Fire", "A1"]]}
+    assert parsing.table_cells([any_column], wrong) == (1, 1, [1.0])
     empty = {"header": ["", ""], "rows": [["Notes", ""]]}
     assert parsing.table_cells([empty], []) == (0, 0, [1.0])
 
@@ -38,6 +40,10 @@ def test_text_is_kept_word_by_word_and_sentences_in_reading_order() -> None:
     interleaved = ["Mix 4 litres Store dry.", "of water. Use within"]
     assert parsing.sentences_whole(sentences[:1], interleaved) == (0, 1)
     assert parsing.table_numbers([TABLE], ["Fire A1", "A 2"]) == (2, 2)
+    # Docling writes typographic characters plainly; both sides are folded alike.
+    typographic = ["Fit in a ‘brick bond’ – done."]
+    plain = ["Fit in a 'brick bond' - done."]
+    assert parsing.sentences_whole(typographic, plain) == (1, 1)
 
 
 def test_a_pair_is_kept_on_one_line_or_the_next() -> None:

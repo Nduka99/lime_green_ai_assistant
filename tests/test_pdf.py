@@ -49,7 +49,13 @@ def datasheet() -> DoclingDocument:
         label=DocItemLabel.TEXT, text="Add 4 litres of water.", prov=prov(top=620)
     )
     items = doc.add_list_group()
-    doc.add_list_item(text="Mix for 3 minutes.", parent=items, prov=prov(top=600))
+    doc.add_list_item(
+        text="Mix for 3 minutes.",
+        marker="1.",
+        orig="1. Mix for 3 minutes.",
+        parent=items,
+        prov=prov(top=600),
+    )
     doc.add_heading(text="Performance", level=1, prov=prov(top=560))
     cells = [
         cell("", 0, 0), cell("Grade", 0, 1, header=True),
@@ -99,11 +105,12 @@ def test_a_document_becomes_elements_in_reading_order() -> None:
         (1, "heading", "Mortex Mortar"),
         (1, "heading", "Mixing"),
         (1, "paragraph", "Add 4 litres of water."),
-        (1, "list", "Mix for 3 minutes."),
+        (1, "list", "1. Mix for 3 minutes."),
         (1, "heading", "Performance"),
         (1, "caption", "Table 1"),
-        (1, "table_row", "Table 1 › Strength — Grade M5: 5 N/mm2"),
-        (1, "table_row", "Table 1 › Fire — Grade M5: A1"),
+        (1, "table_header", "Property | Grade › M5"),
+        (1, "table_row", "Table 1 › Strength — Grade › M5: 5 N/mm2"),
+        (1, "table_row", "Table 1 › Fire — Grade › M5: A1"),
         (2, "heading", "Detail"),
         (2, "figure", ""),
         (2, "paragraph", "Mesh here"),
@@ -120,9 +127,10 @@ def test_each_element_keeps_its_headings_box_and_cells() -> None:
     assert found["Mesh here"].section == ("Mortex Mortar", "Performance", "Detail")
     # 700 points above the bottom of an 800-point page is 100 from its top.
     assert found["Mortex Mortar"].bbox == (50.0, 100.0, 150.0, 120.0)
-    row = found["Table 1 › Strength — Grade M5: 5 N/mm2"]
+    row = found["Table 1 › Strength — Grade › M5: 5 N/mm2"]
     assert (row.table, row.row) == (1, 2)
-    assert row.cells == (("Property", "Strength"), ("Grade M5", "5 N/mm2"))
+    assert row.cells == (("Property", "Strength"), ("Grade › M5", "5 N/mm2"))
+    assert found["Property | Grade › M5"].table == 1
 
 
 def test_a_row_is_one_quotable_line() -> None:

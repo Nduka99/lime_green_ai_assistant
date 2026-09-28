@@ -7,9 +7,19 @@ a new parser only has to produce them. Plain, JSON-compatible data.
 
 from dataclasses import dataclass
 
-# What an element is: a heading, running text, a list item, one table row, a
-# caption, a figure (its caption), or page furniture (running headers and footers).
-KINDS = ("heading", "paragraph", "list", "table_row", "caption", "figure", "furniture")
+# What an element is: a heading, running text, a list item, a table's header row or
+# one of its rows, a caption, a figure (its caption), or page furniture (running
+# headers and footers).
+KINDS = (
+    "heading",
+    "paragraph",
+    "list",
+    "table_header",
+    "table_row",
+    "caption",
+    "figure",
+    "furniture",
+)
 
 
 @dataclass(frozen=True)

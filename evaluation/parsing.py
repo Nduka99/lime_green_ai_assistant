@@ -20,19 +20,29 @@ GATE = {"cells": 0.95, "pairs": 0.95, "words": 0.99, "sentences": 0.95, "numbers
 LOWEST_TABLE = 0.80
 
 
+# Docling's PDF parser writes typographic characters in their plain form (its
+# default sanitisation), so both sides of every comparison are folded the same way.
+TYPOGRAPHY = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
+
+
+def fold(text: str) -> str:
+    return text.translate(TYPOGRAPHY).casefold()
+
+
 def squash(text: str) -> str:
-    return "".join(text.split()).casefold()
+    return "".join(fold(text).split())
 
 
 def cell_found(label: str, header: str, value: str, rows: Rows) -> bool:
     """Whether a parsed row with this label holds this value under this header. A
-    parsed header joins the header rows above it ("Performance Class i"), so it must
-    end with the truth header; "Class i" must not match "Class ii"."""
+    parsed header keeps its levels ("Performance › Class i"); the truth header must be
+    one of them ("Class i" must not match "Class ii"), or empty for any column."""
     for cells in rows:
         if not cells or squash(label) not in squash(cells[0][1]):
             continue
         for column_header, cell in cells[1:]:
-            same_column = squash(column_header).endswith(squash(header))
+            parts = {squash(part) for part in column_header.split(" › ")}
+            same_column = not header or squash(header) in parts
             if same_column and squash(cell) == squash(value):
                 return True
     return False
@@ -64,7 +74,7 @@ def table_cells(
 
 def words(text: str) -> Counter[str]:
     """The text's words, without case or punctuation at their edges."""
-    found = (word.strip(EDGES) for word in text.casefold().split())
+    found = (word.strip(EDGES) for word in fold(text).split())
     return Counter(word for word in found if word)
 
 
