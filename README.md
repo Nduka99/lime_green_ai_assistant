@@ -181,13 +181,17 @@ pages and the index (`data/`) stay on your machine and are never committed.
    ```
 
    To collect the rest of the site for the knowledge base, with the same politeness:
-   every sitemap page, then the site's own PDFs and images (stored once each by
-   SHA-256 in `data/files/`, with a manifest). `--measure` sizes them first:
+   every sitemap page, then the site's own PDFs and images, then the openly licensed
+   documents listed in `sources-external.txt` (stored once each by SHA-256 in
+   `data/files/`, with a manifest). `--measure` sizes them first, and `browse` gives
+   every stored file its readable name under `data/browse/`:
 
    ```powershell
    uv run limespec acquire pages --measure
    uv run limespec acquire pages
    uv run limespec acquire files
+   uv run limespec acquire external
+   uv run limespec browse
    ```
 
 3. See which passages a question retrieves (this also needs the reranker server
