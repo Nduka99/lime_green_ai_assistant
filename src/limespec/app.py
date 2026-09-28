@@ -1,9 +1,9 @@
 """The web page and the JSON API: the same answer as the command line, over HTTP.
 
-Every route shows `view(answer)`, the same data the CLI prints. The page and
-`/api/answer` call `assistant.ask`; the v1 API answers from Postgres and returns
-the id of the answer's audit record. An unreachable model or a missing index is
-an operational error: a clear message with HTTP 503, never an answer.
+Every route shows `view(answer)`, the same data the CLI prints. The page calls
+`assistant.ask`; the v1 API returns the same answer with the id of its audit
+record. An unreachable model or a missing index is an operational error: a clear
+message with HTTP 503, never an answer.
 """
 
 import contextvars
@@ -69,18 +69,6 @@ def page(request: Request, q: str = "") -> HTMLResponse:
         {"question": question, "answer": answer, "error": error},
         status_code=503 if error else 200,
     )
-
-
-@app.get("/api/answer")
-def api_answer(q: str) -> AnswerView:
-    """The same answer as JSON."""
-    question = q.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="ask a question with ?q=")
-    try:
-        return view(assistant.ask(question))
-    except (IngestError, ModelServerError) as problem:
-        raise HTTPException(status_code=503, detail=str(problem)) from problem
 
 
 @app.post("/api/v1/answers")

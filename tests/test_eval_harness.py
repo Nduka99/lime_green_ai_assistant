@@ -165,12 +165,18 @@ def answer_view(question: str) -> dict[str, Any]:
 
 
 def endpoint(request: httpx.Request) -> httpx.Response:
-    """A stand-in deployment: one question fails, one cannot be reached."""
-    question = request.url.params["q"]
+    """A stand-in deployment of both APIs (v1 takes JSON, v5 a query string): one
+    question fails, one cannot be reached."""
+    if request.method == "POST":
+        question = json.loads(request.content)["question"]
+    else:
+        question = request.url.params["q"]
     if "rushed" in question and "joints" in question:
         return httpx.Response(503, text="the model server is down")
     if "photo rushed" in question:
         raise httpx.ConnectError("refused")
+    if request.method == "POST":
+        return httpx.Response(200, json={"id": 7, "answer": answer_view(question)})
     return httpx.Response(200, json=answer_view(question))
 
 
@@ -196,6 +202,23 @@ def test_ask_saves_views_errors_and_resumes(tmp_path: Path) -> None:
     }
     assert by_question["photo rushed?"]["http"] is None
     assert json.loads(out.read_text()) == records
+
+
+def test_ask_posts_to_the_v1_api_and_keeps_the_audit_record_id(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "runs" / "answers-platform.json"
+    questions = keys.blind_questions(KEY, seed=7, prefix="t")
+    client = httpx.Client(
+        base_url="http://app.test", transport=httpx.MockTransport(endpoint)
+    )
+
+    records = ask.ask_all(questions, client, "/api/v1/answers", out)
+
+    by_question = {r["question"]: r for r in records}
+    answered = by_question["joints original?"]
+    assert (answered["view"]["status"], answered["answer_id"]) == ("answered", 7)
+    assert by_question["joints rushed?"]["http"] == 503
 
 
 def run(capsys: pytest.CaptureFixture[str], root: Path, *argv: str) -> tuple[int, str]:
@@ -340,7 +363,7 @@ def test_command_line_ask_succeeds_when_every_answer_arrives(
     )
 
     code, text = run(capsys, tmp_path, "ask", "demo", "--target", "http://app.test",
-                     "--run", "v6")  # fmt: skip
+                     "--run", "v5", "--endpoint", "/api/answer")  # fmt: skip
 
     assert code == 0 and "0 errors" in text
 

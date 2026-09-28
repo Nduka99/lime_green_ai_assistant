@@ -168,13 +168,13 @@ metrics = instruments(meters.get_meter("limespec"))
 def instrument(app: FastAPI) -> None:
     """A server span and duration metric for every request, parent of the answer's
     spans. Health probes and the ASGI per-message spans (one per streamed event) are
-    left out as noise. So are the page and /api/answer: they carry the question in
-    the query string, which a request span records (their answers are still traced)."""
+    left out as noise. So is the page: it carries the question in the query string,
+    which a request span records (its answers are still traced)."""
     FastAPIInstrumentor.instrument_app(
         app,
         tracer_provider=tracers,
         meter_provider=meters,
-        excluded_urls=r"healthz,readyz,/api/answer$,://[^/]+/$",
+        excluded_urls=r"healthz,readyz,://[^/]+/$",
         exclude_spans=["receive", "send"],
     )
 

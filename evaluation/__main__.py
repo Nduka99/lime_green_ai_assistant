@@ -5,7 +5,8 @@
     uv run python -m evaluation check-key SET --seed N --prefix v4q
     uv run python -m evaluation retrieval SET                # saved TREC runs
     uv run python -m evaluation grades SET SITTING           # a grading sitting
-    uv run python -m evaluation ask SET --target http://127.0.0.1:8090 --run v5
+    uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
+    uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
@@ -66,7 +67,11 @@ def parser() -> argparse.ArgumentParser:
     asked = commands.add_parser("ask", help="ask a set through a deployed endpoint")
     asked.add_argument("name")
     asked.add_argument("--target", required=True, help="e.g. http://127.0.0.1:8090")
-    asked.add_argument("--endpoint", default="/api/answer")
+    asked.add_argument(
+        "--endpoint",
+        default="/api/v1/answers",
+        help="/api/answer for the submitted v5 (default: the v1 API)",
+    )
     asked.add_argument("--run", required=True, help="a name for this run's file")
     hidden = commands.add_parser("blind", help="write two runs' different answers")
     hidden.add_argument("name")

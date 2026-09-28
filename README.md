@@ -219,9 +219,10 @@ uv run --env-file .env limespec ask      # prompts "Ask a question:"
 uv run --env-file .env limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
 ```
 
-The command line, page and JSON endpoint (`/api/answer?q=...`) call the same
-`assistant.ask()` and use the same checks and presentation data. Separate model
-requests can still produce different wording, even with a fixed seed.
+The command line, the page and the JSON API (`POST /api/v1/answers`, or
+`/api/v1/answers/stream` for stage-by-stage progress) give the same answer from the
+same checks and presentation data. Separate model requests can still produce
+different wording, even with a fixed seed.
 
 To trace and measure answers, start VictoriaTraces and VictoriaMetrics inside WSL
 (`docker compose -f deploy/compose.yaml --profile observability up -d`) and serve with
@@ -261,7 +262,8 @@ command refuses a set whose files have changed. Reports are in
 uv run python -m evaluation verify                        # check every set's hashes
 uv run python -m evaluation retrieval frozen90            # IR measures from saved runs
 uv run python -m evaluation grades heldout-v3 sitting-topk
-uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run v5
+uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8095 --run platform
+uv run python -m evaluation ask heldout-v3 --target http://127.0.0.1:8090 --run v5 --endpoint /api/answer   # the submitted v5
 uv run python -m evaluation blind heldout-v3 A.json B.json --seed 28 --out DIR   # differing answers, runs hidden
 uv run python -m evaluation unblind heldout-v3 A.json B.json --dir DIR           # after DIR/verdicts.json is written
 ```

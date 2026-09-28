@@ -96,10 +96,8 @@ def test_an_operational_error_is_a_clear_503_not_an_answer(
     monkeypatch.setattr(assistant, "ask", unavailable)
 
     page = client.get("/", params={"q": "anything"})
-    api = client.get("/api/answer", params={"q": "anything"})
 
     assert page.status_code == 503 and "generation server" in page.text
-    assert api.status_code == 503 and "generation server" in api.json()["detail"]
 
 
 def test_an_unreachable_database_is_a_clear_503(
@@ -108,7 +106,7 @@ def test_an_unreachable_database_is_a_clear_503(
     monkeypatch.setattr(config, "DATABASE_URL", "postgresql://x:y@127.0.0.1:9/z")
     monkeypatch.setattr(config, "DATABASE_CONNECT_TIMEOUT_SECONDS", 1)
 
-    response = client.get("/api/answer", params={"q": "anything"})
+    response = client.post("/api/v1/answers", json={"question": "anything"})
 
     assert response.status_code == 503
     assert "cannot reach the Postgres index" in response.json()["detail"]
@@ -125,39 +123,26 @@ def test_the_question_is_escaped_in_the_page(
     assert "&lt;script&gt;" in page
 
 
-def test_the_api_returns_the_reader_view_as_json(
-    monkeypatch: pytest.MonkeyPatch, answered: Answer
-) -> None:
-    answers_with(monkeypatch, answered)
-
-    response = client.get("/api/answer", params={"q": "What joints does Mortex suit?"})
-
-    assert response.status_code == 200
-    assert response.json() == view(answered)
-
-
-def test_the_api_needs_a_question() -> None:
-    assert client.get("/api/answer", params={"q": "  "}).status_code == 400
-
-
 def test_cli_and_http_show_the_same_answer_for_the_same_question(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     answered: Answer,
 ) -> None:
     asked = answers_with(monkeypatch, answered)
+    recorded = records_with(monkeypatch, answered)
+    question = "What joints does Mortex suit?"
 
-    assert cli.main(["ask", "What joints does Mortex suit?"]) == 0
+    assert cli.main(["ask", question]) == 0
     printed = capsys.readouterr().out
-    api = client.get("/api/answer", params={"q": "What joints does Mortex suit?"})
-    page = client.get("/", params={"q": "What joints does Mortex suit?"}).text
+    api = client.post("/api/v1/answers", json={"question": question}).json()["answer"]
+    page = client.get("/", params={"q": question}).text
 
-    assert asked == ["What joints does Mortex suit?"] * 3
+    assert (asked, recorded) == ([question, question], [question])
     # The CLI's text is exactly the text built from the API's JSON.
-    assert printed.rstrip("\n") == cli.render_text(api.json())
-    for claim in api.json()["claims"]:
+    assert printed.rstrip("\n") == cli.render_text(api)
+    for claim in api["claims"]:
         assert claim["text"] in page
-    for source in api.json()["sources"]:
+    for source in api["sources"]:
         assert source["title"] in page and source["quote"] in page
 
 
@@ -362,7 +347,6 @@ def test_questions_in_a_url_never_reach_a_trace(
     answers_with(monkeypatch, answered)
 
     client.get("/", params={"q": "secret question"})
-    client.get("/api/answer", params={"q": "secret question"})
     records_with(monkeypatch, answered)
     client.post("/api/v1/answers", json={"question": "secret question"})
 

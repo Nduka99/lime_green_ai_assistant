@@ -27,15 +27,27 @@ def write_records(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def ask_one(client: httpx.Client, endpoint: str, row: dict[str, str]) -> dict[str, Any]:
-    """One answer record: the reader's view, or the error the endpoint returned."""
+    """One answer record: the reader's view, or the error the endpoint returned.
+
+    The v1 API (`/api/v1/answers`) takes the question as JSON and returns the view
+    with the id of its audit record; the submitted v5 answers `GET /api/answer?q=`.
+    """
     started = time.perf_counter()
+    v1 = endpoint.startswith("/api/v1/")
     try:
-        response = client.get(endpoint, params={"q": row["question"]})
+        if v1:
+            response = client.post(endpoint, json={"question": row["question"]})
+        else:
+            response = client.get(endpoint, params={"q": row["question"]})
     except httpx.HTTPError as error:
         record: dict[str, Any] = {"http": None, "error": str(error)}
     else:
         record = {"http": response.status_code}
-        if response.status_code == 200:
+        if response.status_code == 200 and v1:
+            body = response.json()
+            record["view"] = body["answer"]
+            record["answer_id"] = body["id"]
+        elif response.status_code == 200:
             record["view"] = response.json()
         else:
             record["error"] = response.text
