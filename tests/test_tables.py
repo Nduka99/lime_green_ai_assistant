@@ -143,6 +143,12 @@ def test_the_structure_takes_headers_from_the_model_and_text_from_the_pdf() -> N
     ]
     assert read.dropped == 0
     assert read.leftover == ["o"]  # a tick box no cell holds
+    assert read.grid == [
+        ["Property", "Class", "Class"],
+        ["Property", "i", "ii"],
+        ["Fire", "A1", "A2"],
+        ["Strength 28 days", "5 N/mm2", "5 N/mm2"],
+    ]
 
 
 def test_without_marked_headers_docling_s_header_rows_are_used() -> None:

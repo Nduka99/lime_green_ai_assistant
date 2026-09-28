@@ -186,3 +186,57 @@ def test_the_command_line_leaves_out_a_set_s_documents_and_pages(
     assert cli.main([*base, *command, "--exclude", "file:new", "--out", str(out)]) == 0
     drawn = json.loads(out.read_text(encoding="utf-8"))
     assert [page["entry"] for page in drawn["pages"]] == ["file:used"]
+
+
+def test_candidates_skip_used_pages_near_duplicates_and_a_third_page() -> None:
+    texts = {
+        "sheet": [WORDS + " p1", OTHER + " p2", "cover"],
+        "guide": [f"{OTHER} guide {n} " + " ".join(f"w{n}{k}" for k in range(9))
+                  for n in range(4)],
+        "photo": [WORDS],
+    }  # fmt: skip
+    entries = [document("sheet", "pdf:technical"), document("guide", "pdf:guide"),
+               document("photo", "image")]  # fmt: skip
+
+    found = pages.candidates(
+        entries, texts.__getitem__, seed=4, used={("file:sheet", 1)}, seen=[OTHER]
+    )
+
+    pairs = [(page["entry"], page["page"]) for page in found]
+    # sheet p1 was used; sheet p2 resembles a page seen before; "cover" has no text
+    # layer; the guide gives at most two pages; the image is not a PDF.
+    assert all(entry == "file:guide" for entry, _ in pairs)
+    assert len(pairs) == 2
+    assert (
+        pages.candidates(
+            entries, texts.__getitem__, seed=4, used={("file:sheet", 1)}, seen=[OTHER]
+        )
+        == found
+    )
+
+
+def test_the_command_line_lists_candidates_without_a_set_s_pages(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalogue = tmp_path / "catalogue.json"
+    catalogue.write_text(json.dumps([document("sheet", "pdf:technical")]))
+    folder = tmp_path / "old"
+    folder.mkdir()
+    truth = {"pages": [{"entry": "file:sheet", "page": 1}],
+             "blank": [{"entry": "file:sheet", "page": 3}]}  # fmt: skip
+    (folder / "truth.json").write_text(json.dumps(truth))
+    sets.register("old", "invented", tmp_path, tmp_path / "sets.json")
+    texts = {"sheet": [WORDS, OTHER, "cover"]}
+    monkeypatch.setattr(pages, "read_pages", lambda source: texts[Path(source).name])
+    monkeypatch.setattr(acquire, "store_path", lambda sha: tmp_path / sha)
+    out = tmp_path / "candidates.json"
+    base = ["--root", str(tmp_path), "--registry", str(tmp_path / "sets.json")]
+
+    command = ["page-candidates", "--catalogue", str(catalogue), "--seed", "10"]
+    assert cli.main([*base, *command, "--exclude-set", "old", "--out", str(out)]) == 0
+
+    found = json.loads(out.read_text(encoding="utf-8"))
+    assert [(page["entry"], page["page"]) for page in found] == [("file:sheet", 2)]
+    assert "1 candidate pages" in capsys.readouterr().out

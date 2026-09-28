@@ -402,3 +402,59 @@ What round 2 establishes:
    reads the PDF's own characters.
 3. **Memory and speed would allow either VLM** (under 4 GB of VRAM, at most 0.6 h for the
    corpus). Quality rules them out.
+
+## Round 3: whole tables (design and gate)
+
+Written on 28 September 2026, after round 2 and before round 3's pages were drawn. The
+design was chosen by the user from round 2's diagnosis.
+
+**Question.** Row-by-row passages need each value's column name, so they depend on
+recognising header rows, which round 2 showed to be the parsers' weak point. A table kept
+whole (every row, header rows included, in its grid) carries its column names with its
+values, with no header decision to make. How to write such a passage for the answering
+model is experiment X9's question (formats measurably change LLM table reading; [Table
+Meets LLM](https://arxiv.org/html/2305.13062v4), [TQA-Bench](https://arxiv.org/pdf/2411.19504)).
+Round 3 asks the parser's part: does each parser put every table value in its right row and
+column?
+
+**Pages.** `python -m evaluation page-candidates --seed 10 --exclude-set x8-pages
+--exclude-set x8-pages-r2` lists candidates (`evaluation/pages.py`): every Lime Green PDF
+page with a text layer, in a seeded order. It leaves out pages used in rounds 1 and 2, any
+page resembling an earlier one (Jaccard ≥ 0.8), and more than two pages per document.
+Candidates are rendered in that order and judged from the image alone, before any parser
+reads them, as showing a table or not. A table here means cells in at least two rows and two
+columns, set in a grid whether ruled or only aligned; a list of labels, each followed by one
+value, counts only when it is laid out as such a grid. The first 20 pages that show a table
+form the sample. Every judged candidate and its judgement are kept with the set.
+
+**Truth.** Every table on the page is written as a full grid:
+
+- all rows, with the number of header rows recorded;
+- each spanning cell repeated in every position it covers;
+- text as printed, with sub- and superscripts as plain digits.
+
+Pairs and up to five sentences are recorded as before (reported, not gated).
+
+**Arms.** `docling`, `glm-ocr` and `paddleocr-vl` as in round 2, unchanged except that each
+table is also emitted whole: Docling's grid, or the model's grid spelt in the PDF's words.
+The code is frozen at the commit that registers this round.
+
+**Measures and gate,** for each arm:
+
+1. **Table values placed ≥ 0.95.** A truth value (a cell of a data row) is placed when a
+   parsed table on its page has it in a row whose first cell contains the truth row's
+   label, and in a column whose cell in some row above equals the truth column's header (its
+   lowest header row). The comparison ignores case, whitespace, typographic variants and
+   Unicode compatibility forms. Every table's share must be ≥ 0.80, or diagnosed.
+2. **Text kept ≥ 0.99.**
+3. **Table numbers ≥ 0.99.**
+
+Also reported: round 1's header-dependent table cells, pairs, sentences, cells the VLMs could
+not spell, seconds per page, peak RAM and VRAM, and hours for 573 pages.
+
+**Selection:** as in round 2. Among passing arms the most values placed wins; within 0.01,
+the lower peak memory, then the faster arm. If none passes, diagnose and bring the decision
+to the user.
+
+**Known limit, measured separately:** docling-parse drops two letters in the One Click LCA
+font. Pages in that font count against every arm, as the text is what they read.

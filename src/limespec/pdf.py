@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from pypdf import PdfReader
 
-from limespec.elements import Element, row_text
+from limespec.elements import Element, grid_text, row_text
 
 if TYPE_CHECKING:
     from docling.document_converter import DocumentConverter
@@ -173,10 +173,13 @@ def table_rows(
         for index, row in enumerate(grid)
         if not any(cell.column_header for cell in row)
     ]
-    return table_elements(headers, rows, item, number, section, document)
+    # Docling's grid repeats a spanning cell in each position it covers.
+    whole = [[cell.text for cell in row] for row in grid]
+    return table_elements(whole, headers, rows, item, number, section, document)
 
 
 def table_elements(
+    grid: list[list[str]],
     headers: list[str],
     rows: list[tuple[int, list[str]]],
     item: Any,
@@ -184,10 +187,21 @@ def table_elements(
     section: tuple[str, ...],
     document: DoclingDocument,
 ) -> list[Element]:
-    """The table's header row as one element, then one element per data row with
-    each cell paired with its column's header."""
+    """The whole table as one element, then its header row, then one element per
+    data row with each cell paired with its column's header."""
     caption = item.caption_text(document)
-    found = []
+    whole = tuple(tuple(row) for row in grid)
+    found = [
+        Element(
+            page=item.prov[0].page_no,
+            kind="table",
+            text=grid_text(whole, caption),
+            section=section,
+            bbox=box(item, document),
+            table=number,
+            grid=whole,
+        )
+    ]
     if any(headers):
         # Kept as its own element, so header text is never lost, even over a column
         # of empty cells (a checklist's tick boxes).
@@ -273,7 +287,9 @@ def vlm_table(
     read = tables.structure(cells, inside, header_words(item))
     stats["cells"] += len(cells)
     stats["dropped"] += read.dropped
-    found = table_elements(read.headers, read.rows, item, number, section, document)
+    found = table_elements(
+        read.grid, read.headers, read.rows, item, number, section, document
+    )
     if read.leftover:
         # The PDF's words no cell used (tick boxes, a value the model left out) are
         # kept, so reading a table again never loses text.

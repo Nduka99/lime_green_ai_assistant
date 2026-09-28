@@ -112,6 +112,7 @@ def test_a_document_becomes_elements_in_reading_order() -> None:
         (1, "list", "1. Mix for 3 minutes."),
         (1, "heading", "Performance"),
         (1, "caption", "Table 1"),
+        (1, "table", "Table 1\n | Grade\nProperty | M5\nStrength | 5 N/mm2\nFire | A1"),
         (1, "table_header", "Property | Grade › M5"),
         (1, "table_row", "Table 1 › Strength — Grade › M5: 5 N/mm2"),
         (1, "table_row", "Table 1 › Fire — Grade › M5: A1"),
@@ -119,6 +120,7 @@ def test_a_document_becomes_elements_in_reading_order() -> None:
         (2, "figure", ""),
         (2, "paragraph", "Mesh here"),
         (2, "furniture", "Page 2 of 2"),
+        (2, "table", "Mixing | 1"),
         (2, "table_row", "Mixing — 1"),
         (2, "paragraph", "pH 11.2"),
     ]
@@ -285,6 +287,7 @@ def test_a_table_is_read_again_from_its_image(
     unread = pdf.vlm_table(table, 1, ("Performance",), doc, words, "http://vlm", stats)
 
     assert [(e.kind, e.text) for e in rows or []] == [
+        ("table", "Table 1\nProperty | M5\nStrength | 5 N/mm2\nFire | A1"),
         ("table_header", "Property | M5"),
         ("table_row", "Table 1 › Strength — M5: 5 N/mm2"),
         ("table_row", "Table 1 › Fire — M5: A1"),

@@ -154,6 +154,15 @@ def parser() -> argparse.ArgumentParser:
         "--blank", type=int, default=0, help="also draw this many pages without text"
     )
     sampled.add_argument("--out", type=Path, required=True, help="a JSON file")
+    listed_pages = commands.add_parser(
+        "page-candidates", help="list unused PDF pages in a seeded order (X8 round 3)"
+    )
+    listed_pages.add_argument("--catalogue", type=Path, required=True)
+    listed_pages.add_argument("--seed", type=int, required=True)
+    listed_pages.add_argument(
+        "--exclude-set", action="append", default=[], help="a page set already used"
+    )
+    listed_pages.add_argument("--out", type=Path, required=True, help="a JSON file")
     rendered = commands.add_parser(
         "render-page", help="render one PDF page to a PNG (one page per process)"
     )
@@ -319,11 +328,13 @@ def run_parsing(args: argparse.Namespace) -> int:
             if element.page == page["page"]
         ]
         seconds.append(time.perf_counter() - started)
-        units = [element.text for element in found if element.text]
+        # A whole table repeats its rows' text, so it is measured by its grid only.
+        units = [e.text for e in found if e.text and e.kind != "table"]
         rows = [element.cells for element in found if element.kind == "table_row"]
+        grids = [element.grid for element in found if element.kind == "table"]
         lines = reference.splitlines()
         scores["pypdf"].append(parsing.score_page(page, lines, [], reference))
-        scores[args.arm].append(parsing.score_page(page, units, rows, reference))
+        scores[args.arm].append(parsing.score_page(page, units, rows, reference, grids))
         saved[str(page["number"])] = {
             "pypdf": lines,
             args.arm: [asdict(element) for element in found],
@@ -391,6 +402,26 @@ def run_sample_pages(args: argparse.Namespace) -> int:
         name = page["url"].rsplit("/", 1)[-1]
         print(f"{page['format']:16} p{page['page']:<3} {name}")
     print(f"{len(drawn['pages'])} pages, {len(drawn['blank'])} blank, in {args.out}")
+    return 0
+
+
+def run_page_candidates(args: argparse.Namespace) -> int:
+    entries = grades.read_json(args.catalogue)
+    read = cache(pages.read_pages)
+    used = set()
+    seen = []
+    for name in args.exclude_set:
+        folder = sets.require(name, args.root, args.registry)
+        truth = grades.read_json(folder / "truth.json")
+        for page in truth["pages"] + truth.get("blank", []):
+            used.add((page["entry"], page["page"]))
+            source = str(acquire.store_path(page["entry"].split(":", 1)[1]))
+            seen.append(read(source)[page["page"] - 1])
+    found = pages.candidates(entries, read, args.seed, used, seen)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(found, indent=1, ensure_ascii=False) + "\n"
+    args.out.write_text(text, encoding="utf-8", newline="\n")
+    print(f"{len(found)} candidate pages in {args.out}")
     return 0
 
 
@@ -497,6 +528,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_transcription(args)
         if args.command == "render-page":
             return run_render_page(args)
+        if args.command == "page-candidates":
+            return run_page_candidates(args)
         if args.command == "blind":
             return run_blind(args)
         if args.command == "unblind":

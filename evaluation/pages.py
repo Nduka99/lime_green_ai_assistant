@@ -105,6 +105,37 @@ def sample(
     return chosen
 
 
+def candidates(
+    entries: list[Entry],
+    read: ReadPages,
+    seed: int,
+    used: set[tuple[str, int]],
+    seen: Iterable[str] = (),
+    per_document: int = 2,
+    near: float = NEAR_DUPLICATE,
+) -> list[dict[str, Any]]:
+    """Every PDF page with a text layer, in a seeded order, that no earlier round
+    `used`, that resembles no earlier page, and that is not beyond `per_document`
+    pages of one document: the candidates from which round 3 takes the first pages
+    whose image shows a table."""
+    pdfs = sorted((e for e in entries if e["format"].startswith("pdf:")), key=_id)
+    pages = [(entry, n) for entry in pdfs for n in text_pages(read(entry["source"]))]
+    random.Random(seed).shuffle(pages)
+    earlier = list(seen)
+    taken: dict[str, int] = {}
+    chosen = []
+    for entry, number in pages:
+        if (entry["id"], number) in used or taken.get(entry["id"], 0) == per_document:
+            continue
+        text = read(entry["source"])[number - 1]
+        if any(resemblance(text, other) >= near for other in earlier):
+            continue
+        earlier.append(text)
+        taken[entry["id"]] = taken.get(entry["id"], 0) + 1
+        chosen.append(_page(entry, number))
+    return chosen
+
+
 def blank(
     entries: list[Entry], read: ReadPages, seed: int, count: int
 ) -> list[dict[str, Any]]:

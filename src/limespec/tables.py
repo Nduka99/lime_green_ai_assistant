@@ -232,6 +232,8 @@ class Structure:
     rows: list[tuple[int, list[str]]]  # (row number, each column's value)
     dropped: int  # cells the PDF's words could not spell, left empty
     leftover: list[str]  # the PDF's words no cell used, in the PDF's order
+    # Every row, header rows included, a spanning cell repeated in each position.
+    grid: list[list[str]]
 
 
 def structure(cells: list[Cell], words: list[str], header_words: set[str]) -> Structure:
@@ -289,7 +291,12 @@ def structure(cells: list[Cell], words: list[str], header_words: set[str]) -> St
         if any(values):
             rows.append((row, values))
     leftover = [word for index, word in enumerate(words) if index not in used]
-    return Structure(headers, rows, dropped, leftover)
+    grid = [[""] * width for _ in range(height)]
+    for cell in cells:
+        for row in range(cell.row, cell.row + cell.rows):
+            for column in range(cell.column, cell.column + cell.columns):
+                grid[row][column] = texts[cell]
+    return Structure(headers, rows, dropped, leftover, grid)
 
 
 def _covers(cell: Cell, row: int, column: int) -> bool:

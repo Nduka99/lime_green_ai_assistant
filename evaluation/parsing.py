@@ -9,15 +9,20 @@ differences (a superscript read as "m 2") never count as errors.
 
 import re
 import statistics
+import unicodedata
 from collections import Counter
 from typing import Any
 
 Rows = list[tuple[tuple[str, str], ...]]  # table rows as (header, value) cells
+Grid = tuple[tuple[str, ...], ...]  # a whole table's rows, header rows included
 NUMBER = re.compile(r"[0-9]+(?:[.,][0-9]+)?")
 # Punctuation at a word's edges: a rebuilt table row adds separators ("A1;").
 EDGES = ".,;:!?()[]{}\"'‘’“”—–-"
 GATE = {"cells": 0.95, "pairs": 0.95, "words": 0.99, "sentences": 0.95, "numbers": 0.99}
 LOWEST_TABLE = 0.80
+# Round 3's gate: values in their row and column of the whole table, whatever the
+# parser flags as a header (with the lowest table's share at LOWEST_TABLE).
+GRID_GATE = {"grid": 0.95, "words": 0.99, "numbers": 0.99}
 # Round 2's bar for indexing a model's transcriptions as searchable text.
 TRANSCRIPTION = {"recall": 0.90, "precision": 0.95}
 
@@ -33,6 +38,58 @@ def fold(text: str) -> str:
 
 def squash(text: str) -> str:
     return "".join(fold(text).split())
+
+
+def grid_fold(text: str) -> str:
+    """For grid comparisons, compatibility forms are folded too (a subscript ₂ is a
+    2), since truth is written from the image and PDFs encode such forms either way."""
+    return squash(unicodedata.normalize("NFKC", text))
+
+
+def placed(label: str, header: str, value: str, grids: list[Grid]) -> bool:
+    """Whether a parsed table holds this value in a row whose first cell holds the
+    label, in a column whose cell in some row above is the header (an empty label or
+    header matches any row or column)."""
+    for grid in grids:
+        for index, row in enumerate(grid):
+            if not row or grid_fold(label) not in grid_fold(row[0]):
+                continue
+            for column in range(1, len(row)):
+                if grid_fold(row[column]) != grid_fold(value):
+                    continue
+                above = [line[column] for line in grid[:index] if column < len(line)]
+                if not header or grid_fold(header) in map(grid_fold, above):
+                    return True
+    return False
+
+
+def grid_cells(
+    tables: list[dict[str, Any]], grids: list[Grid]
+) -> tuple[int, int, list[float]]:
+    """Truth values of tables written as whole grids (`grid`, with `header_rows`),
+    found in their row and column; each table's share. The header of a value is its
+    column's text in the lowest header row."""
+    found = 0
+    total = 0
+    shares = []
+    for table in tables:
+        if "grid" not in table:
+            continue
+        rows = table["grid"]
+        heads = table["header_rows"]
+        hits = 0
+        cells = 0
+        for row in rows[heads:]:
+            for column in range(1, len(row)):
+                if not row[column]:
+                    continue
+                cells += 1
+                header = rows[heads - 1][column] if heads else ""
+                hits += placed(row[0], header, row[column], grids)
+        found += hits
+        total += cells
+        shares.append(hits / cells if cells else 1.0)
+    return found, total, shares
 
 
 def cell_found(label: str, header: str, value: str, rows: Rows) -> bool:
@@ -58,10 +115,10 @@ def table_cells(
     total = 0
     shares = []
     for table in tables:
-        header = table["header"]
+        header, body = header_and_rows(table)
         hits = 0
         cells = 0
-        for row in table["rows"]:
+        for row in body:
             for column in range(1, len(row)):
                 if not row[column]:
                     continue
@@ -72,6 +129,17 @@ def table_cells(
         total += cells
         shares.append(hits / cells if cells else 1.0)
     return found, total, shares
+
+
+def header_and_rows(table: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
+    """A truth table's column headers and data rows, whether written as a header and
+    rows (rounds 1 and 2) or as a whole grid (round 3: the lowest header row)."""
+    if "grid" not in table:
+        return table["header"], table["rows"]
+    heads = table["header_rows"]
+    rows = table["grid"]
+    header = rows[heads - 1] if heads else [""] * len(rows[0])
+    return header, rows[heads:]
 
 
 def words(text: str) -> Counter[str]:
@@ -100,7 +168,7 @@ def table_numbers(tables: list[dict[str, Any]], units: list[str]) -> tuple[int, 
     numbers = [
         number
         for table in tables
-        for row in table["rows"]
+        for row in header_and_rows(table)[1]
         for value in row
         for number in NUMBER.findall(value)
     ]
@@ -123,13 +191,20 @@ def pairs_kept(pairs: list[list[str]], units: list[str]) -> tuple[int, int]:
 
 
 def score_page(
-    page: dict[str, Any], units: list[str], rows: Rows, reference: str
+    page: dict[str, Any],
+    units: list[str],
+    rows: Rows,
+    reference: str,
+    grids: list[Grid] | None = None,
 ) -> dict[str, Any]:
     """Every measure for one parser on one truth page, as (found, total) counts."""
     found, total, shares = table_cells(page["tables"], rows)
+    placed_found, placed_total, grid_shares = grid_cells(page["tables"], grids or [])
     return {
         "cells": (found, total),
         "table_shares": shares,
+        "grid": (placed_found, placed_total),
+        "grid_shares": grid_shares,
         "pairs": pairs_kept(page["pairs"], units),
         "words": words_kept(reference, units),
         "sentences": sentences_whole(page["sentences"], units),
@@ -140,7 +215,7 @@ def score_page(
 def pooled(pages: list[dict[str, Any]]) -> dict[str, float]:
     """Each measure's share over all pages (1.0 where a measure has nothing to find)."""
     result = {}
-    for measure in GATE:
+    for measure in [*GATE, "grid"]:
         found = sum(page[measure][0] for page in pages)
         total = sum(page[measure][1] for page in pages)
         result[measure] = found / total if total else 1.0
@@ -162,18 +237,30 @@ def gate(
     }
 
 
+def grid_gate(arm: dict[str, float], lowest: float) -> dict[str, bool]:
+    """Round 3's registered gate, item by item, for one arm."""
+    return {
+        "1. table values in their row and column": arm["grid"] >= GRID_GATE["grid"]
+        and lowest >= LOWEST_TABLE,
+        "2. text kept": arm["words"] >= GRID_GATE["words"],
+        "3. table numbers": arm["numbers"] >= GRID_GATE["numbers"],
+    }
+
+
 def markdown(result: dict[str, Any]) -> str:
     """The scores of the text layer and the arm, the lowest table and the gate, as a
-    report table."""
+    report table (measures outside the gate are marked as reported)."""
     arm = result["arm"]
+    thresholds = GRID_GATE if result["grid_mode"] else GATE
     lines = [
         f"| Measure | pypdf | {arm} | Gate |",
         "|---|---|---|---|",
     ]
-    for measure, threshold in GATE.items():
+    for measure in [*GATE, "grid"]:
         pypdf = result["pypdf"][measure]
         score = result[arm][measure]
-        lines.append(f"| {measure} | {pypdf:.3f} | {score:.3f} | >= {threshold} |")
+        bar = f">= {thresholds[measure]}" if measure in thresholds else "reported"
+        lines.append(f"| {measure} | {pypdf:.3f} | {score:.3f} | {bar} |")
     lines.append("")
     shares = ", ".join(f"{share:.3f}" for share in result["table_shares"])
     lines.append(
@@ -194,13 +281,19 @@ def summarise(
     scores: dict[str, list[dict[str, Any]]], seconds: list[float], arm: str = "docling"
 ) -> dict[str, Any]:
     """Pooled measures for the text layer and the arm, the arm's lowest table and its
-    gate."""
+    gate: round 3's when the truth is written as whole grids, else rounds 1 and 2's."""
     measured = pooled(scores[arm])
     pypdf = pooled(scores["pypdf"])
-    shares = [share for page in scores[arm] for share in page["table_shares"]]
+    grid_mode = any(page["grid"][1] for page in scores[arm])
+    kind = "grid_shares" if grid_mode else "table_shares"
+    shares = [share for page in scores[arm] for share in page[kind]]
     lowest = min(shares, default=1.0)
+    verdict = (
+        grid_gate(measured, lowest) if grid_mode else gate(measured, pypdf, lowest)
+    )
     return {
         "arm": arm,
+        "grid_mode": grid_mode,
         "pypdf": pypdf,
         arm: measured,
         "lowest_table": lowest,
@@ -210,7 +303,7 @@ def summarise(
             "median": statistics.median(seconds),
             "first": seconds[0],
         },
-        "gate": gate(measured, pypdf, lowest),
+        "gate": verdict,
     }
 
 

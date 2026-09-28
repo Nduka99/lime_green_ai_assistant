@@ -7,13 +7,14 @@ a new parser only has to produce them. Plain, JSON-compatible data.
 
 from dataclasses import dataclass
 
-# What an element is: a heading, running text, a list item, a table's header row or
-# one of its rows, a caption, a figure (its caption), page furniture (running
-# headers and footers), or a text-layer line the parser's reading lost.
+# What an element is: a heading, running text, a list item, a whole table, a table's
+# header row or one of its rows, a caption, a figure (its caption), page furniture
+# (running headers and footers), or a text-layer line the parser's reading lost.
 KINDS = (
     "heading",
     "paragraph",
     "list",
+    "table",
     "table_header",
     "table_row",
     "caption",
@@ -35,6 +36,17 @@ class Element:
     row: int | None = None  # the row's number in its table
     # A table row's cells as (column header, value), the row's label first.
     cells: tuple[tuple[str, str], ...] = ()
+    # A whole table's rows as read, header rows included; a cell spanning several
+    # positions is repeated in each (so every row keeps its label).
+    grid: tuple[tuple[str, ...], ...] = ()
+
+
+def grid_text(grid: tuple[tuple[str, ...], ...], caption: str = "") -> str:
+    """A whole table as text: its caption, then one line per row with its cells
+    joined by " | ". The passage format itself is experiment X9's question."""
+    lines = [caption] if caption else []
+    lines += [" | ".join(row) for row in grid]
+    return "\n".join(lines)
 
 
 def row_text(cells: tuple[tuple[str, str], ...], caption: str = "") -> str:
