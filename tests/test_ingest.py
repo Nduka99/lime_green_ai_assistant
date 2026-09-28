@@ -217,6 +217,17 @@ def test_read_sources_ignores_comments_and_blank_lines(tmp_path: Path) -> None:
     assert read_sources(sources) == ["https://example.test/a", "https://example.test/b"]
 
 
+def test_a_version_can_be_built_without_going_live(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+) -> None:
+    live, _ = ingest(pg, fake_embed_1024)
+    candidate, _ = ingest(pg, fake_embed_1024, cached_faq, live=False)
+
+    assert candidate != live
+    assert store.live_version(pg) == (live, config.EMBEDDING_MODEL)
+    assert store.index_version(pg, candidate) == (candidate, config.EMBEDDING_MODEL)
+
+
 def test_ingest_makes_a_new_version_live_from_the_cache(
     cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
 ) -> None:

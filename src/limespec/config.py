@@ -19,6 +19,9 @@ EXTERNAL_SOURCES = Path("sources-external.txt")
 DATABASE_URL = os.environ.get("LIMESPEC_DATABASE_URL", "")
 # The database is on this machine; psycopg's own default waits 130 s before failing.
 DATABASE_CONNECT_TIMEOUT_SECONDS = 5
+# An index version to serve in place of the live one, so a candidate can be evaluated
+# before it goes live. Unset, the live version is served.
+INDEX_VERSION = os.environ.get("LIMESPEC_INDEX_VERSION", "")
 
 USER_AGENT = "lime-green-assistant/0.1 (technical interview exercise)"
 REQUEST_DELAY_SECONDS = 1.0

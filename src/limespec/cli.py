@@ -3,6 +3,7 @@ a question, serve runs the web page, and search shows what retrieval finds."""
 
 import argparse
 import sys
+from pathlib import Path
 
 import psycopg
 import uvicorn
@@ -52,10 +53,16 @@ def report(results: list[acquire.Record]) -> None:
             print(f"  failed: {record['url']}: {record['error']}")
 
 
-def run_ingest() -> None:
+def run_ingest(sources: Path | None, live: bool) -> None:
     with assistant.connect() as conn:
-        version, manifest = ingest(conn, llm.embed)
-    print(f"index version: {version} (live)")
+        version, manifest = ingest(conn, llm.embed, sources, live)
+    if live:
+        print(f"index version: {version} (live)")
+    else:
+        print(
+            f"index version: {version} (not live; serve it with "
+            f"LIMESPEC_INDEX_VERSION={version})"
+        )
     for key, value in manifest.items():
         print(f"{key}: {value}")
 
@@ -97,7 +104,7 @@ def run_ask(question: str | None) -> None:
 
 def run_search(question: str) -> None:
     with assistant.connect() as conn:
-        version = assistant.live_index(conn)
+        version = assistant.served_index(conn)
         passages = store.search(conn, version, question, llm.embed, llm.rerank)
     for rank, passage in enumerate(passages, start=1):
         print(f"{rank}. {passage.title} › {passage.heading}\n   {passage.url}")
@@ -131,8 +138,17 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser(
         "browse", help="give the collected files readable names in data/browse/"
     )
-    commands.add_parser(
+    ingest_parser = commands.add_parser(
         "ingest", help="index the pages in sources.txt as a new live Postgres version"
+    )
+    ingest_parser.add_argument(
+        "--sources", type=Path, help="a list of page URLs other than sources.txt"
+    )
+    ingest_parser.add_argument(
+        "--no-live",
+        dest="live",
+        action="store_false",
+        help="build the version beside the live one without serving it",
     )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
@@ -148,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
             made = acquire.browse()
             print(f"{made} new readable names in {config.FILE_STORE.parent / 'browse'}")
         elif args.command == "ingest":
-            run_ingest()
+            run_ingest(args.sources, args.live)
         elif args.command == "ask":
             run_ask(args.question)
         elif args.command == "serve":

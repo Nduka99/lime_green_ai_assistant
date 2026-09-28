@@ -59,10 +59,10 @@ def with_stages(
 def ask_and_record(
     question: str, on_stage: Callable[[str], None] = no_stage
 ) -> tuple[Answer, int]:
-    """Answer from the live Postgres index and store the audit record; return the
+    """Answer from the served Postgres index and store the audit record; return the
     answer and the record's id. `on_stage` hears each stage as it starts."""
     with telemetry.span("answer"), connect() as conn:
-        version_id = live_index(conn)
+        version_id = served_index(conn)
         started = time.perf_counter()
         retrieve, chat = with_stages(
             lambda query: store.search(conn, version_id, query, llm.embed, llm.rerank),
@@ -104,28 +104,38 @@ def connect() -> store.Connection:
 
 
 def database_ready() -> bool:
-    """Whether answers can be served and recorded: Postgres is reachable and has a
-    live index embedded with the configured model."""
+    """Whether answers can be served and recorded: Postgres is reachable and the
+    index to serve exists, embedded with the configured model."""
     try:
         with connect() as conn:
-            live_index(conn)
+            served_index(conn)
     except IngestError:
         return False
     return True
 
 
-def live_index(conn: store.Connection) -> int:
-    """The live index version, only if it was embedded with the configured model:
-    question vectors from another model would not match its passage vectors."""
-    live = store.live_version(conn)
-    if live is None:
-        raise IngestError(
-            "no live Postgres index; run `uv run --env-file .env limespec ingest`"
-        )
-    version_id, embedding_model = live
+def served_index(conn: store.Connection) -> int:
+    """The index version to serve: `LIMESPEC_INDEX_VERSION` when set (a candidate
+    evaluated before it goes live), otherwise the live one. Either must have been
+    embedded with the configured model: question vectors from another model would
+    not match its passage vectors."""
+    if config.INDEX_VERSION:
+        if not config.INDEX_VERSION.isdigit():
+            raise IngestError("LIMESPEC_INDEX_VERSION must be an index version number")
+        served = store.index_version(conn, int(config.INDEX_VERSION))
+        if served is None:
+            raise IngestError(f"no index version {config.INDEX_VERSION} to serve")
+    else:
+        served = store.live_version(conn)
+        if served is None:
+            raise IngestError(
+                "no live Postgres index; run `uv run --env-file .env limespec ingest`"
+            )
+    version_id, embedding_model = served
     if embedding_model != config.EMBEDDING_MODEL:
         raise IngestError(
-            f"the live index was embedded with {embedding_model}, but the configured "
-            f"model is {config.EMBEDDING_MODEL}; rebuild it with `limespec ingest`"
+            f"index version {version_id} was embedded with {embedding_model}, but the "
+            f"configured model is {config.EMBEDDING_MODEL}; rebuild it with "
+            "`limespec ingest`"
         )
     return version_id

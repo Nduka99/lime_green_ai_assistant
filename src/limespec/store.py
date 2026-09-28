@@ -142,6 +142,14 @@ def live_version(conn: Connection) -> tuple[int, str] | None:
     return (int(row[0]), str(row[1])) if row else None
 
 
+def index_version(conn: Connection, version_id: int) -> tuple[int, str] | None:
+    """One version's id and embedding model, or None if there is no such version."""
+    row = conn.execute(
+        "SELECT id, embedding_model FROM index_versions WHERE id = %s", (version_id,)
+    ).fetchone()
+    return (int(row[0]), str(row[1])) if row else None
+
+
 def keyword_ranking(
     conn: Connection, version_id: int, question: str, limit: int
 ) -> list[int]:

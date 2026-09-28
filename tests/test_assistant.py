@@ -194,6 +194,27 @@ def test_a_safety_referral_reports_only_understanding() -> None:
     assert stages == ["understanding"]
 
 
+def test_a_chosen_version_is_served_in_place_of_the_live_one(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    pg: store.Connection,
+) -> None:
+    live = live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    candidate = live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    store.set_live(pg, live)  # the candidate was built, then the live one restored
+
+    assert assistant.served_index(pg) == live
+    monkeypatch.setattr(config, "INDEX_VERSION", str(candidate))
+    assert assistant.served_index(pg) == candidate
+    monkeypatch.setattr(config, "INDEX_VERSION", "999999")
+    with pytest.raises(IngestError, match="no index version 999999 to serve"):
+        assistant.served_index(pg)
+    monkeypatch.setattr(config, "INDEX_VERSION", "latest")
+    with pytest.raises(IngestError, match="must be an index version number"):
+        assistant.served_index(pg)
+
+
 def test_recording_an_answer_needs_the_postgres_url() -> None:
     with pytest.raises(IngestError, match="LIMESPEC_DATABASE_URL is not set"):
         assistant.ask_and_record("anything")

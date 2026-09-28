@@ -286,17 +286,23 @@ def cached_pages(urls: Sequence[str]) -> list[tuple[str, bytes, str]]:
 
 
 def ingest(
-    conn: store.Connection, embed: Embed, sources: Path | None = None
+    conn: store.Connection,
+    embed: Embed,
+    sources: Path | None = None,
+    live: bool = True,
 ) -> tuple[int, dict[str, str]]:
-    """Build a new Postgres index version from the sources and make it live.
+    """Build a new Postgres index version from the sources and, unless `live` is
+    False, make it live.
 
     The version is written beside the live one and switched in a single
-    transaction, so a failed build leaves the served index untouched.
+    transaction, so a failed build leaves the served index untouched. A version
+    left not live can be evaluated first (`LIMESPEC_INDEX_VERSION`).
     """
     urls = read_sources(sources or config.SOURCES_FILE)
     prepared = prepare_index(cached_pages(urls), embed)
     version = store.write_version(
         conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
     )
-    store.set_live(conn, version)
+    if live:
+        store.set_live(conn, version)
     return version, prepared.manifest

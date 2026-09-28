@@ -159,6 +159,28 @@ def test_ingest_writes_a_live_version_and_prints_its_manifest(
     assert "passages: 2" in output
 
 
+def test_ingest_can_build_from_another_list_without_going_live(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    candidates = cached_faq.parent / "candidates.txt"
+    candidates.write_text(cached_faq.read_text())
+
+    assert cli.main(["ingest", "--sources", str(candidates), "--no-live"]) == 0
+    assert store.live_version(pg) is None
+    [(version,)] = pg.execute("SELECT id FROM index_versions").fetchall()
+    assert capsys.readouterr().out.startswith(
+        f"index version: {version} (not live; serve it with "
+        f"LIMESPEC_INDEX_VERSION={version})\n"
+    )
+
+
 def test_an_unreachable_postgres_is_reported_not_raised(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -178,7 +200,7 @@ def test_model_server_errors_are_reported_not_raised(
     postgres_url: str,
 ) -> None:
     def failing_ingest(
-        conn: store.Connection, embed: Embed
+        conn: store.Connection, embed: Embed, sources: Path | None, live: bool
     ) -> tuple[int, dict[str, str]]:
         raise llm.ModelServerError("embedding server at http://127.0.0.1:8081 failed")
 

@@ -183,6 +183,10 @@ pages and the index (`data/`) stay on your machine and are never committed.
    uv run --env-file .env limespec ingest
    ```
 
+   `--no-live` builds a candidate version beside the live one (`--sources` names
+   another list of pages); set `LIMESPEC_INDEX_VERSION` to serve it while it is
+   evaluated.
+
    To collect the rest of the site for the knowledge base, with the same politeness:
    every sitemap page, then the site's own PDFs and images, then the openly licensed
    documents listed in `sources-external.txt` (stored once each by SHA-256 in
