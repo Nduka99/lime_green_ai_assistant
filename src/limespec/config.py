@@ -9,6 +9,9 @@ from pathlib import Path
 SITE = "https://www.lime-green.co.uk/"
 SOURCES_FILE = Path("sources.txt")
 PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
+# The site's documents and images, each stored once by SHA-256 with manifest.json;
+# never committed.
+FILE_STORE = Path("data/files")
 # The Postgres index (deploy/compose.yaml). It holds a password, so it comes from the
 # environment: copy .env.example to .env and run `uv run --env-file .env ...`.
 DATABASE_URL = os.environ.get("LIMESPEC_DATABASE_URL", "")
