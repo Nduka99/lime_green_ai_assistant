@@ -27,12 +27,37 @@ def test_a_copy_of_the_sqlite_index_ranks_vectors_identically(
         count = lite.execute("SELECT count(*) FROM passages").fetchone()[0]
         query = fake_embed_1024([QUESTION])[0]
 
-        found = x2.rankings(QUESTION, query, lite, pg, {"pg": (copy, mapping)})
+        pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
+        x2.create_bm25_index(pg, copy)
+        arms: x2.Arms = {
+            "pg": (copy, mapping, store.keyword_ranking),
+            "pg-bm25": (copy, mapping, x2.bm25_ranking),
+        }
+        found = x2.rankings(QUESTION, query, lite, pg, arms)
 
     assert sorted(mapping.values()) == list(range(1, count + 1))
     assert found["pg-vector"] == found["sqlite-vector"]
-    assert found["sqlite-keyword"][0] == found["pg-keyword"][0]  # the FAQ answer
-    assert set(found) == {f"{arm}-{m}" for arm in ("sqlite", "pg") for m in x2.METHODS}
+    faq_answer = found["sqlite-keyword"][0]
+    assert found["pg-keyword"][0] == faq_answer
+    assert found["pg-bm25-keyword"][0] == faq_answer
+    arms_seen = ("sqlite", "pg", "pg-bm25")
+    assert set(found) == {f"{arm}-{m}" for arm in arms_seen for m in x2.METHODS}
+
+
+def test_bm25_leaves_out_passages_that_share_no_word(
+    tmp_path: Path,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    pg: store.Connection,
+) -> None:
+    database = tmp_path / "index.db"
+    build_index(database, fixture_pages, fake_embed_1024)
+    with closing(sqlite3.connect(database)) as lite:
+        copy = x2.copy_sqlite_index(lite, pg)
+    pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
+    x2.create_bm25_index(pg, copy)
+
+    assert x2.bm25_ranking(pg, copy, "zebra xylophone", 20) == []
 
 
 def test_the_gate_fails_only_when_the_whole_interval_is_below_zero() -> None:

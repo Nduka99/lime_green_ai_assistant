@@ -13,7 +13,16 @@ name: limegreen
 services:
   postgres:
     profiles: [dev]
-    image: pgvector/pgvector:0.8.6-pg18
+    # The pgvector image plus pg_textsearch for BM25 ranking (deploy/postgres/Dockerfile).
+    build: postgres
+    image: limegreen-postgres:0.8.6-pg18-trixie-textsearch1.4.0
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_textsearch
+      # BM25 index memory, kept inside the container's 512 MB (the default is 2 GB).
+      - -c
+      - pg_textsearch.memory_limit=128MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}

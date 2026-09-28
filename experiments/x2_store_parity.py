@@ -5,22 +5,27 @@
 The store is the only difference between the arms. A temporary Postgres index
 version is copied from the SQLite index (the same pages, passages and vectors),
 each question is embedded once, and that one vector is ranked by both stores.
-Keyword ranking differs by design (SQLite FTS5 BM25, Postgres ts_rank); vector
-ranking should match. The live Postgres version, re-embedded by `limespec ingest
---postgres`, is reported beside them for information. Rankings are scored against
-the frozen 90 and held-out v2 answer keys; the gate is that no Postgres measure is
-worse than SQLite beyond the paired bootstrap interval. The copy is deleted at the
-end. Needs the dev Postgres and the embedding server.
+Vector ranking should match. Keyword ranking is tried two ways: Postgres's
+built-in `ts_rank` (arm `pg`, run 1: failed) and BM25 from the pg_textsearch
+extension (arm `pg-bm25`, run 2), with one BM25 index per index version so its
+word statistics cover that version alone, as SQLite's did. The live Postgres
+version, re-embedded by `limespec ingest --postgres`, is reported beside them.
+Rankings are scored against the frozen 90 and held-out v2 answer keys; the gate is
+that no measure of the gated arm is worse than SQLite beyond the paired bootstrap
+interval. The copy and the BM25 indexes are removed at the end. Needs the dev
+Postgres (with pg_textsearch) and the embedding server.
 """
 
 import json
 import sqlite3
 import sys
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 import psycopg
+from psycopg import sql
 
 from evaluation import retrieval, sets
 from limespec import config, llm, store
@@ -30,8 +35,47 @@ SETS = ("frozen90", "heldout-v2")
 DEPTH = retrieval.DEPTH  # 20 candidates per method, as in the saved runs
 METHODS = ("keyword", "vector", "fused")
 OUT = Path("data/runs/x2")
-# Postgres arm -> {Postgres passage id: SQLite passage id}, and its version id
-Arms = dict[str, tuple[int, dict[int, int]]]
+GATED_ARM = "pg-bm25"
+# How an arm ranks keywords: (connection, version id, question, limit) -> ids
+KeywordRanking = Callable[[store.Connection, int, str, int], list[int]]
+# Postgres arm -> (version id, {Postgres passage id: SQLite id}, keyword ranking)
+Arms = dict[str, tuple[int, dict[int, int], KeywordRanking]]
+
+
+def bm25_index(version_id: int) -> str:
+    return f"x2_bm25_v{version_id}"
+
+
+def create_bm25_index(pg: store.Connection, version_id: int) -> None:
+    """A BM25 index over one version's passages (title and text, as SQLite had).
+
+    A partial index keeps its own word statistics, so scores cover this version
+    only. The version id is a literal because the planner must see the predicate.
+    """
+    pg.execute(
+        sql.SQL(
+            "CREATE INDEX IF NOT EXISTS {} ON passages "
+            "USING bm25 ((title || ' ' || text)) WITH (text_config = 'english') "
+            "WHERE index_version_id = {}"
+        ).format(sql.Identifier(bm25_index(version_id)), sql.Literal(version_id))
+    )
+
+
+def bm25_ranking(
+    pg: store.Connection, version_id: int, question: str, limit: int
+) -> list[int]:
+    """Passage ids ranked by BM25; passages sharing no word with the question
+    score 0 and are left out, as a full-text match would leave them out."""
+    score = sql.SQL("(title || ' ' || text) <@> to_bm25query({}, {})").format(
+        sql.Literal(question), sql.Literal(bm25_index(version_id))
+    )
+    rows = pg.execute(
+        sql.SQL(
+            "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
+            "ORDER BY {}, id LIMIT {}"
+        ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 def copy_sqlite_index(sqlite_conn: sqlite3.Connection, pg: store.Connection) -> int:
@@ -87,10 +131,8 @@ def rankings(
         "sqlite-vector": vector,
         "sqlite-fused": fuse([keyword, vector])[:DEPTH],
     }
-    for arm, (version_id, to_sqlite) in arms.items():
-        keyword = [
-            to_sqlite[i] for i in store.keyword_ranking(pg, version_id, question, DEPTH)
-        ]
+    for arm, (version_id, to_sqlite, rank_keywords) in arms.items():
+        keyword = [to_sqlite[i] for i in rank_keywords(pg, version_id, question, DEPTH)]
         vector = [
             to_sqlite[i]
             for i in store.vector_ranking(pg, version_id, query_vector, DEPTH)
@@ -158,7 +200,7 @@ def gate_failures(result: dict[str, Any]) -> list[str]:
 
 
 def report(name: str, parts: list[retrieval.Part], arms: Arms) -> list[str]:
-    """Print one set's comparison table; return its gate failures (parity arm only)."""
+    """Print one set's comparison table; return the gated arm's failures."""
     questions = len({p.question_id for p in parts})
     print(f"\n## {name}: {questions} questions, {len(parts)} parts\n")
     print(
@@ -176,7 +218,7 @@ def report(name: str, parts: list[retrieval.Part], arms: Arms) -> list[str]:
                     f"{row['difference']:+.3f} [{row['low']:+.3f}, {row['high']:+.3f}]"
                 )
             worse = gate_failures(result)
-            if arm == "pg":
+            if arm == GATED_ARM:
                 failures += [f"{name}: {item}" for item in worse]
             verdict = "; ".join(worse) or "none"
             print(f"| {arm} | {method} | " + " | ".join(cells) + f" | {verdict} |")
@@ -194,11 +236,17 @@ def main() -> int:
         if live is None:
             raise SystemExit("no live Postgres index: run `limespec ingest --postgres`")
         copy = copy_sqlite_index(lite, pg)
+        pg.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
+        create_bm25_index(pg, copy)
+        create_bm25_index(pg, live[0])
         pg.commit()
         try:
-            arms = {
-                "pg": (copy, sqlite_ids(pg, copy, lite)),
-                "pg-ingest": (live[0], sqlite_ids(pg, live[0], lite)),
+            copy_ids = sqlite_ids(pg, copy, lite)
+            live_ids = sqlite_ids(pg, live[0], lite)
+            arms: Arms = {
+                "pg": (copy, copy_ids, store.keyword_ranking),
+                "pg-bm25": (copy, copy_ids, bm25_ranking),
+                "pg-bm25-ingest": (live[0], live_ids, bm25_ranking),
             }
             failures = []
             for name in SETS:
@@ -207,12 +255,19 @@ def main() -> int:
                 retrieval.write(parts, OUT / name)
                 failures += report(name, parts, arms)
         finally:
+            pg.rollback()
+            for version_id in (copy, live[0]):
+                pg.execute(
+                    sql.SQL("DROP INDEX IF EXISTS {}").format(
+                        sql.Identifier(bm25_index(version_id))
+                    )
+                )
             pg.execute("DELETE FROM index_versions WHERE id = %s", (copy,))
             pg.commit()
     if failures:
-        print("\nGate X2 (arm pg): FAIL: " + "; ".join(failures))
+        print(f"\nGate X2 (arm {GATED_ARM}): FAIL: " + "; ".join(failures))
         return 1
-    print("\nGate X2 (arm pg): PASS")
+    print(f"\nGate X2 (arm {GATED_ARM}): PASS")
     return 0
 
 
