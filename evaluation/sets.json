@@ -97,6 +97,40 @@
     "images/20-p1.png": "031d3e517db6ed438c94c30afabd1100a0fc17c566fa5332b16add12a1d015cb",
     "truth.json": "e4373563d7678660e010bf61666ad33b6ce5057dc5209779b4ee347efb2d3e41"
    }
+  },
+  "x8-pages-r2": {
+   "description": "X8 round 2: 20 PDF pages drawn with seed 9 (evaluation sample-pages) and the 8 Lime Green pages under 10 words; truth (tables, pairs, sentences; every legible word on the blank pages) written from each page's image before any parser or model read them",
+   "files": {
+    "images/01-p1.png": "40c18313771125cd0319570fa18f82a72ed09ebc4e19b82384a8381936497866",
+    "images/02-p1.png": "75b4c57b3469ce01f95e987ae42e2e046be594f1f6e0760b552f4c232070c2ce",
+    "images/03-p1.png": "9602056aa1211fb5ff05749c3ddde0be676f0b2b2dcc735d395cf59413136efe",
+    "images/04-p1.png": "ded6f4f8393845384a2705abffc65ecc3470b916542b6ff10e4a5a43226447bb",
+    "images/05-p1.png": "1816d000872f25b286adca658de39dd8156a07513f71282ed0281ad0cd3d3d87",
+    "images/06-p1.png": "7cf67e2a10f2f9e22e205f5106e6f80af84e4ec3431e29df527c4110326a55a7",
+    "images/07-p1.png": "cc0b369577ef9ba77d7eda8a76734b714f4993e60f2cc68eabb12166c1161cb6",
+    "images/08-p1.png": "7f80488291e654a3ef8d1e9cb6113d099ad719ff8241047675d4001dfe256b01",
+    "images/09-p1.png": "713b5a7767f25dd3e8a2a5282d5cce7e8a9c76f88bbb9bf7a5d357262bb3980a",
+    "images/10-p1.png": "41635de2a5d95c30cf9b7b7d4873bbc3e7a6ad8bb374e35b9ea4b175dccba070",
+    "images/11-p2.png": "c92724f4662cc2d1661f9000f24774e836ce59946c9144106399bcd486afdc16",
+    "images/12-p3.png": "c4be7e1d0f01284f8b5b7070566c11a28b4238466bacb99f48914edfbe0df1ab",
+    "images/13-p3.png": "b035d484cf66bd8d57690d86477fdf9c2b7837fa0408c680d866a7deb40b3dd1",
+    "images/14-p1.png": "70283505c7cc959610aef6e3df5b532d350023c3a18b8bea2a6984cea039aec3",
+    "images/15-p2.png": "4630eb02891e82a27ea8c6ae38bbffc6ba55e714ba32afd544a78f2c4ba9987f",
+    "images/16-p8.png": "c09fe49600ac0f378399313cfcb5e280d88985c949a031557722f90a9b133d65",
+    "images/17-p4.png": "c0754fd3b0b38a7f0711d40bef66be2c2516d77674c34941bd787648f5e40faf",
+    "images/18-p2.png": "2f2f387fefd5d69afa001e4d5c617af47e47b54e5b84e5ceb997997728d0c87a",
+    "images/19-p6.png": "9423652a67689ce8654ba88eaa7f48cf4b1b0a633564015dfdbf9513e19c1861",
+    "images/20-p1.png": "d2b0116ac68052297cc42d798bc25c1f7ec4f951a6584a8e3ce21045fb240259",
+    "images/b1-p4.png": "995b8f540466195dbeccd2de4f60c95770f49594c049966870f3b410ece578a0",
+    "images/b2-p1.png": "b3140a4b8f10906c866b789c5c958da82820e3ebf01e7bb72643f8e92f5323cb",
+    "images/b3-p1.png": "e18f4f9f58cf088f92abd7c30e4394bb2e41f7a1fe747973fcd522f191c36481",
+    "images/b4-p23.png": "06f0f631f22a957da0356a15cd5534d15c5e30968c07f03eaa76805be1f27896",
+    "images/b5-p2.png": "5e8ea88ed71defd3e85f5e68cbca4904b90e86be2c0c5949aea3bb2290889482",
+    "images/b6-p1.png": "efb4855dde3e8b7ca8fc23a48efae3b54cc464f493e2eb11768126fcabb00eb6",
+    "images/b7-p3.png": "995b8f540466195dbeccd2de4f60c95770f49594c049966870f3b410ece578a0",
+    "images/b8-p1.png": "9a7ec474684fab934fe01d2df352240a7920261e6cf208e4b71b9eadf7426dc1",
+    "truth.json": "124702c522c27de75b49f0278e9ea75d9b208e560dabdc6105e176342b6c7022"
+   }
   }
  }
 }

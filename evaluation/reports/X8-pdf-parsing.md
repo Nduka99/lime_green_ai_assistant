@@ -278,3 +278,24 @@ counted against the truth as multisets, folded as above. A model's transcription
 indexed as searchable text labelled "transcribed", and never quotable, only if recall is
 ≥ 0.90 and precision ≥ 0.95, pooled over the 8 pages. If the table winner's model passes,
 it is preferred, so that one model serves both.
+
+**Truth sealed** (28 September 2026, set `x8-pages-r2`, 29 files hashed), before any parser
+or model read these pages:
+
+- the 20 pages hold 5 tables with 64 cells, 77 pairs and 93 sentences;
+- the 8 low-text pages hold 106 words;
+- 42 of the 64 cells come from one template, the system-boundary table with rotated labels,
+  which appears on two carbon-footprint documents (pages 2 and 3). Cell scores are therefore
+  also reported table by table.
+
+Each page was rendered at 144 DPI in its own process. The IWI Installation Guide makes
+Docling's PDF parser crash natively (Windows heap corruption, 0xc0000374) when it is the
+first document a process converts. This happened in every configuration tried: without page
+images, at 72 and 200 DPI, and with one parser thread. Converting another document first
+avoided it in every trial. Its two pages (b2, b4) were therefore rendered after another
+document, which leaves the image unchanged. The crash is an ingestion risk and is researched
+separately.
+
+For the blank pages, "every legible word" includes wordmarks ("lime green", "warm shell") and
+the printed text in photographs. It excludes signatures and symbols (| © ®), and the scoring
+counts only tokens that hold a letter or a digit.
