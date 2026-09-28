@@ -6,7 +6,8 @@ A claim is shown only if every check passes:
 2. every quote appears in its passage, ignoring only case and whitespace;
 3. every number in the claim, with its sign, appears in one of its quotes;
 4. every regulation the claim mentions (Building Regulations, Part L, building
-   control ...) is mentioned in its quotes.
+   control ...) is mentioned in its quotes;
+5. it states no price, whatever it quotes (the price fence, `prices`).
 
 These are evidence checks: none of them tries to judge what a sentence means,
 so they apply equally to any wording. Checks 3 and 4 stop a claim adding a
@@ -22,6 +23,7 @@ import re
 from collections.abc import Mapping, Sequence
 from urllib.parse import quote as percent_encode
 
+from limespec import prices
 from limespec.models import Claim, DraftClaim, Evidence, Passage, Rejection
 
 # A sign belongs to a number only where it cannot be a range dash: "-5 °C" has a
@@ -88,6 +90,8 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
     """The verified claim with its citations, or the reason it must be removed."""
     if not draft.evidence:
         return Rejection(draft.text, "no quote")
+    if prices.states_price(draft.text):
+        return Rejection(draft.text, "states a price")
     evidence = []
     for item in draft.evidence:
         passage = sources.get(item.source_id)

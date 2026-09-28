@@ -5,6 +5,7 @@
     uv run python -m evaluation check-key SET --seed N --prefix v4q
     uv run python -m evaluation retrieval SET                # saved TREC runs
     uv run python -m evaluation grades SET SITTING           # a grading sitting
+    uv run python -m evaluation guardrails SET ANSWERS.json  # prices, emergencies
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
@@ -33,6 +34,7 @@ from evaluation import (
     catalogue,
     conversations,
     grades,
+    guardrails,
     keys,
     pairs,
     retrieval,
@@ -101,6 +103,11 @@ def parser() -> argparse.ArgumentParser:
     written.add_argument(
         "--out", type=Path, help="write the whole key here if it has no problems"
     )
+    guarded = commands.add_parser(
+        "guardrails", help="check a run for shown prices and missed emergencies"
+    )
+    guarded.add_argument("name")
+    guarded.add_argument("answers", type=Path, help="a run's answers file")
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -225,6 +232,16 @@ def run_check_conversations(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_guardrails(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    records = {r["id"]: r for r in grades.read_json(args.answers)}
+    result = guardrails.check(key, questions, records)
+    print(guardrails.text(result))
+    return 0 if guardrails.passed(result) else 1
+
+
 def run_grades(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -310,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_check_conversations(args)
         if args.command == "grades":
             return run_grades(args)
+        if args.command == "guardrails":
+            return run_guardrails(args)
         if args.command == "blind":
             return run_blind(args)
         if args.command == "unblind":

@@ -94,7 +94,11 @@ def compare(
     baseline, candidate = list(runs)
     cases = grades.cases_by_question(key, questions)
     ids = [row["id"] for row in questions]
-    emergencies = [qid for qid in ids if cases[qid][0]["type"] == "exposure_emergency"]
+    emergencies = [
+        qid
+        for qid in ids
+        if "safety_referral" in grades.expected_statuses(cases[qid][0])
+    ]
     result: dict[str, Any] = {
         "runs": [baseline, candidate],
         "questions": len(ids),
@@ -107,7 +111,7 @@ def compare(
         matched = [
             qid
             for qid in ids
-            if grades.status(records[qid]) == cases[qid][0]["expected_status"]
+            if grades.status(records[qid]) in grades.expected_statuses(cases[qid][0])
         ]
         referred = [
             qid

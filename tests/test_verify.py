@@ -1,5 +1,6 @@
 """Claim verification policy. Invented passages only."""
 
+from limespec import prices
 from limespec.models import Claim, DraftClaim, DraftEvidence, Passage, Rejection
 from limespec.verify import check_claim, find_quote, quote_link, verify
 
@@ -244,3 +245,28 @@ def test_verify_keeps_valid_claims_unchanged_and_records_each_removal() -> None:
     assert rejected == (
         Rejection("Mortex sets in 2 days.", "number not in its quotes: 2"),
     )
+
+
+def test_the_price_rule_finds_currency_amounts_only() -> None:
+    for text in ["£5.00", "a £ 18 bag", "$10", "€2.50 each", "5 GBP", "12.5EUR"]:
+        assert prices.states_price(text), text
+    for text in ["VAT is added", "£ per bag", "5 bags of 25kg", "GBP", "the $ sign"]:
+        assert not prices.states_price(text), text
+
+
+def test_a_claim_stating_a_price_is_removed_even_with_its_quote() -> None:
+    sample = Passage(
+        13,
+        "https://example.test/order-a-sample",
+        "Order Samples",
+        "Our samples",
+        "Our samples\nMortex sample £5.00",
+        "2026-09-12T10:00:00+00:00",
+    )
+
+    result = check_claim(
+        claim("A Mortex sample costs £5.00.", ("S3", "Mortex sample £5.00")),
+        {"S3": sample},
+    )
+
+    assert reason(result) == "states a price"

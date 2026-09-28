@@ -16,7 +16,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
-from limespec import config
+from limespec import config, prices
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank, fuse, rerank_top, unit_vector
 
@@ -82,14 +82,24 @@ def write_version(
         rows = []
         for (url, title, heading, text), vector in zip(passages, vectors, strict=True):
             document_id = document_ids[url]
+            # A passage with a price is kept for audit but never searched (X16).
+            commercial = prices.states_price(text)
             rows.append(
-                (version[0], document_id, title, heading, text, vector_text(vector))
+                (
+                    version[0],
+                    document_id,
+                    title,
+                    heading,
+                    text,
+                    vector_text(vector),
+                    commercial,
+                )
             )
         with conn.cursor() as cursor:
             cursor.executemany(
-                "INSERT INTO passages "
-                "(index_version_id, document_id, title, heading, text, embedding) "
-                "VALUES (%s, %s, %s, %s, %s, %s::vector)",
+                "INSERT INTO passages (index_version_id, document_id, title, heading, "
+                "text, embedding, commercial) "
+                "VALUES (%s, %s, %s, %s, %s, %s::vector, %s)",
                 rows,
             )
         # A partial index keeps its own word statistics. The version id is a
@@ -156,7 +166,8 @@ def keyword_ranking(
     """Passage ids ranked by BM25 over the question's words (experiment X2).
 
     Passages that share no word with the question score 0 and are left out, as a
-    full-text match leaves them out. Ties keep passage id order.
+    full-text match leaves them out, and so are passages with a price (X16). Ties
+    keep passage id order.
     """
     if not re.search(r"\w", question):
         return []
@@ -166,7 +177,7 @@ def keyword_ranking(
     rows = conn.execute(
         sql.SQL(
             "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
-            "ORDER BY {}, id LIMIT {}"
+            "AND NOT commercial ORDER BY {}, id LIMIT {}"
         ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
     ).fetchall()
     return [row[0] for row in rows]
@@ -175,9 +186,10 @@ def keyword_ranking(
 def vector_ranking(
     conn: Connection, version_id: int, query_vector: Sequence[float], limit: int
 ) -> list[int]:
-    """Passage ids ranked by cosine similarity (inner product of unit vectors)."""
+    """Passage ids ranked by cosine similarity (inner product of unit vectors),
+    leaving out passages with a price (X16)."""
     rows = conn.execute(
-        "SELECT id FROM passages WHERE index_version_id = %s "
+        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial "
         "ORDER BY embedding <#> %s::vector, id LIMIT %s",
         (version_id, vector_text(query_vector), limit),
     ).fetchall()

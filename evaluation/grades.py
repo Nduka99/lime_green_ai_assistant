@@ -19,6 +19,18 @@ def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def case_wordings(case: dict[str, Any]) -> list[dict[str, str]]:
+    """A case's wordings: `wordings` in the held-out keys, `questions` in frozen90's."""
+    found: list[dict[str, str]] = case.get("wordings") or case.get("questions", [])
+    return found
+
+
+def expected_statuses(case: dict[str, Any]) -> set[str]:
+    """The statuses the key accepts: one in the held-out keys, a list in frozen90's."""
+    expected = case["expected_status"]
+    return set(expected) if isinstance(expected, list) else {expected}
+
+
 def cases_by_question(
     key: dict[str, Any], questions: list[dict[str, str]]
 ) -> dict[str, tuple[dict[str, Any], str]]:
@@ -29,7 +41,7 @@ def cases_by_question(
     """
     wordings: dict[str, list[tuple[dict[str, Any], str]]] = {}
     for case in key["cases"]:
-        for wording in case["wordings"]:
+        for wording in case_wordings(case):
             wordings.setdefault(wording["text"], []).append((case, wording["style"]))
     found = {}
     for row in questions:
@@ -117,7 +129,7 @@ def arm_totals(
     cautions = 0
     for qid in ids:
         record = records[qid]
-        if status(record) == cases[qid][0]["expected_status"]:
+        if status(record) in expected_statuses(cases[qid][0]):
             matched += 1
         if record.get("view", {}).get("notice"):
             cautions += 1

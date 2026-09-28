@@ -165,6 +165,22 @@ def test_questions_map_to_their_case_and_style_by_text() -> None:
     assert cases["t001"][1] == "rushed"
 
 
+def test_frozen90s_key_shape_maps_too() -> None:
+    key = {
+        "cases": [
+            {"id": "eye", "type": "emergency", "expected_status": ["safety_referral"],
+             "questions": [{"style": "original", "text": "Lime went in my eye"}]},
+        ]
+    }  # fmt: skip
+
+    cases = grades.cases_by_question(
+        key, [{"id": "f001", "question": "Lime went in my eye"}]
+    )
+
+    assert cases["f001"] == (key["cases"][0], "original")
+    assert grades.expected_statuses(cases["f001"][0]) == {"safety_referral"}
+
+
 def test_a_question_not_in_the_key_or_in_it_twice_is_refused() -> None:
     with pytest.raises(ValueError, match="t009 matches 0 wordings"):
         grades.cases_by_question(KEY, [{"id": "t009", "question": "unknown"}])

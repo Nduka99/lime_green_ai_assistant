@@ -223,6 +223,30 @@ def test_the_live_version_cannot_be_deleted(pg: store.Connection) -> None:
     assert store.live_version(pg) == (version, "test-embedder")
 
 
+def test_a_passage_with_a_price_is_stored_but_never_searched(
+    pg: store.Connection,
+) -> None:
+    priced = [
+        *PASSAGES[:2],
+        ("https://example.test/support/faq", "FAQ", "Samples",
+         "Samples\nThe sample pack costs £5.00 and holds three colours."),
+    ]  # fmt: skip
+    version = store.write_version(
+        pg, PAGES, priced, [padded(v) for v in VECTORS], MANIFEST
+    )
+
+    tagged = pg.execute(
+        "SELECT heading FROM passages WHERE index_version_id = %s AND commercial",
+        (version,),
+    ).fetchall()
+    assert tagged == [("Samples",)]
+    keyword = store.keyword_ranking(pg, version, "sample pack colours", 10)
+    vector = store.vector_ranking(pg, version, padded([0.6, 0.8]), 10)
+    found = store.load_passages(pg, keyword + vector)
+    assert "Samples" not in {p.heading for p in found}
+    assert len(vector) == 2
+
+
 def test_vector_ranking_orders_by_cosine_within_one_version(
     pg: store.Connection,
 ) -> None:
