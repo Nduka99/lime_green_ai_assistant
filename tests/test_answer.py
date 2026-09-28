@@ -1,11 +1,10 @@
 """The single answer path with a fake model."""
 
-import sqlite3
-from pathlib import Path
 from typing import Any
 
 import pytest
 
+from limespec import store
 from limespec.answer import (
     ANSWER_PROMPT,
     EXPOSURE_PROMPT,
@@ -20,10 +19,10 @@ from limespec.answer import (
     read_output,
     user_prompt,
 )
-from limespec.ingest import build_index
+from limespec.ingest import prepare_index
 from limespec.llm import ModelServerError
 from limespec.models import Passage
-from limespec.retrieve import Embed, Rerank, search
+from limespec.retrieve import Embed, Rerank
 
 MORTAR = Passage(
     11,
@@ -315,13 +314,15 @@ def test_closest_pages_lists_each_page_once_best_first() -> None:
 
 
 def test_a_fixture_page_is_answered_and_cited_end_to_end(
-    tmp_path: Path,
     fixture_pages: list[tuple[str, bytes, str]],
-    fake_embed: Embed,
+    fake_embed_1024: Embed,
     fake_rerank: Rerank,
+    pg: store.Connection,
 ) -> None:
-    database = tmp_path / "index.db"
-    build_index(database, fixture_pages, fake_embed)
+    prepared = prepare_index(fixture_pages, fake_embed_1024)
+    version = store.write_version(
+        pg, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
+    )
 
     class CiteTheFaq(FakeModel):
         def __call__(self, system: str, user: str, schema: dict[str, Any]) -> object:
@@ -339,12 +340,13 @@ def test_a_fixture_page_is_answered_and_cited_end_to_end(
                 )
             return super().__call__(system, user, schema)
 
-    with sqlite3.connect(database) as conn:
-        result = answer(
-            "How long does Mortex take to set?",
-            lambda question: search(conn, question, fake_embed, fake_rerank),
-            CiteTheFaq(None),
-        )
+    result = answer(
+        "How long does Mortex take to set?",
+        lambda question: store.search(
+            pg, version, question, fake_embed_1024, fake_rerank
+        ),
+        CiteTheFaq(None),
+    )
 
     assert result.status == "answered"
     (evidence,) = result.claims[0].evidence

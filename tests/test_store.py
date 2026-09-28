@@ -125,6 +125,17 @@ def test_keyword_ranking_without_a_matching_word_finds_nothing(
     assert store.keyword_ranking(pg, version, "zebra xylophone", 10) == []
 
 
+def test_keyword_ranking_reads_query_syntax_as_plain_words(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+
+    found = store.keyword_ranking(pg, version, 'NOT "Samples" OR (render)?', 10)
+
+    headings = {p.heading for p in store.load_passages(pg, found)}
+    assert headings == {"Samples", "Duro Render"}
+
+
 def test_each_version_has_its_own_bm25_index_removed_with_it(
     pg: store.Connection,
 ) -> None:

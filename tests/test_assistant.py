@@ -1,6 +1,5 @@
 """The one call behind every interface, end to end with fake model servers."""
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -8,69 +7,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from limespec import assistant, config, llm, store
 from limespec.answer import PROMPT_SHA256, answer
-from limespec.ingest import IngestError, build_index, prepare_index
+from limespec.ingest import IngestError, prepare_index
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
-
-
-def test_a_missing_index_explains_what_to_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(config, "DATABASE", tmp_path / "missing.db")
-
-    with pytest.raises(IngestError, match="run `limespec ingest` first"):
-        assistant.ask("anything")
-
-
-def test_an_index_path_that_cannot_be_opened_explains_how_to_rebuild(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    database = tmp_path / "directory-not-a-database"
-    database.mkdir()
-    monkeypatch.setattr(config, "DATABASE", database)
-
-    with pytest.raises(IngestError, match="run `limespec ingest` to rebuild it"):
-        assistant.ask("anything")
-
-
-def test_ask_answers_from_the_index_with_both_model_requests(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    fixture_pages: list[tuple[str, bytes, str]],
-    fake_embed: Embed,
-) -> None:
-    database = tmp_path / "index.db"
-    build_index(database, fixture_pages, fake_embed)
-    requests: list[dict[str, Any]] = []
-    reranked: list[str] = []
-
-    def rerank(query: str, documents: list[str]) -> list[float]:
-        reranked.append(query)
-        return [0.0] * len(documents)
-
-    def chat(system: str, user: str, schema: dict[str, Any]) -> object:
-        requests.append(schema)
-        if "describes_exposure" in schema["properties"]:
-            return {"describes_exposure": False}
-        blocks = user.split('<passage id="')[1:]
-        source = next(b.split('"')[0] for b in blocks if "About two days" in b)
-        claim = {
-            "evidence": [{"source_id": source, "quote": "About two days"}],
-            "text": "Mortex takes about two days to set.",
-        }
-        return {"claims": [claim], "answers_every_part": True}
-
-    monkeypatch.setattr(config, "DATABASE", database)
-    monkeypatch.setattr(llm, "embed", fake_embed)
-    monkeypatch.setattr(llm, "rerank", rerank)
-    monkeypatch.setattr(llm, "chat", chat)
-
-    result = assistant.ask("How long does Mortex take to set?")
-
-    assert len(requests) == 2  # the emergency request, then the answer request
-    assert reranked == ["How long does Mortex take to set?"]
-    assert result.status == "answered"
-    assert result.claims[0].evidence[0].url == "https://example.test/support/faq"
 
 
 def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
@@ -102,22 +41,34 @@ def live_postgres_index(
     return version
 
 
-def test_ask_answers_from_the_live_postgres_index_when_configured(
+def test_ask_answers_from_the_live_index_with_both_model_requests(
     monkeypatch: pytest.MonkeyPatch,
     fixture_pages: list[tuple[str, bytes, str]],
     fake_embed_1024: Embed,
-    fake_rerank: Rerank,
     postgres_url: str,
     pg: store.Connection,
 ) -> None:
     live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    requests: list[dict[str, Any]] = []
+    reranked: list[str] = []
+
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        reranked.append(query)
+        return [0.0] * len(documents)
+
+    def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+        requests.append(schema)
+        return two_days_chat(system, user, schema)
+
     monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
     monkeypatch.setattr(llm, "embed", fake_embed_1024)
-    monkeypatch.setattr(llm, "rerank", fake_rerank)
-    monkeypatch.setattr(llm, "chat", two_days_chat)
+    monkeypatch.setattr(llm, "rerank", rerank)
+    monkeypatch.setattr(llm, "chat", chat)
 
     result = assistant.ask("How long does Mortex take to set?")
 
+    assert len(requests) == 2  # the emergency request, then the answer request
+    assert reranked == ["How long does Mortex take to set?"]
     assert result.status == "answered"
     assert result.claims[0].evidence[0].url == "https://example.test/support/faq"
     assert len(result.passages) <= config.TOP_K
@@ -244,7 +195,7 @@ def test_a_safety_referral_reports_only_understanding() -> None:
 
 
 def test_recording_an_answer_needs_the_postgres_url() -> None:
-    with pytest.raises(IngestError, match="set LIMESPEC_DATABASE_URL"):
+    with pytest.raises(IngestError, match="LIMESPEC_DATABASE_URL is not set"):
         assistant.ask_and_record("anything")
 
 

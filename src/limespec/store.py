@@ -181,8 +181,8 @@ def search(
 ) -> list[Passage]:
     """The top passages of one index version for a question, best first.
 
-    The same steps as the SQLite search (retrieve.search): keyword and vector
-    rankings, fused, then the reranker orders the best candidates.
+    Keyword and vector rankings, fused, then the reranker orders the best
+    candidates (`retrieve.rerank_top`).
     """
     query_vector = embed([config.QUERY_INSTRUCTION + question])[0]
     limit = config.CANDIDATES_PER_METHOD

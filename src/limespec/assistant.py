@@ -1,14 +1,12 @@
-"""The one call behind every interface: a question answered from the index
-(Postgres when configured, otherwise the local SQLite file).
+"""The one call behind every interface: a question answered from the live
+Postgres index, and recorded for audit.
 
 The command line and the web page both call `ask`, so they cannot differ in what
 they retrieve, which model requests they make or what they verify.
 """
 
-import sqlite3
 import time
 from collections.abc import Callable
-from contextlib import closing
 from typing import Any
 
 import psycopg
@@ -17,46 +15,14 @@ from limespec import config, llm, store, telemetry
 from limespec.answer import EXPOSURE_SCHEMA, PROMPT_SHA256, Chat, Retrieve, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
-from limespec.retrieve import search
 from limespec.view import view
 
 
-def open_index() -> sqlite3.Connection:
-    """The local index, or a clear error if `limespec ingest` has not been run."""
-    if not config.DATABASE.exists():
-        raise IngestError(f"no index at {config.DATABASE}; run `limespec ingest` first")
-    try:
-        conn = sqlite3.connect(config.DATABASE)
-        # A damaged file often opens but fails on its first query, so query it now
-        # and close the connection before reporting the error.
-        try:
-            conn.execute(
-                "SELECT passages.id, passages.url, pages.title, passages.heading, "
-                "passages.text, pages.fetched_at, passages.embedding "
-                "FROM passages JOIN pages ON pages.url = passages.url LIMIT 1"
-            ).fetchone()
-            conn.execute("SELECT rowid FROM passages_fts LIMIT 1").fetchone()
-        except sqlite3.Error:
-            conn.close()
-            raise
-    except sqlite3.Error as error:
-        raise IngestError(
-            f"cannot read index at {config.DATABASE}; "
-            "run `limespec ingest` to rebuild it"
-        ) from error
-    return conn
-
-
 def ask(question: str) -> Answer:
-    """Answer one question with the configured llama.cpp servers and the index:
-    the live Postgres index when LIMESPEC_DATABASE_URL is set, else SQLite."""
-    if config.DATABASE_URL:
-        result, _ = ask_and_record(question)
-        return result
-    with closing(open_index()) as conn:
-        return answer(
-            question, lambda query: search(conn, query, llm.embed, llm.rerank), llm.chat
-        )
+    """Answer one question with the configured llama.cpp servers and the live
+    Postgres index; the answer is recorded for audit."""
+    result, _ = ask_and_record(question)
+    return result
 
 
 def no_stage(stage: str) -> None:
@@ -125,7 +91,10 @@ def ask_and_record(
 def connect() -> store.Connection:
     """A connection to the Postgres index, or a clear error saying what is wrong."""
     if not config.DATABASE_URL:
-        raise IngestError("answers are recorded in Postgres; set LIMESPEC_DATABASE_URL")
+        raise IngestError(
+            "LIMESPEC_DATABASE_URL is not set; copy .env.example to .env and run "
+            "with `uv run --env-file .env limespec ...`"
+        )
     try:
         return psycopg.connect(
             config.DATABASE_URL, connect_timeout=config.DATABASE_CONNECT_TIMEOUT_SECONDS
@@ -151,14 +120,12 @@ def live_index(conn: store.Connection) -> int:
     live = store.live_version(conn)
     if live is None:
         raise IngestError(
-            "no live Postgres index; run `uv run --env-file .env limespec ingest "
-            "--postgres`"
+            "no live Postgres index; run `uv run --env-file .env limespec ingest`"
         )
     version_id, embedding_model = live
     if embedding_model != config.EMBEDDING_MODEL:
         raise IngestError(
             f"the live index was embedded with {embedding_model}, but the configured "
-            f"model is {config.EMBEDDING_MODEL}; rebuild it with `limespec ingest "
-            "--postgres`"
+            f"model is {config.EMBEDDING_MODEL}; rebuild it with `limespec ingest`"
         )
     return version_id

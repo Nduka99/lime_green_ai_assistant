@@ -25,7 +25,7 @@ Real output from the shipped setup (Qwen3.6-35B-A3B on an 8 GB laptop GPU), one
 question for each kind the brief asks to test. Links are shortened here; each
 opens the live page at the quoted sentence.
 
-**Straightforward:** `uv run limespec ask "Does Duro lime render base coat contain any cement?"`
+**Straightforward:** `uv run --env-file .env limespec ask "Does Duro lime render base coat contain any cement?"`
 
 ```text
 Answer:
@@ -37,7 +37,7 @@ Sources:
     https://www.lime-green.co.uk/products/lime-render/duro#:~:text=Duro%20lime%20render…
 ```
 
-**Several sources** (the brief's example question): `uv run limespec ask "What products are suitable for lime-based external finishes?"`
+**Several sources** (the brief's example question): `uv run --env-file .env limespec ask "What products are suitable for lime-based external finishes?"`
 
 ```text
 Answer:
@@ -67,7 +67,7 @@ This answer is supported but incomplete. It misses Tradirend, the third finish
 coat, and its first claim joins a general line about the range to a Natural
 Finish detail. Every model tested missed Tradirend; *Results* explains why.
 
-**Insufficient information:** `uv run limespec ask "How much does a bag of Natural Lime Mortar cost, and do you offer free delivery?"`
+**Insufficient information:** `uv run --env-file .env limespec ask "How much does a bag of Natural Lime Mortar cost, and do you offer free delivery?"`
 
 ```text
 Answer:
@@ -104,13 +104,15 @@ application is about 1,400 lines in `src/limespec/`.
   level and Nemotron behind, so Qwen stayed. It uses about 3 billion of its 35
   billion parameters per token, so its expert layers sit in system RAM while search
   stays on the 8 GB graphics card.
-- **Two kinds of search, then a reranker.** Keyword search (SQLite FTS5) finds exact
+- **Two kinds of search, then a reranker.** Keyword search (BM25) finds exact
   product names and vector search (Qwen3-Embedding 0.6B) finds the same idea in
   other words; reciprocal-rank fusion merges the two lists, and a cross-encoder
   (BGE v2-m3) reorders the best 20 so the answer passage comes first more often.
-- **SQLite, not a vector database or RAG framework.** 315 passages fit in one file
-  with no database service to run; every step is plain Python that can be read and
-  tested.
+- **Postgres, not a separate vector database or RAG framework.** The submission kept
+  its 315 passages in one SQLite file; the platform keeps them in Postgres (pgvector
+  and BM25), with every index version and answer recorded, measured to rank as well
+  (`evaluation/reports/X2-store-parity.md`). Every step is plain Python that can be read
+  and tested.
 - **Evidence checked by code, not trusted.** The model must quote; code decides what
   the reader sees. A claim whose quote, numbers or named regulations are not in the
   cited passage is removed, never repaired, and the reader sees a caution.
@@ -169,23 +171,20 @@ pages and the index (`data/`) stay on your machine and are never committed.
    llama-server -m models/Qwen3-Embedding-0.6B-f16.gguf --embedding --pooling last -c 2048 -b 2048 -ub 2048 -ngl all --fit off --port 8081
    ```
 
-2. Fetch the pages listed in `sources.txt` (cached in `data/site/`, one second
-   apart) and build the index in `data/limespec.db`:
+2. Start Postgres inside WSL (`docker compose -f deploy/compose.yaml --profile dev
+   up -d`), copy `.env.example` to `.env` and set its values, then fetch the pages
+   listed in `sources.txt` (cached in `data/site/`, one second apart) and index them.
+   Each run adds a new index version and makes it live:
 
    ```powershell
-   uv run limespec ingest
+   uv run --env-file .env limespec ingest
    ```
-
-   To build it in the platform's Postgres instead (started with
-   `docker compose -f deploy/compose.yaml --profile dev up -d`), copy `.env.example`
-   to `.env` and run `uv run --env-file .env limespec ingest --postgres`. Each run adds
-   a new index version and makes it live.
 
 3. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 
    ```powershell
-   uv run limespec search "What is Grippa used for?"
+   uv run --env-file .env limespec search "What is Grippa used for?"
    ```
 
 ## Ask questions
@@ -215,9 +214,9 @@ llama-server -m models/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf -c 8192 -np 1 -ngl 
 Then ask on the command line, or run the web page:
 
 ```powershell
-uv run limespec ask "What is Grippa used for?"
-uv run limespec ask      # prompts "Ask a question:"
-uv run limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
+uv run --env-file .env limespec ask "What is Grippa used for?"
+uv run --env-file .env limespec ask      # prompts "Ask a question:"
+uv run --env-file .env limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
 ```
 
 The command line, page and JSON endpoint (`/api/answer?q=...`) call the same

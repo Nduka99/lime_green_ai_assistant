@@ -1,13 +1,12 @@
 """Build the index from the pages listed in sources.txt.
 
 fetch (politely, cached) → extract sections → split long ones → embed → store in
-SQLite, or in Postgres as a new live index version (`ingest_postgres`). Pages are
-cached in data/site/, so a rebuild never downloads a page twice.
+Postgres as a new live index version. Pages are cached in data/site/, so a rebuild
+never downloads a page twice.
 """
 
 import hashlib
 import re
-import sqlite3
 import textwrap
 import time
 from collections.abc import Sequence
@@ -21,7 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from limespec import config, store
-from limespec.retrieve import Embed, to_blob
+from limespec.retrieve import Embed
 
 HEADINGS = ["h1", "h2", "h3", "h4"]
 # Some articles style a paragraph as a heading: <p class="h2-style">Application</p>
@@ -47,24 +46,6 @@ BOILERPLATE = ", ".join(
 )
 TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: the <h1>, a label, a date
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
-
-SCHEMA = """
-CREATE TABLE pages (
-    url TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    fetched_at TEXT NOT NULL,
-    sha256 TEXT NOT NULL  -- of the exact cached bytes
-);
-CREATE TABLE passages (
-    id INTEGER PRIMARY KEY,
-    url TEXT NOT NULL REFERENCES pages (url),
-    heading TEXT NOT NULL,
-    text TEXT NOT NULL,
-    embedding BLOB NOT NULL
-);
-CREATE VIRTUAL TABLE passages_fts USING fts5 (title, text, tokenize = 'porter');
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-"""
 
 
 class IngestError(RuntimeError):
@@ -245,50 +226,12 @@ def corpus_hash(page_hashes: Sequence[tuple[str, str]]) -> str:
 
 @dataclass(frozen=True)
 class PreparedIndex:
-    """Everything one index holds, ready to be written to either store."""
+    """Everything one index version holds, ready to be written to Postgres."""
 
     pages: list[tuple[str, str, str, str]]  # url, title, fetched_at, sha256
     passages: list[tuple[str, str, str, str]]  # url, title, heading, text
     vectors: list[list[float]]  # one per passage
     manifest: dict[str, str]
-
-
-def build_index(
-    database: Path, pages: Sequence[tuple[str, bytes, str]], embed: Embed
-) -> dict[str, str]:
-    """Rebuild the SQLite index from (url, raw_bytes, fetched_at) pages; return its
-    manifest.
-
-    The new index is written beside the old one and swapped in only when
-    complete, so a failed rebuild leaves the previous index untouched.
-    """
-    prepared = prepare_index(pages, embed)
-    page_rows, rows = prepared.pages, prepared.passages
-    vectors, manifest = prepared.vectors, prepared.manifest
-    database.parent.mkdir(parents=True, exist_ok=True)
-    building = database.with_suffix(".building")
-    building.unlink(missing_ok=True)
-    conn = sqlite3.connect(building)
-    try:
-        with conn:  # one transaction: commits on success, rolls back on error
-            conn.executescript(SCHEMA)
-            conn.executemany("INSERT INTO pages VALUES (?, ?, ?, ?)", page_rows)
-            for passage_id, ((url, title, heading, text), vector) in enumerate(
-                zip(rows, vectors, strict=True), start=1
-            ):
-                conn.execute(
-                    "INSERT INTO passages VALUES (?, ?, ?, ?, ?)",
-                    (passage_id, url, heading, text, to_blob(vector)),
-                )
-                conn.execute(
-                    "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
-                    (passage_id, title, text),
-                )
-            conn.executemany("INSERT INTO meta VALUES (?, ?)", manifest.items())
-    finally:
-        conn.close()
-    building.replace(database)
-    return manifest
 
 
 def prepare_index(
@@ -342,13 +285,6 @@ def cached_pages(urls: Sequence[str]) -> list[tuple[str, bytes, str]]:
 
 
 def ingest(
-    embed: Embed, sources: Path | None = None, database: Path | None = None
-) -> dict[str, str]:
-    urls = read_sources(sources or config.SOURCES_FILE)
-    return build_index(database or config.DATABASE, cached_pages(urls), embed)
-
-
-def ingest_postgres(
     conn: store.Connection, embed: Embed, sources: Path | None = None
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and make it live.

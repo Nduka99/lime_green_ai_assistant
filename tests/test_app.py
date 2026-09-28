@@ -2,7 +2,6 @@
 
 import json
 from collections.abc import Callable
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -103,17 +102,16 @@ def test_an_operational_error_is_a_clear_503_not_an_answer(
     assert api.status_code == 503 and "generation server" in api.json()["detail"]
 
 
-def test_a_damaged_index_is_a_clear_503(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_an_unreachable_database_is_a_clear_503(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database = tmp_path / "damaged.db"
-    database.write_bytes(b"not a SQLite database")
-    monkeypatch.setattr("limespec.config.DATABASE", database)
+    monkeypatch.setattr(config, "DATABASE_URL", "postgresql://x:y@127.0.0.1:9/z")
+    monkeypatch.setattr(config, "DATABASE_CONNECT_TIMEOUT_SECONDS", 1)
 
     response = client.get("/api/answer", params={"q": "anything"})
 
     assert response.status_code == 503
-    assert "run `limespec ingest` to rebuild it" in response.json()["detail"]
+    assert "cannot reach the Postgres index" in response.json()["detail"]
 
 
 def test_the_question_is_escaped_in_the_page(

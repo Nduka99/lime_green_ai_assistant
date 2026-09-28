@@ -127,8 +127,8 @@ def referral() -> Answer:
 
 @pytest.fixture(autouse=True)
 def no_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests use SQLite unless they set the Postgres URL themselves, even when the
-    suite runs with the developer's .env loaded."""
+    """Tests reach Postgres only when they set its URL themselves (a throwaway
+    database), even when the suite runs with the developer's .env loaded."""
     monkeypatch.setattr(config, "DATABASE_URL", "")
 
 
