@@ -188,3 +188,93 @@ keeps its label and value together; only the column names are missing.
 
 Docling's default model (TableFormer, accurate) stays. Round 2 runs on new pages, with
 the same measures and gate, as registered.
+
+## Round 2: design and gate
+
+Written on 28 September 2026, before round 2's pages were drawn, before their truth was
+written, and before any VLM read a Lime Green page.
+
+**Question.** On pages that none of round 1's fixes came from, does Docling now pass?
+And does re-reading each table's structure with a small open-weight VLM do better? The
+VLMs lead OmniDocBench on tables (PLAN §0f) but write their own text, so here they give
+structure only.
+
+**Pages.** Twenty, drawn by `python -m evaluation sample-pages --seed 9 --exclude-set
+x8-pages` (`evaluation/pages.py`), with round 1's quotas and rules. The same code with
+seed 8 reproduces round 1's twenty pages exactly. A page has a text layer when it holds at
+least 10 words, the rule that reproduces round 1's choices. Also left out:
+
+- every document used in round 1;
+- the UK Declaration of Performance for Coloured Cement Mortars, probed in S0;
+- any page whose words resemble a round-1 page or an earlier round-2 page (Jaccard ≥ 0.8
+  over word sets), such as the UK and EU declarations of one product, or a safety data
+  sheet's shared boilerplate.
+
+Only four guides are unused, so the fifth guide page is a further page of one of them, in
+the same seeded order. The Kiwa BDA Agrément (AES-encrypted, about 11 pages) cannot be read
+by pypdf and is outside the sample. Whether Docling reads it is checked in S2's validation.
+
+**Arms.**
+
+- `pypdf`: the text layer, the reference for sentences.
+- `docling`: as after round 1 (`9af80e3`, `5a26d78`).
+- `glm-ocr` and `paddleocr-vl`: Docling as above, except that each table Docling finds is
+  read again by a VLM:
+  1. the table's box is cropped from the page rendered at 200 DPI (GLM-OCR's setting for
+     PDFs) and sent to llama-server with `Table Recognition:` and the model's published
+     settings. For GLM-OCR these are temperature 0, top-k 1, repetition penalty 1.1 and at
+     most 8192 tokens ([config](https://github.com/zai-org/GLM-OCR/blob/main/glmocr/config.yaml)).
+     For PaddleOCR-VL they are temperature 0 and at most 8192 tokens
+     ([card](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6-GGUF));
+  2. the answer is read as a grid with spans. GLM-OCR writes HTML; PaddleOCR-VL writes OTSL
+     with six tags and marks no header cells;
+  3. the VLM supplies structure only. After folding case, typography and Unicode
+     compatibility forms on both sides, each cell's text must be spelt by words of the PDF
+     inside the table's box (Docling's parsed word cells), each word used once. The cell's
+     text is then those PDF words, so every quote stays the document's own characters. A
+     cell that cannot be spelt this way is dropped from its row, never quotable, and counted;
+  4. header rows are the rows the VLM marks as headers (`<th>`, `<thead>`). If it marks
+     none, a row is a header when its words equal those of a row Docling flagged as one;
+  5. if the answer does not read as a table, Docling's table stands.
+
+  Models: GLM-OCR f16 with its Q8_0 projector
+  ([ggml-org/GLM-OCR-GGUF](https://huggingface.co/ggml-org/GLM-OCR-GGUF); weights MIT) and
+  PaddleOCR-VL-1.6 in BF16
+  ([PaddlePaddle/PaddleOCR-VL-1.6-GGUF](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6-GGUF);
+  Apache-2.0). They run on the installed llama.cpp b10298, which has both architectures,
+  one model on the GPU at a time with the generator stopped. Settings not published by the
+  models (the crop margin, image size limits) are fixed while developing on round 1's
+  pages only, and frozen at a commit named here before the round-2 run.
+
+**Measures and gate,** for each arm, as in round 1 with its amendments and clarified
+scoring:
+
+1. table cells ≥ 0.95 and pairs kept ≥ 0.95, with no table below 0.80 left undiagnosed;
+2. text kept ≥ 0.99;
+3. sentences whole ≥ 0.95, and not below `pypdf`;
+4. table numbers ≥ 0.99.
+
+Also reported for each arm: cells dropped because they could not be spelt, seconds per
+page (mean and median), peak RAM (the reading process plus the VLM server), peak VRAM, and
+the hours projected for Lime Green's 573 readable PDF pages (mean seconds per page × 573).
+
+**Selection, fixed now.** Among the arms that pass every gate item, the highest
+table-cell score wins. Scores within 0.01 of each other count as a tie, won by the lower
+peak memory (RAM plus VRAM), then by the faster arm. If no arm passes, the failures are
+diagnosed and the decision goes to the user.
+
+**Transcription check.** Measured on Lime Green's PDFs today:
+
+- 2 pages have an empty text layer (pages 3 and 4 of the Aerogel Insulation Board
+  datasheet, both drawings);
+- 8 pages hold fewer than 10 words: those 2, four first pages (probably covers), and
+  2 other pages.
+
+The text layer does not reproduce the "18 pages without a text layer" in PLAN §0f, so
+that figure is corrected. All 8 pages are checked (`--blank 8`). The truth is every legible word on the
+rendered page, written before any model runs. Each model transcribes the whole page
+(GLM-OCR with `Text Recognition:`, PaddleOCR-VL with `OCR:`). Word recall and precision are
+counted against the truth as multisets, folded as above. A model's transcriptions may be
+indexed as searchable text labelled "transcribed", and never quotable, only if recall is
+≥ 0.90 and precision ≥ 0.95, pooled over the 8 pages. If the table winner's model passes,
+it is preferred, so that one model serves both.

@@ -7,6 +7,8 @@
     uv run python -m evaluation grades SET SITTING           # a grading sitting
     uv run python -m evaluation guardrails SET ANSWERS.json  # prices, emergencies
     uv run --group ingest python -m evaluation parsing x8-pages --out DIR  # X8
+    uv run python -m evaluation sample-pages --catalogue data/catalogue.json \
+        --seed 9 --exclude-set x8-pages --out FILE [--blank 6]   # X8's pages
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
@@ -27,6 +29,7 @@ import json
 import sys
 import time
 from dataclasses import asdict
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -41,6 +44,7 @@ from evaluation import (
     grades,
     guardrails,
     keys,
+    pages,
     pairs,
     parsing,
     retrieval,
@@ -123,6 +127,21 @@ def parser() -> argparse.ArgumentParser:
         "--out", type=Path, required=True, help="where each parser's output is saved"
     )
     parsed.add_argument("--json", action="store_true")
+    sampled = commands.add_parser(
+        "sample-pages", help="draw PDF pages for X8 from the catalogue, by code"
+    )
+    sampled.add_argument("--catalogue", type=Path, required=True)
+    sampled.add_argument("--seed", type=int, required=True)
+    sampled.add_argument(
+        "--exclude-set", help="a page set whose documents and pages are left out"
+    )
+    sampled.add_argument(
+        "--exclude", nargs="*", default=[], help="document ids to leave out"
+    )
+    sampled.add_argument(
+        "--blank", type=int, default=0, help="also draw this many pages without text"
+    )
+    sampled.add_argument("--out", type=Path, required=True, help="a JSON file")
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
     graded.add_argument("sitting")
@@ -296,6 +315,31 @@ def run_parsing(args: argparse.Namespace) -> int:
     return 0 if all(result["gate"].values()) else 1
 
 
+def run_sample_pages(args: argparse.Namespace) -> int:
+    entries = grades.read_json(args.catalogue)
+    read = cache(pages.read_pages)
+    exclude = list(args.exclude)
+    seen = []
+    if args.exclude_set:
+        folder = sets.require(args.exclude_set, args.root, args.registry)
+        for page in grades.read_json(folder / "truth.json")["pages"]:
+            exclude.append(page["entry"])
+            source = str(acquire.store_path(page["entry"].split(":", 1)[1]))
+            seen.append(read(source)[page["page"] - 1])
+    drawn = {
+        "pages": pages.sample(entries, read, args.seed, exclude, seen),
+        "blank": pages.blank(entries, read, args.seed, args.blank),
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(drawn, indent=1, ensure_ascii=False) + "\n"
+    args.out.write_text(text, encoding="utf-8", newline="\n")
+    for page in drawn["pages"] + drawn["blank"]:
+        name = page["url"].rsplit("/", 1)[-1]
+        print(f"{page['format']:16} p{page['page']:<3} {name}")
+    print(f"{len(drawn['pages'])} pages, {len(drawn['blank'])} blank, in {args.out}")
+    return 0
+
+
 def run_grades(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -385,6 +429,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_guardrails(args)
         if args.command == "parsing":
             return run_parsing(args)
+        if args.command == "sample-pages":
+            return run_sample_pages(args)
         if args.command == "blind":
             return run_blind(args)
         if args.command == "unblind":
