@@ -601,3 +601,32 @@ Gate item 1 fails as written, so the decision on adoption goes to the user.
 **Decision (user, 28 September 2026):** adopt 7.22.1, pinned as the ingest group's floor.
 Gate item 1's shortfall is recorded above as unrelated to the update. The region loss on the
 two carbon-footprint pages is diagnosed separately.
+
+## After X8: text missing on two carbon-footprint pages (diagnosis)
+
+28 September 2026. On the Solo and Warmshell Board Adhesive carbon-footprint reports, about
+225 words per page are missing from Docling's reading in both docling-parse versions. The
+recovery step adds them back as 63 loose lines per page.
+
+**Cause, measured:**
+
+- Both PDFs were exported from Figma (their ToUnicode maps are registered to "FigmaPDF").
+  Their headings, left-column paragraphs and table labels are set in two **Type 3 fonts**
+  (`T3_0`, `T3_1`).
+- Each font has a valid ToUnicode map, glyph names `/C0`…`/C247` (not standard names), and
+  an identity `FontMatrix`.
+- pypdf decodes these fonts through the ToUnicode map, 225 words per page.
+- docling-parse 7.22.1 creates a character cell for each of the 1,325 glyphs, but every
+  cell's text is a space and its height is zero. Word grouping then discards them. Its
+  layout model has nothing to read in those regions, so this is a character-decoding
+  failure, not a layout error.
+- No docling-parse issue describes it; the closest are Type 3 rendering (#320) and Type 3
+  metrics (#113).
+
+**Scale, from a scan of every Lime Green PDF:** text in Type 3 fonts appears in these 2
+documents only (2 pages, 450 words).
+
+**Effect today:** no word is lost from the index, because the recovery step keeps each
+text-layer line. But the lines sit after the page's elements with no section, and labels
+("Declared unit", "Manufacturer") are cut off from their values (Arial text that Docling
+reads), which is why the pairs on these pages fail in every arm.
