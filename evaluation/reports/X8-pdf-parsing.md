@@ -108,3 +108,8 @@ as usable for answering. The truth therefore records such layouts as **pairs**
 
 Gate 1 now reads: table cells ≥ 0.95 and pairs kept ≥ 0.95, with no table below 0.80
 left undiagnosed. Nothing else changes.
+
+**Second amendment, also before the run.** Safety data sheets put each label on one line
+and its value on the next ("pH", then "11.2"), so their relation depends on reading
+order. A pair also counts as kept when its value is in the parsed element that directly
+follows the label's element (for the text layer, the next line).

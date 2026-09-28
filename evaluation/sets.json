@@ -71,6 +71,32 @@
     "sitting-x2-answers/pairs.json": "5d759f6dae92f3a3fcf82a6b115fd0fb6456cc8a2831ab15f9aa18e649bdbf9a",
     "sitting-x2-answers/verdicts.json": "b196886bedafb314fa9c78787bb175ada521d8b1007bbf3cff2d244f01352c5a"
    }
+  },
+  "x8-pages": {
+   "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
+   "files": {
+    "images/01-p1.png": "2a8b5edd2df3d979ef006352b6df2507acc4a1794af48eab8f28a1062a54f303",
+    "images/02-p1.png": "61471bba97a958d7abff2ff47716f3a3e6a93c1b73a9d8981b1cc633337b3ccf",
+    "images/03-p1.png": "5e0040382d9b76c6ee1999f05f92af3543101541827f24f765cbdedbd3fbe57a",
+    "images/04-p1.png": "44b2b104027a39ac3be359ba2e50485ad03a857f928937a90900a6c7a6457f5c",
+    "images/05-p1.png": "9730c781ebc6cfea504de0d1ccc429c449400072e83035a1454acff466acf57d",
+    "images/06-p1.png": "759e4c48247888d2662207b267ea3679870ab51753f4645bdf8ecb9e989c55cd",
+    "images/07-p1.png": "b41264c5f157c2a7b6bc569ef32ac2dcb369040da56d1229236e4f7ccd39ba8b",
+    "images/08-p1.png": "3dd6ecafea9b6461f9ea8ccd7652929651bf643d5144e8906894db6114f7f9a1",
+    "images/09-p1.png": "b25f22d2ce9c7496c0fd0e567ae136c1e0f2215087d6fbc0c01461d02cbf4524",
+    "images/10-p1.png": "503ea5ea922c1f64422dc4f6dc0d71d1af35b19d43343d3e36057c9580b88252",
+    "images/11-p6.png": "ee022e209ac7a18723e5828065fd00816d6b8b9a2b78c9f3e9cacf99facc8e6e",
+    "images/12-p9.png": "171bdaad7fb33850cd6b35060e9e0fed06f94f23c386f504d16810fdb933d8f5",
+    "images/13-p5.png": "3a46c9fd2ca533c3bb50842596fefad93f7e1e16960b4b66df3e73dd826c1c95",
+    "images/14-p2.png": "7812eea3215ab6652a201b028e880c09e82500154f9957001b96cad16faea24f",
+    "images/15-p11.png": "034cbaee76fef8f493d795d176cd8fde287890f92086743a6a1bccdbbaef6e7b",
+    "images/16-p6.png": "50ce1ba49986450bf43d738fbf7ecd3ae7028593f9ecadd667f68d4bcad2bc62",
+    "images/17-p8.png": "b033a117d31124072754284079d989584b1141e8b81f5b6e5ed87163985c39cd",
+    "images/18-p10.png": "fa2ba631c8a097173fedb380af1b1faa0ff5cb0e007435b333366003e6cd3d95",
+    "images/19-p2.png": "c5971e8eea95f8051c071f081f665ae101b5c163a21ac9e79ead9e911a1326cc",
+    "images/20-p1.png": "031d3e517db6ed438c94c30afabd1100a0fc17c566fa5332b16add12a1d015cb",
+    "truth.json": "e4373563d7678660e010bf61666ad33b6ce5057dc5209779b4ee347efb2d3e41"
+   }
   }
  }
 }
