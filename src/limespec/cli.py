@@ -2,13 +2,23 @@
 a question, serve runs the web page, and search shows what retrieval finds."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 import psycopg
 import uvicorn
 
-from limespec import acquire, assistant, config, llm, store, telemetry, weights
+from limespec import (
+    acquire,
+    assistant,
+    config,
+    documents,
+    llm,
+    store,
+    telemetry,
+    weights,
+)
 from limespec.app import app
 from limespec.ingest import IngestError, cache_path, ingest
 from limespec.view import AnswerView, view
@@ -111,6 +121,29 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
+def run_read_pdfs(vlm: str) -> int:
+    """Read every stored PDF; print the run's totals, failures and flagged pages."""
+    if vlm and not llm.healthy(vlm):
+        print(f"error: no vision model ready at {vlm}", file=sys.stderr)
+        return 1
+    files = documents.pdf_files(acquire.read_manifest())
+    report = documents.run_all(files, vlm, documents.OUT)
+    print(
+        f"{len(files)} PDFs: {len(report['read'])} read, "
+        f"{len(report['skipped'])} already read, {len(report['failed'])} failed"
+    )
+    for sha256, failure in report["failed"].items():
+        print(f"  failed {failure['urls'][0]} ({sha256[:12]}): {failure['errors'][-1]}")
+    for key, value in report["summary"]["totals"].items():
+        print(f"{key}: {value:g}" if isinstance(value, float) else f"{key}: {value}")
+    for page in report["summary"]["flagged"]:
+        name = page["url"].rsplit("/", 1)[-1]
+        print(f"  flagged {name} p{page['page']}: {', '.join(page['flags'])} "
+              f"({page['kept']}/{page['words']} words, {page['grade']})")  # fmt: skip
+    print(f"report: {documents.OUT / 'report.json'}")
+    return 1 if report["failed"] else 0
+
+
 def run_serve(port: int) -> None:
     # uvicorn logs the address once it is listening, or why it could not start. Its
     # access lines are off: request spans and metrics record every request, and the
@@ -156,6 +189,20 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--port", type=int, default=config.APP_PORT)
     search_parser = commands.add_parser("search", help="show the passages retrieved")
     search_parser.add_argument("question")
+    read_parser = commands.add_parser(
+        "read-pdfs",
+        help="read every stored PDF into elements, each in its own process "
+        "(needs the ingest group)",
+    )
+    read_parser.add_argument(
+        "--vlm", default="", help="a vision model server that reads tables again"
+    )
+    one_parser = commands.add_parser(
+        "read-pdf", help="read one stored PDF into a JSON file (used by read-pdfs)"
+    )
+    one_parser.add_argument("sha256")
+    one_parser.add_argument("out", type=Path)
+    one_parser.add_argument("--vlm", default="")
     models_parser = commands.add_parser(
         "models", help="check the files in models/ against models.json"
     )
@@ -163,6 +210,13 @@ def main(argv: list[str] | None = None) -> int:
         "--quick", action="store_true", help="compare sizes only, not SHA-256"
     )
     args = parser.parse_args(argv)
+    if args.command == "read-pdfs":
+        return run_read_pdfs(args.vlm)
+    if args.command == "read-pdf":
+        reading = documents.read_one(args.sha256, args.vlm)
+        text = json.dumps(reading, indent=1, ensure_ascii=False) + "\n"
+        args.out.write_text(text, encoding="utf-8", newline="\n")
+        return 0
     if args.command == "models":
         entries = weights.read()
         found = weights.problems(entries, weights.FOLDER, args.quick)

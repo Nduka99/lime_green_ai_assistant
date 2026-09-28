@@ -17,6 +17,7 @@ from docling_core.types.doc.items.table.table import TableItem
 from docling_core.types.doc.items.table.table_data import TableCell, TableData
 from docling_core.types.doc.labels import DocItemLabel, GraphCellLabel
 from docling_core.types.doc.page import BoundingRectangle, TextCell
+from pypdf.errors import DependencyError
 
 from limespec import pdf, tables
 from limespec.elements import Element, row_text
@@ -332,3 +333,40 @@ def test_a_pdf_read_with_a_vision_model_keeps_its_other_elements(
     assert stats == Counter(tables=3, cells=6, unread=2)
     answers[:] = [ANSWER, "", ""]
     assert len(pdf.read_pdf(Path("sheet.pdf"), vlm="http://vlm")) == len(found)
+
+
+def test_page_grades_come_from_docling_s_confidence_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = SimpleNamespace(
+        pages={2: SimpleNamespace(low_grade=SimpleNamespace(value="fair"))}
+    )
+
+    class Converter:
+        def __init__(self, images_scale: float = 0.0) -> None:
+            pass
+
+        def convert(self, path: Path, page_range: tuple[int, int]) -> Any:
+            return SimpleNamespace(document=datasheet(), confidence=report)
+
+    monkeypatch.setattr(pdf, "converter", Converter)
+    monkeypatch.setattr(pdf, "text_layers", lambda path, first, last: {})
+    grades: dict[int, str] = {}
+
+    found = pdf.read_pdf(Path("sheet.pdf"), grades=grades)
+
+    assert grades == {2: "fair"}
+    assert not any(element.kind == "recovered" for element in found)
+
+
+def test_an_unreadable_text_layer_leaves_nothing_to_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Locked:
+        def __init__(self, path: Path) -> None:
+            raise DependencyError("cryptography>=3.1 is required for AES algorithm")
+
+    monkeypatch.setattr(pdf, "PdfReader", Locked)
+
+    assert pdf.text_layers(Path("locked.pdf")) == {}
+    assert pdf.coverage("Mix 4 litres, then wait.", "mix 4 litres") == (3, 5)

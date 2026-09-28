@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pypdf import PdfReader
+from pypdf.errors import DependencyError, PyPdfError
 
 from limespec.elements import Element, grid_text, row_text
 
@@ -90,14 +91,19 @@ def read_pdf(
     last: int = sys.maxsize,
     vlm: str = "",
     stats: Counter[str] | None = None,
+    grades: dict[int, str] | None = None,
 ) -> list[Element]:
     """The elements of pages `first` to `last` of a PDF in reading order, each page
     followed by any text-layer line its reading lost. Given the URL of a vision
     model's server (`vlm`), each table is read again from its image, and `stats`
-    counts the tables and cells it read."""
+    counts the tables and cells it read. `grades` receives each page's lowest
+    Docling confidence grade (poor, fair, good, excellent)."""
     result = converter(IMAGES_SCALE if vlm else 0.0).convert(
         path, page_range=(first, last)
     )
+    if grades is not None:
+        for number, scores in result.confidence.pages.items():
+            grades[number] = scores.low_grade.value
     reread = None
     if vlm:
         words = {
@@ -111,14 +117,38 @@ def read_pdf(
             return vlm_table(item, number, section, result.document, words, vlm, counts)
 
     found = elements(result.document, reread)
-    pages = PdfReader(path).pages
+    layers = text_layers(path, first, last)
     ordered = []
-    for page in range(first, min(last, len(pages)) + 1):
+    pages = {element.page for element in found} | set(layers)
+    for page in sorted(page for page in pages if first <= page <= last):
         on_page = [element for element in found if element.page == page]
         text = " ".join(element.text for element in on_page)
-        lines = lost_lines(pages[page - 1].extract_text() or "", text)
+        lines = lost_lines(layers.get(page, ""), text)
         ordered += on_page + [Element(page, "recovered", line) for line in lines]
     return ordered
+
+
+def text_layers(path: Path, first: int = 1, last: int = sys.maxsize) -> dict[int, str]:
+    """Pages `first` to `last` of the PDF's text layer, by page number; none when
+    pypdf cannot read the file (AES encryption needs its cryptography extra), so
+    Docling's reading then stands without a check."""
+    try:
+        pages = PdfReader(path).pages
+        return {
+            number: pages[number - 1].extract_text() or ""
+            for number in range(first, min(last, len(pages)) + 1)
+        }
+    except (PyPdfError, DependencyError, ValueError):
+        return {}
+
+
+def coverage(text_layer: str, parsed: str) -> tuple[int, int]:
+    """How many of the text layer's words the parsed text holds, of how many,
+    compared without spacing, case or typographic variants (as `lost_lines`)."""
+    have = squash(parsed)
+    words = [squash(word).strip(EDGES) for word in text_layer.split()]
+    words = [word for word in words if word]
+    return sum(word in have for word in words), len(words)
 
 
 def page_image(path: Path, page: int, scale: float) -> Image:
