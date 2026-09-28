@@ -181,7 +181,9 @@ def pg(postgres_url: str) -> Iterator[store.Connection]:
     with psycopg.connect(postgres_url) as conn:
         yield conn
         conn.rollback()
-        conn.execute("TRUNCATE passages, index_versions, documents RESTART IDENTITY")
+        conn.execute(
+            "TRUNCATE answers, passages, index_versions, documents RESTART IDENTITY"
+        )
         # Each index version has its own BM25 index; the next test starts at version 1.
         for (name,) in conn.execute(
             "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'passages_bm25_v%'"

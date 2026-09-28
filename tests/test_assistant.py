@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from limespec import assistant, config, llm, store
+from limespec.answer import PROMPT_SHA256
 from limespec.ingest import IngestError, build_index, prepare_index
 from limespec.retrieve import Embed, Rerank
 
@@ -118,6 +119,52 @@ def test_ask_answers_from_the_live_postgres_index_when_configured(
     assert result.status == "answered"
     assert result.claims[0].evidence[0].url == "https://example.test/support/faq"
     assert len(result.passages) <= config.TOP_K
+
+
+def test_every_postgres_answer_is_recorded_for_audit(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    fake_rerank: Rerank,
+    postgres_url: str,
+    pg: store.Connection,
+) -> None:
+    version = live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    monkeypatch.setattr(llm, "rerank", fake_rerank)
+    monkeypatch.setattr(llm, "chat", two_days_chat)
+
+    result, answer_id = assistant.ask_and_record("How long does Mortex take to set?")
+
+    row = pg.execute(
+        "SELECT question, status, shown->'claims'->0->>'text', removed, passage_ids, "
+        "index_version_id, embedding_model, prompt_sha256, seconds "
+        "FROM answers WHERE id = %s",
+        (answer_id,),
+    ).fetchone()
+    assert row is not None
+    (
+        question,
+        status,
+        claim,
+        removed,
+        passage_ids,
+        version_id,
+        model,
+        prompt,
+        seconds,
+    ) = row
+    assert (question, status) == ("How long does Mortex take to set?", "answered")
+    assert claim == "Mortex takes about two days to set."
+    assert removed == []
+    assert passage_ids == [p.id for p in result.passages]
+    assert (version_id, model, prompt) == (
+        version,
+        config.EMBEDDING_MODEL,
+        PROMPT_SHA256,
+    )
+    assert seconds > 0
 
 
 def test_postgres_without_a_live_index_explains_what_to_run(

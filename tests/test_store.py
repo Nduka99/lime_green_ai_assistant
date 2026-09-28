@@ -3,6 +3,7 @@ throwaway database (see the `pg` fixture). Pages and vectors are invented."""
 
 import math
 
+import psycopg
 import pytest
 
 from limespec import store
@@ -162,6 +163,44 @@ def test_search_fuses_both_rankings_then_reranks(pg: store.Connection) -> None:
     # The reranker's pick first; the rest keep their fused order (Delivery matched
     # both the keyword and the vector ranking, so it leads the fused list).
     assert [p.heading for p in found] == ["Samples", "Delivery", "Duro Render"]
+
+
+def test_an_answer_record_round_trips_as_plain_data(pg: store.Connection) -> None:
+    version = build(pg)
+    shown = {"status": "answered", "claims": [{"text": "Duro has no cement."}]}
+    removed = [{"text": "Duro is cheap.", "reason": "quote not in S1"}]
+
+    answer_id = store.record_answer(
+        pg,
+        question="Does Duro contain cement?",
+        status="answered",
+        shown=shown,
+        removed=removed,
+        passage_ids=[3, 1],
+        index_version_id=version,
+        embedding_model="test-embedder",
+        prompt_sha256="abc",
+        seconds=1.5,
+    )
+
+    row = pg.execute(
+        "SELECT question, status, shown, removed, passage_ids, index_version_id, "
+        "embedding_model, prompt_sha256, seconds, created_at IS NOT NULL "
+        "FROM answers WHERE id = %s",
+        (answer_id,),
+    ).fetchone()
+    assert row == (
+        "Does Duro contain cement?", "answered", shown, removed, [3, 1], version,
+        "test-embedder", "abc", 1.5, True,
+    )  # fmt: skip
+
+
+def test_an_unknown_status_is_refused_by_the_database(pg: store.Connection) -> None:
+    with pytest.raises(psycopg.errors.CheckViolation):
+        store.record_answer(
+            pg, question="q", status="maybe", shown={}, removed=[], passage_ids=[],
+            index_version_id=1, embedding_model="m", prompt_sha256="p", seconds=0.1,
+        )  # fmt: skip
 
 
 def test_the_live_version_cannot_be_deleted(pg: store.Connection) -> None:

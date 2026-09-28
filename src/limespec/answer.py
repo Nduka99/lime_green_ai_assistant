@@ -13,6 +13,7 @@ model are passed in as functions, so this module does no I/O and the tests can
 replace both.
 """
 
+import hashlib
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -106,6 +107,10 @@ source states. Do not pick one.
 reader as "you", do not say whether the reader's work meets regulations, and do \
 not diagnose problems with the reader's building.
 7. If the passages do not answer the question, return an empty claims list."""
+
+# Which prompts produced an answer: recorded with every answer, so a change to either
+# prompt shows up in the audit records and can be tied to its evaluation run.
+PROMPT_SHA256 = hashlib.sha256((EXPOSURE_PROMPT + ANSWER_PROMPT).encode()).hexdigest()
 
 
 def user_prompt(question: str, sources: Mapping[str, Passage]) -> str:

@@ -6,15 +6,17 @@ they retrieve, which model requests they make or what they verify.
 """
 
 import sqlite3
+import time
 from contextlib import closing
 
 import psycopg
 
 from limespec import config, llm, store
-from limespec.answer import answer
+from limespec.answer import PROMPT_SHA256, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer
 from limespec.retrieve import search
+from limespec.view import view
 
 
 def open_index() -> sqlite3.Connection:
@@ -47,14 +49,17 @@ def ask(question: str) -> Answer:
     """Answer one question with the configured llama.cpp servers and the index:
     the live Postgres index when LIMESPEC_DATABASE_URL is set, else SQLite."""
     if config.DATABASE_URL:
-        return ask_postgres(question)
+        result, _ = ask_and_record(question)
+        return result
     with closing(open_index()) as conn:
         return answer(
             question, lambda query: search(conn, query, llm.embed, llm.rerank), llm.chat
         )
 
 
-def ask_postgres(question: str) -> Answer:
+def ask_and_record(question: str) -> tuple[Answer, int]:
+    """Answer from the live Postgres index and store the audit record; return the
+    answer and the record's id."""
     try:
         conn = psycopg.connect(
             config.DATABASE_URL, connect_timeout=config.DATABASE_CONNECT_TIMEOUT_SECONDS
@@ -63,11 +68,27 @@ def ask_postgres(question: str) -> Answer:
         raise IngestError(f"cannot reach the Postgres index: {error}") from error
     with conn:
         version_id = live_index(conn)
-        return answer(
+        started = time.perf_counter()
+        result = answer(
             question,
             lambda query: store.search(conn, version_id, query, llm.embed, llm.rerank),
             llm.chat,
         )
+        seconds = time.perf_counter() - started
+        removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
+        answer_id = store.record_answer(
+            conn,
+            question=question,
+            status=result.status,
+            shown=dict(view(result)),
+            removed=removed,
+            passage_ids=[p.id for p in result.passages],
+            index_version_id=version_id,
+            embedding_model=config.EMBEDDING_MODEL,
+            prompt_sha256=PROMPT_SHA256,
+            seconds=seconds,
+        )
+    return result, answer_id
 
 
 def live_index(conn: store.Connection) -> int:

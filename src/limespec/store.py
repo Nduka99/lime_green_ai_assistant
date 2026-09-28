@@ -14,6 +14,7 @@ from typing import Any
 
 import psycopg
 from psycopg import sql
+from psycopg.types.json import Jsonb
 
 from limespec import config
 from limespec.models import Passage
@@ -193,6 +194,40 @@ def search(
     )
     candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
     return rerank_top(question, candidates, rerank)
+
+
+def record_answer(
+    conn: Connection,
+    question: str,
+    status: str,
+    shown: dict[str, Any],
+    removed: list[dict[str, str]],
+    passage_ids: Sequence[int],
+    index_version_id: int,
+    embedding_model: str,
+    prompt_sha256: str,
+    seconds: float,
+) -> int:
+    """Store one answer's audit record (plain, JSON-compatible data); return its id."""
+    row = conn.execute(
+        "INSERT INTO answers (question, status, shown, removed, passage_ids, "
+        "index_version_id, embedding_model, prompt_sha256, seconds) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (
+            question,
+            status,
+            Jsonb(shown),
+            Jsonb(removed),
+            list(passage_ids),
+            index_version_id,
+            embedding_model,
+            prompt_sha256,
+            seconds,
+        ),
+    ).fetchone()
+    assert row is not None  # RETURNING always yields the row
+    conn.commit()
+    return int(row[0])
 
 
 def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]:
