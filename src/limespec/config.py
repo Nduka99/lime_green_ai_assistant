@@ -31,6 +31,9 @@ QUERY_INSTRUCTION = (
 )
 
 RERANK_URL = "http://127.0.0.1:8082/v1/rerank"
+# The model servers' key (llama-server --api-key), a secret, so it comes from the
+# environment (.env). Without it no key is sent.
+MODEL_API_KEY = os.environ.get("LIMESPEC_MODEL_API_KEY", "")
 SEARCH_TIMEOUT_SECONDS = 120.0  # embedding or reranking one request
 
 # Longer sections split between paragraphs, and a long paragraph at sentence ends;

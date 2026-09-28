@@ -429,3 +429,31 @@ def test_model_requests_are_measured_by_operation_with_their_tokens(
     [inputs] = metric_points("gen_ai.client.inference.operation.input_tokens")
     [outputs] = metric_points("gen_ai.client.inference.operation.output_tokens")
     assert (inputs.sum, outputs.sum) == (812, 9)
+
+
+def test_model_requests_carry_the_key_when_one_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, str]] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.append(kwargs["headers"])
+        if url == config.EMBEDDING_URL:
+            body: dict[str, Any] = {"data": [{"index": 0, "embedding": [1.0]}]}
+        elif url == config.RERANK_URL:
+            body = {"results": [{"index": 0, "relevance_score": 1.0}]}
+        else:
+            body = chat_reply(json.dumps({"claims": []}))
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(config, "MODEL_API_KEY", "")
+
+    llm.embed(["question"])
+    monkeypatch.setattr(config, "MODEL_API_KEY", "k3y")
+    llm.embed(["question"])
+    llm.rerank("question", ["passage"])
+    llm.chat("s", "u", SCHEMA)
+
+    bearer = {"Authorization": "Bearer k3y"}
+    assert sent == [{}, bearer, bearer, bearer]

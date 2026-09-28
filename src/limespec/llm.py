@@ -13,6 +13,13 @@ class ModelServerError(RuntimeError):
     """A model server could not be reached or returned an unusable response."""
 
 
+def auth() -> dict[str, str]:
+    """The model servers' key as a bearer token, when one is configured."""
+    if not config.MODEL_API_KEY:
+        return {}
+    return {"Authorization": f"Bearer {config.MODEL_API_KEY}"}
+
+
 def embed(texts: list[str]) -> list[list[float]]:
     """Return one embedding vector per text, in the same order."""
     with telemetry.embeddings_span():
@@ -20,6 +27,7 @@ def embed(texts: list[str]) -> list[list[float]]:
             response = httpx.post(
                 config.EMBEDDING_URL,
                 json={"input": texts, "model": config.EMBEDDING_MODEL},
+                headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
@@ -66,6 +74,7 @@ def rerank(query: str, documents: list[str]) -> list[float]:
             response = httpx.post(
                 config.RERANK_URL,
                 json={"query": query, "documents": documents},
+                headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
@@ -117,7 +126,10 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
     with telemetry.chat_span():
         try:
             response = httpx.post(
-                config.CHAT_URL, json=payload, timeout=config.CHAT_TIMEOUT_SECONDS
+                config.CHAT_URL,
+                json=payload,
+                headers=auth(),
+                timeout=config.CHAT_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
         except httpx.HTTPError as error:
