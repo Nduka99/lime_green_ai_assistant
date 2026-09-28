@@ -285,6 +285,25 @@ def test_the_command_line_checks_a_key_split_into_parts(
     )
 
 
+def test_only_a_clean_key_is_written_and_never_replaced(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen = tmp_path / "plan.json"
+    seen.write_text(json.dumps(SEEN))
+    part = tmp_path / "key-part-1.json"
+    part.write_text(json.dumps({"conversations": []}))
+    key = tmp_path / "set" / "key.json"
+    command = ["check-conversations", str(part), "--plan", str(seen), "--out", str(key)]
+
+    assert cli.main(command) == 1  # c01 is not written, so nothing is sealed
+    assert not key.exists()
+    part.write_text(json.dumps(sound_key()))
+    assert cli.main(command) == 0
+    assert json.loads(key.read_text(encoding="utf-8")) == sound_key()
+    assert cli.main(command) == 1
+    assert capsys.readouterr().out.endswith(f"key not written: {key} exists\n")
+
+
 def test_the_command_line_plans_and_writes_the_bundle(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

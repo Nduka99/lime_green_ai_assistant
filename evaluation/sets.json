@@ -1,5 +1,14 @@
 {
  "sets": {
+  "conv-v1": {
+   "description": "Conversation key: 20 conversations, 86 turns (62 of 66 later turns lean on earlier turns), one subject each, ten multi-turn situations; written by an independent model blind to the assistant from brief.md and the source text in plan.json, corrected once by feedback-1.md; every quote checked verbatim by check-conversations",
+   "files": {
+    "brief.md": "339886dab7c034929a73a5f6f2ca9c692d6e170078c11e6ee43cebbdb88a3fa7",
+    "feedback-1.md": "43f4f087f8d1a76fd2df715bcd3fdbc40424f55592fea2f77ee1c645755a7738",
+    "key.json": "d9581dad92d2c87bbbc550dc8951e487719a20d71386fc611bfc7d18074f2f3b",
+    "plan.json": "cc72b38e89cf019d851007e532144566e01b50a33594ffa6259276b18074f703"
+   }
+  },
   "frozen90": {
    "description": "Frozen evaluation (Phase 4): 18 cases x 5 wordings = 90 questions, key locked before the engine was built; retrieval runs of the four methods on the submitted index",
    "files": {

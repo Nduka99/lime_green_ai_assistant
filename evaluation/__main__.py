@@ -8,7 +8,8 @@
     uv run python -m evaluation ask SET --target URL --run NAME        # the v1 API
     uv run python -m evaluation ask SET --target URL --run v5 --endpoint /api/answer
     uv run python -m evaluation catalogue --out data/catalogue.json   # source strata
-    uv run python -m evaluation check-conversations KEY.json ... --plan PLAN.json
+    uv run python -m evaluation check-conversations KEY.json ... --plan PLAN.json \
+        [--out data/eval/SET/key.json]           # writes the whole key when clean
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
@@ -96,6 +97,9 @@ def parser() -> argparse.ArgumentParser:
     written.add_argument("keys", nargs="+", type=Path, help="the key's JSON files")
     written.add_argument(
         "--plan", type=Path, required=True, help="the bundle's plan.json"
+    )
+    written.add_argument(
+        "--out", type=Path, help="write the whole key here if it has no problems"
     )
     graded = commands.add_parser("grades", help="count a grading sitting's verdicts")
     graded.add_argument("name")
@@ -207,7 +211,18 @@ def run_check_conversations(args: argparse.Namespace) -> int:
     leaning = sum(t.get("standalone") is False for t in later)
     print(f"{len(written)} conversations, {turns} turns, {len(found)} problems")
     print(f"{leaning} of {len(later)} later turns lean on earlier turns")
-    return 1 if found else 0
+    if found:
+        return 1
+    if args.out:
+        if args.out.exists():
+            # A key written into a set is sealed by its hash, so it is never replaced.
+            print(f"key not written: {args.out} exists")
+            return 1
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        text = json.dumps({"conversations": written}, indent=1, ensure_ascii=False)
+        args.out.write_text(text + "\n", encoding="utf-8", newline="\n")
+        print(f"key written: {args.out}")
+    return 0
 
 
 def run_grades(args: argparse.Namespace) -> int:
