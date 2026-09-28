@@ -64,6 +64,8 @@ def converter(images_scale: float = 0.0) -> DocumentConverter:
     )
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
+    from limespec.rendering import OPTIONS, PdfiumRenderedBackend
+
     options = PdfPipelineOptions(
         do_ocr=False,
         do_table_structure=True,
@@ -73,9 +75,13 @@ def converter(images_scale: float = 0.0) -> DocumentConverter:
         options.generate_page_images = True
         options.generate_parsed_pages = True
         options.images_scale = images_scale
-    return DocumentConverter(
-        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
+    # Pages are drawn by pdfium, not docling-parse's renderer (see limespec.rendering).
+    pdf_format = PdfFormatOption(
+        pipeline_options=options,
+        backend=PdfiumRenderedBackend,
+        backend_options=OPTIONS,
     )
+    return DocumentConverter(format_options={InputFormat.PDF: pdf_format})
 
 
 def read_pdf(

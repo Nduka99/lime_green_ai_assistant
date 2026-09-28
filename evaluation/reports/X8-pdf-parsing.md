@@ -700,3 +700,8 @@ different pixels. No text is lost or altered:
 
 The selected configuration, Docling + GLM-OCR, is unchanged. Gate item 3 fails as written,
 so the decision goes to the user.
+
+**Decision (user, 28 September 2026):** adopt pdfium rendering. Memory safety outweighs the
+Docling-only arm's layout flips: they go both ways, lose no text, and leave the selected
+Docling + GLM-OCR configuration unchanged. Label–value pairs are taken up again with
+passages (X9).

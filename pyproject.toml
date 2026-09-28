@@ -35,9 +35,9 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 
-# pylatexenc ships no type information.
+# pylatexenc and pypdfium2 ship no type information.
 [[tool.mypy.overrides]]
-module = ["pylatexenc.*"]
+module = ["pylatexenc.*", "pypdfium2.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -63,6 +63,9 @@ ingest = [
     # 7.22.1 reads a glyph a subset font puts on code 32 instead of a word break
     # (docling-parse #359); earlier versions drop letters in five Lime Green PDFs.
     "docling-parse>=7.22.1",
+    # Page images come from pdfium: docling-parse's Windows renderer corrupts memory
+    # when its threads exit (docling-parse #357). The range is Docling's own.
+    "pypdfium2>=5.13.0,<6.0.0",
     # Listed directly so the CPU index below applies (uv sources cover direct
     # dependencies only).
     "torch>=2.14.0",
