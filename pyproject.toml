@@ -50,3 +50,24 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.7",
 ]
+# Ingestion only (the API never installs it): Docling reads PDFs on the CPU.
+ingest = [
+    "docling-slim[convert-core,feat-chunking,format-pdf-docling,models-local]>=2.130.0",
+    # The table model needs OpenCV; the headless build has no GUI libraries.
+    "docling-ibm-models[opencv-python-headless]>=4.0.3",
+    # Listed directly so the CPU index below applies (uv sources cover direct
+    # dependencies only).
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+]
+
+# CPU builds of PyTorch on every platform: ingestion runs on the CPU, and the default
+# Linux wheels would add gigabytes of CUDA libraries.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
