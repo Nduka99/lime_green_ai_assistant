@@ -99,3 +99,16 @@ eligible arms, the highest table-lookup Success@8 wins; within 0.02, the arm wit
 passages wins. The winning form goes into the S2 candidate index, whose own gates (keyed
 web sets no worse, guardrails 100%, conv-v1 coverage ≥ 30 answerable follow-ups) are
 written before its run. If no arm beats `table` beyond the 0.02 tie, `table` stays.
+
+**Amendment before any run** (29 September 2026). Built as fixed item 2 says, text
+passages were very small: a median of 117 characters in the `table` form, 629 of 4,938
+under 40, because Docling marks about 9 lines per page as headings and each started a
+passage. The element-based chunking cited above merges elements up to its budget rather
+than cutting at every heading, and Docling's own chunker merges undersized neighbours.
+Item 2 now reads: on each page, consecutive elements under the same section form a
+section (stacked headings stay with the text below them), and consecutive sections are
+packed into passages of at most 1,500 characters. A passage ends only where the next
+section would not fit, and takes its first section's path as its context. Measured on the
+readings: median 671 characters, 102 of 1,461 passages under 40 (`table` form). A row
+passage's context names the table's column headers, or its header lines when no column
+headers were read. The arms, data, measures and selection rule are unchanged.
