@@ -12,6 +12,8 @@ PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
 # The site's documents and images, each stored once by SHA-256 with manifest.json;
 # never committed.
 FILE_STORE = Path("data/files")
+# Each stored PDF read into elements (limespec.documents); never committed.
+READINGS = Path("data/elements")
 # Openly licensed external documents to collect: URL, then licence, per line.
 EXTERNAL_SOURCES = Path("sources-external.txt")
 # The Postgres index (deploy/compose.yaml). It holds a password, so it comes from the

@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, llm, store, telemetry
+from limespec import assistant, cli, config, documents, llm, store, telemetry
 from limespec.app import app
 from limespec.ingest import ingest
 from limespec.models import Answer
@@ -181,6 +181,35 @@ def test_ingest_can_build_from_another_list_without_going_live(
     )
 
 
+def test_ingest_can_add_every_page_and_the_pdf_readings(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    url = "https://example.test/duro.pdf"
+    document = (
+        (url, "Duro", "2026-09-12T10:00:00+00:00", "sha-pdf"),
+        [(url, "Duro", "Mixing", "Mix well.", "Mixing", 1)],
+    )
+    asked = []
+
+    def index_documents(form: str, titles: dict[str, str]) -> Any:
+        asked.append(form)
+        return [document]
+
+    monkeypatch.setattr(documents, "index_documents", index_documents)
+
+    arguments = ["ingest", "--no-live", "--all-pages", "--pdf-form", "rows"]
+    assert cli.main(arguments) == 0
+    assert asked == ["rows"]
+    assert "passages: 3" in capsys.readouterr().out
+
+
 def test_an_unreachable_postgres_is_reported_not_raised(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -200,7 +229,7 @@ def test_model_server_errors_are_reported_not_raised(
     postgres_url: str,
 ) -> None:
     def failing_ingest(
-        conn: store.Connection, embed: Embed, sources: Path | None, live: bool
+        conn: store.Connection, embed: Embed, *rest: Any
     ) -> tuple[int, dict[str, str]]:
         raise llm.ModelServerError("embedding server at http://127.0.0.1:8081 failed")
 

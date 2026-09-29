@@ -14,10 +14,16 @@ from limespec.ingest import (
     extract_sections,
     fetch_missing,
     fetch_page,
+    file_links,
+    file_title,
     ingest,
     page_passages,
+    page_url,
+    pdf_titles,
     prepare_index,
     read_sources,
+    site_html,
+    site_pages,
     split_section,
 )
 from limespec.retrieve import Embed
@@ -402,3 +408,63 @@ def test_cached_pages_are_never_downloaded_again(
     fetch_missing([SITE + "a"], transport(requests, site(httpx.Response(200))))
 
     assert requests == [] and sleeps == []
+
+
+PRODUCT = """<html><body><main><h1>Duro Render</h1><p>A lime render.</p>
+<a href="/Documents/duro%20tds.pdf">Data Sheet</a> <a href="/Documents/sds.pdf"> </a>
+<img src="/images/bag.png" alt="Duro bag"></main></body></html>"""
+QUESTIONS = """<html><body><main><h1>Questions</h1><p>Ask us.</p>
+<a href="/Documents/duro%20tds.pdf">TDS</a> <a href="/Documents/faq.pdf">FAQ sheet</a>
+</main></body></html>"""
+
+
+def test_pdfs_are_titled_by_the_pages_that_link_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path)
+    (tmp_path / "support__faq.html").write_text(QUESTIONS, encoding="utf-8")
+    (tmp_path / "products__duro.html").write_text(PRODUCT, encoding="utf-8")
+    site = config.SITE
+
+    titles = pdf_titles(site_html())
+
+    assert site_pages() == [site + "products/duro", site + "support/faq"]
+    assert page_url("home") == site
+    assert file_links(PRODUCT) == [
+        ("document", site + "Documents/duro%20tds.pdf", "Data Sheet"),
+        ("document", site + "Documents/sds.pdf", ""),
+        ("image", site + "images/bag.png", "Duro bag"),
+    ]
+    assert titles == {
+        site + "Documents/duro%20tds.pdf": "Duro Render — Data Sheet",  # product first
+        site + "Documents/sds.pdf": "Duro Render",  # the link has no text
+        site + "Documents/faq.pdf": "Questions — FAQ sheet",
+    }
+    assert file_title(site + "Documents/duro%20tds.pdf") == "duro tds"
+
+
+def test_every_cached_page_and_a_pdf_can_be_indexed(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+) -> None:
+    url = "https://example.test/duro.pdf"
+    title = "Duro — Data Sheet"
+    row: store.PassageRow = (
+        url,
+        title,
+        "Performance",
+        "Fire | Class A1",
+        "Performance",
+        2,
+    )
+    document = ((url, title, "2026-09-12T10:00:00+00:00", "sha-pdf"), [row])
+
+    version, manifest = ingest(
+        pg, fake_embed_1024, live=False, all_pages=True, documents=[document]
+    )
+
+    assert manifest["pages"] == "2"
+    assert pg.execute(
+        "SELECT page, context FROM passages WHERE index_version_id = %s "
+        "AND page IS NOT NULL",
+        (version,),
+    ).fetchall() == [(2, "Performance")]

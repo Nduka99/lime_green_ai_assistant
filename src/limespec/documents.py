@@ -24,9 +24,10 @@ from typing import Any
 
 import httpx
 
-from limespec import acquire, llm, pdf
+from limespec import acquire, config, ingest, llm, pdf, store
+from limespec.passages import pdf_passages
 
-OUT = Path("data/elements")
+OUT = config.READINGS
 ATTEMPTS = 2
 TIMEOUT_SECONDS = 1800.0  # the longest guide with a vision model takes minutes
 LOW_COVERAGE = 0.95  # D84: a page whose own text holds less of its layer is flagged
@@ -196,3 +197,29 @@ def summary(files: dict[str, list[str]], out: Path) -> dict[str, Any]:
                     "grade": page["grade"],
                 })  # fmt: skip
     return {"totals": dict(totals), "flagged": flagged}
+
+
+def index_documents(
+    form: str, titles: dict[str, str], folder: Path = OUT
+) -> list[tuple[store.PageRow, list[store.PassageRow]]]:
+    """Every saved reading as an index document with its passages, its tables in
+    the given X9 form: one document per distinct file, under its first URL, titled
+    by the site (`ingest.pdf_titles`) or else by its file name."""
+    fetched: dict[str, str] = {}
+    for record in acquire.read_manifest():
+        fetched.setdefault(str(record["sha256"]), str(record["fetched_at"]))
+    found = []
+    for path in sorted(folder.glob("*.json")):
+        if path.name == "report.json":
+            continue
+        reading = json.loads(path.read_text(encoding="utf-8"))
+        urls = reading["urls"]
+        named = [titles[url] for url in urls if url in titles]
+        title = named[0] if named else ingest.file_title(urls[0])
+        sha256 = str(reading["sha256"])
+        page_row: store.PageRow = (urls[0], title, fetched[sha256], sha256)
+        rows: list[store.PassageRow] = []
+        for heading, context, text, page in pdf_passages(reading["elements"], form):
+            rows.append((urls[0], title, heading, text, context, page))
+        found.append((page_row, rows))
+    return found

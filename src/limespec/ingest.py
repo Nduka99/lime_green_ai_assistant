@@ -6,14 +6,13 @@ never downloads a page twice.
 """
 
 import hashlib
-import re
-import textwrap
+import posixpath
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -21,6 +20,7 @@ from bs4 import BeautifulSoup
 
 from limespec import config, store
 from limespec.models import described
+from limespec.passages import pieces
 from limespec.retrieve import Embed
 
 HEADINGS = ["h1", "h2", "h3", "h4"]
@@ -46,7 +46,6 @@ BOILERPLATE = ", ".join(
     ]
 )
 TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: the <h1>, a label, a date
-SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
 class IngestError(RuntimeError):
@@ -62,6 +61,57 @@ def read_sources(path: Path) -> list[str]:
 def cache_path(url: str) -> Path:
     slug = urlsplit(url).path.strip("/").replace("/", "__") or "home"
     return config.PAGE_CACHE / f"{slug}.html"
+
+
+def page_url(slug: str) -> str:
+    """A cached page's address, rebuilt from its file name (`cache_path` reversed)."""
+    return config.SITE if slug == "home" else config.SITE + slug.replace("__", "/")
+
+
+def site_pages() -> list[str]:
+    """The address of every cached page of the site."""
+    return [page_url(path.stem) for path in sorted(config.PAGE_CACHE.glob("*.html"))]
+
+
+def file_links(raw_html: str) -> list[tuple[str, str, str]]:
+    """(kind, absolute URL, link or alt text) for every PDF and image a page links."""
+    soup = BeautifulSoup(raw_html, "html.parser")
+    found = []
+    for link in soup.find_all("a", href=True):
+        url = urljoin(config.SITE, str(link["href"]).strip())
+        if urlsplit(url).path.lower().endswith(".pdf"):
+            found.append(("document", url, " ".join(link.get_text(" ").split())))
+    for image in soup.find_all("img", src=True):
+        url = urljoin(config.SITE, str(image["src"]).strip())
+        found.append(("image", url, str(image.get("alt", "")).strip()))
+    return found
+
+
+def site_html() -> list[tuple[str, str]]:
+    """(URL, HTML) for every cached page of the site."""
+    pages = []
+    for url in site_pages():
+        pages.append((url, cache_path(url).read_text(encoding="utf-8")))
+    return pages
+
+
+def file_title(url: str) -> str:
+    """A document's file name without its extension ("Hemp binder TDS")."""
+    name = unquote(posixpath.basename(urlsplit(url).path))
+    return posixpath.splitext(name)[0]
+
+
+def pdf_titles(pages: Sequence[tuple[str, str]]) -> dict[str, str]:
+    """Each linked PDF's title from (page URL, HTML) pages: the title of a product
+    page linking it (else the first page that does) and the site's own link text,
+    as in "Warmshell Aerogel — SDS"."""
+    titles: dict[str, str] = {}
+    for _, raw in sorted(pages, key=lambda page: "/products/" not in page[0]):
+        title, _ = extract_sections(raw)
+        for kind, link, text in file_links(raw):
+            if kind == "document" and link not in titles:
+                titles[link] = f"{title} — {text}" if text else title
+    return titles
 
 
 def polite_client(transport: httpx.BaseTransport | None = None) -> httpx.Client:
@@ -173,23 +223,6 @@ def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
     if paragraphs:
         sections.append((heading, paragraphs))
     return title, sections
-
-
-def pieces(paragraph: str, budget: int) -> list[str]:
-    """A paragraph that fits the budget stays whole; a longer one is split at
-    sentence ends, and a sentence that is still too long at spaces. Words and
-    hyphenated words are never broken, so every quote survives unchanged."""
-    if len(paragraph) <= budget:
-        return [paragraph]
-    parts: list[str] = []
-    for sentence in SENTENCE_END.split(paragraph):
-        if len(sentence) <= budget:
-            parts.append(sentence)
-        else:
-            parts += textwrap.wrap(
-                sentence, budget, break_long_words=False, break_on_hyphens=False
-            )
-    return parts
 
 
 def split_section(heading: str, paragraphs: list[str]) -> list[str]:
@@ -306,16 +339,20 @@ def ingest(
     embed: Embed,
     sources: Path | None = None,
     live: bool = True,
+    all_pages: bool = False,
+    documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
-    False, make it live.
+    False, make it live. `all_pages` takes every cached page of the site instead of
+    the sources; `documents` are added with their passages already built (PDFs,
+    `documents.index_documents`).
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
     left not live can be evaluated first (`LIMESPEC_INDEX_VERSION`).
     """
-    urls = read_sources(sources or config.SOURCES_FILE)
-    prepared = prepare_index(cached_pages(urls), embed)
+    urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
+    prepared = prepare_index(cached_pages(urls), embed, documents)
     version = store.write_version(
         conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
     )

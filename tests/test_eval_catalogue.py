@@ -7,7 +7,7 @@ import pytest
 
 from evaluation import __main__ as cli
 from evaluation import catalogue
-from limespec import acquire, config
+from limespec import acquire, config, ingest
 
 SITE = "https://example.test/"
 
@@ -87,7 +87,7 @@ def test_every_page_and_file_is_labelled_once(collected: Path) -> None:
     assert len(entries) == 5  # 2 pages and 3 distinct files
     page = entries["page:products__lime-render__duro"]
     assert page["url"] == SITE + "products/lime-render/duro"
-    assert catalogue.page_url("home") == SITE
+    assert ingest.page_url("home") == SITE
     datasheet = entries["file:" + "a" * 64]
     assert (datasheet["format"], datasheet["topic"]) == ("pdf:safety", "lime-render")
     assert datasheet["text"] == "SDS"

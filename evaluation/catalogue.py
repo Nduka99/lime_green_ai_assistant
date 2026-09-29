@@ -9,13 +9,10 @@ reported per stratum (Coverage, Not Averages, 2026).
 
 import re
 from collections import Counter
-from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urlsplit
 
-from bs4 import BeautifulSoup
-
-from limespec import acquire, config
+from limespec import acquire, config, ingest
 
 Entry = dict[str, Any]  # one source: plain JSON-compatible data
 # The site's product families (products/<family>/...), plus Warmshell insulation.
@@ -75,11 +72,6 @@ def page_topic(slug: str) -> str:
     return "company"
 
 
-def page_url(slug: str) -> str:
-    """The page's address, rebuilt from its cache name (the reverse of cache_path)."""
-    return config.SITE if slug == "home" else config.SITE + slug.replace("__", "/")
-
-
 def pdf_format(link_texts: list[str], url: str) -> str:
     """A PDF's format from how the site links to it, else from its decoded file
     name ("IWI%20Architect%20Reference" must read as words)."""
@@ -89,22 +81,6 @@ def pdf_format(link_texts: list[str], url: str) -> str:
             if re.search(pattern, text, re.IGNORECASE):
                 return label
     return "pdf:other"
-
-
-def links(page: Path) -> list[tuple[str, str, str]]:
-    """(kind, absolute URL, link or alt text) for every PDF and image on a page."""
-    soup = BeautifulSoup(
-        page.read_text(encoding="utf-8", errors="replace"), "html.parser"
-    )
-    found = []
-    for link in soup.find_all("a", href=True):
-        url = urljoin(config.SITE, str(link["href"]).strip())
-        if urlsplit(url).path.lower().endswith(".pdf"):
-            found.append(("document", url, " ".join(link.get_text(" ").split())))
-    for image in soup.find_all("img", src=True):
-        url = urljoin(config.SITE, str(image["src"]).strip())
-        found.append(("image", url, str(image.get("alt", "")).strip()))
-    return found
 
 
 def file_topic(page_topics: list[str]) -> str:
@@ -131,10 +107,11 @@ def catalogue() -> list[Entry]:
                 "format": page_format(slug),
                 "topic": page_topic(slug),
                 "source": str(page),
-                "url": page_url(slug),
+                "url": ingest.page_url(slug),
             }
         )
-        for _, url, text in links(page):
+        raw = page.read_text(encoding="utf-8", errors="replace")
+        for _, url, text in ingest.file_links(raw):
             link_texts.setdefault(url, []).append(text)
             linked_topics.setdefault(url, []).append(page_topic(slug))
             linking_pages.setdefault(url, []).append(f"page:{slug}")

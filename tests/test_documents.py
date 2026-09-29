@@ -222,3 +222,36 @@ def test_the_package_runs_as_a_module(monkeypatch: pytest.MonkeyPatch) -> None:
         runpy.run_module("limespec", run_name="__main__")
 
     assert stopped.value.code == 0
+
+
+def test_saved_readings_become_index_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paragraph = {"page": 1, "kind": "paragraph", "text": "Mix well.",
+                 "section": ["Mixing"], "table": None, "row": None, "cells": [],
+                 "grid": []}  # fmt: skip
+    titled = {
+        "sha256": "abc",
+        "elements": [paragraph],
+        "urls": ["https://example.test/a.pdf", "https://example.test/c.pdf"],
+    }
+    untitled = {"sha256": "def", "elements": [],
+                "urls": ["https://example.test/d%20e.pdf"]}  # fmt: skip
+    for reading in (titled, untitled):
+        (tmp_path / f"{reading['sha256']}.json").write_text(json.dumps(reading))
+    (tmp_path / "report.json").write_text("{}")
+    records = [{"sha256": "abc", "fetched_at": "T1"},
+               {"sha256": "abc", "fetched_at": "T2"},
+               {"sha256": "def", "fetched_at": "T3"}]  # fmt: skip
+    monkeypatch.setattr(acquire, "read_manifest", lambda: records)
+
+    found = documents.index_documents(
+        "table", {"https://example.test/c.pdf": "C — SDS"}, tmp_path
+    )
+
+    url = "https://example.test/a.pdf"
+    assert found == [
+        ((url, "C — SDS", "T1", "abc"),
+         [(url, "C — SDS", "Mixing", "Mix well.", "Mixing", 1)]),
+        (("https://example.test/d%20e.pdf", "d e", "T3", "def"), []),
+    ]  # fmt: skip
