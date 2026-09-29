@@ -24,10 +24,12 @@ evidence for enough of conv-v1's follow-ups to run X36?
 - **Paired analysis,** as in X2 and X16: where both arms show the same answer they score
   the same; differing answers are graded blind (pairs shuffled with seed 11, arms
   hidden), then unblinded; differences are summed per case and cases resampled.
-- **conv-v1 coverage:** a later turn (not a conversation's first) whose expected status
-  is `answered` is covered when every one of its evidence quotes is found by
-  `verify.find_quote` in a passage of the candidate from that quote's source (a page, or
-  a PDF by its file). Quotes from images are not covered (no image index yet).
+- **conv-v1 coverage,** exactly as X36 registered it: an answerable follow-up (`standalone`
+  false, expected status `answered`; 44 in conv-v1) is in scope when every part has an
+  evidence quote found whole, whitespace and case ignored, in one passage of the version.
+  Quotes from images cannot be found (no image index yet). Corrected before any run: the
+  first draft of this note counted later turns and used `find_quote`, which is not the
+  bar X36 set.
 
 ## Gate (fixed before the runs)
 
