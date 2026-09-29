@@ -76,8 +76,8 @@ def test_an_answer_request_is_the_assistant_s_own() -> None:
     assert request == {
         "id": "a1",
         "system": answer.ANSWER_PROMPT,
-        "user": answer.user_prompt("What is in Duro?", sources),
-        "schema": answer.answer_schema(["S1", "S2"]),
+        "user": answer.user_prompt(["What is in Duro?"], sources),
+        "schema": answer.answer_schema(["S1", "S2"], 1),
         "passage_ids": [7, 3],
     }
 
@@ -318,13 +318,13 @@ def test_twelve_requests_per_question_carry_their_layout() -> None:
 def test_evidence_counts_as_used_when_a_verified_claim_quotes_it() -> None:
     passages = {1: passage(1, "Duro is free of cement."), 2: passage(2, "Delivery.")}
     request = {"passage_ids": [2, 1], "data": {"evidence_ids": [1]}}
-    claim = {"evidence": [{"source_id": "S2", "quote": "free of cement"}],
+    claim = {"part": 1, "evidence": [{"source_id": "S2", "quote": "free of cement"}],
              "text": "Duro is free of cement."}  # fmt: skip
-    invented = {"evidence": [{"source_id": "S1", "quote": "free of lime"}],
+    invented = {"part": 1, "evidence": [{"source_id": "S1", "quote": "free of lime"}],
                 "text": "Duro is free of lime."}  # fmt: skip
 
     def content(claims: list[dict[str, Any]]) -> str:
-        return json.dumps({"claims": claims, "answers_every_part": True})
+        return json.dumps({"claims": claims})
 
     used = generator.evidence_used(request, reply("a", content([claim])), passages)
     refused = generator.evidence_used(
@@ -422,7 +422,7 @@ def test_turns_can_be_interleaved_with_answer_requests_of_one_token() -> None:
     assert [r["id"] for r in alone] == [
         "c1t1/understand", "c1t2/understand", "c1t3/understand",
     ]  # fmt: skip
-    assert alone[0]["schema"] is answer.EXPOSURE_SCHEMA
+    assert alone[0]["schema"] is answer.UNDERSTAND_SCHEMA
     assert [r["data"]["turn"] for r in alone] == [1, 2, 3]
     assert [r["id"] for r in mixed][:2] == ["c1t1/understand", "c1t1/answer"]
     assert [r["user"] for r in mixed if r["id"].endswith("answer")] == ["u", "v", "u"]
@@ -493,7 +493,10 @@ def test_replay_requests_are_rebuilt_from_audit_records(
     saved = json.loads(out.read_text(encoding="utf-8"))
     assert len(saved["warm_up"]) == 1 and len(saved["requests"]) == 40
     first = saved["warm_up"][0]
-    assert first["user"].endswith(f"Question: Q{first['passage_ids'][0]}")
+    question = f"Q{first['passage_ids'][0]}"
+    assert first["user"].endswith(
+        f"Question: {question}\nParts of the question:\n1. {question}"
+    )
     assert "1 warm-up and 40 requests" in capsys.readouterr().out
 
 
@@ -609,7 +612,7 @@ def test_the_curve_is_scored_from_a_pass_and_its_requests(
 ) -> None:
     requests = []
     replies = []
-    claim = {"evidence": [{"source_id": "S1", "quote": "free of cement"}],
+    claim = {"part": 1, "evidence": [{"source_id": "S1", "quote": "free of cement"}],
              "text": "Duro is free of cement."}  # fmt: skip
     for size in (8, 16):
         for position in generator.POSITIONS:
@@ -626,7 +629,7 @@ def test_the_curve_is_scored_from_a_pass_and_its_requests(
                     },
                 }
             )
-            content = json.dumps({"claims": [claim], "answers_every_part": True})
+            content = json.dumps({"claims": [claim]})
             replies.append(reply(request_id, content))  # fmt: skip
     requests_file, run = tmp_path / "requests.json", tmp_path / "run.json"
     requests_file.write_text(json.dumps({"warm_up": [], "requests": requests}))
@@ -648,8 +651,9 @@ def test_two_passes_are_verified_and_changed_outcomes_listed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def content(quote: str) -> str:
-        claim = {"evidence": [{"source_id": "S1", "quote": quote}], "text": "Duro."}
-        return json.dumps({"claims": [claim], "answers_every_part": True})
+        claim = {"part": 1, "evidence": [{"source_id": "S1", "quote": quote}],
+                 "text": "Duro."}  # fmt: skip
+        return json.dumps({"claims": [claim]})
 
     requests = [{"id": i, "passage_ids": [1]} for i in ("a1", "a2")]
     kept = [

@@ -72,8 +72,8 @@ def answer_request(
     return {
         "id": request_id,
         "system": answer.ANSWER_PROMPT,
-        "user": answer.user_prompt(question, sources),
-        "schema": answer.answer_schema(list(sources)),
+        "user": answer.user_prompt([question], sources),
+        "schema": answer.answer_schema(list(sources), 1),
         "passage_ids": [p.id for p in passages],
     }
 
@@ -460,8 +460,8 @@ def evidence_used(
         f"S{number}": passages[passage_id]
         for number, passage_id in enumerate(request["passage_ids"], 1)
     }
-    draft = answer.read_output(json.loads(reply["content"]), list(sources))
-    kept, removed = verify(draft.claims, sources)
+    drafts = answer.read_output(json.loads(reply["content"]), list(sources), 1)
+    kept, removed = verify(drafts, sources)
     cited = {evidence.passage_id for claim in kept for evidence in claim.evidence}
     return {
         "status": "answered" if kept else "insufficient_evidence",
@@ -559,9 +559,9 @@ def conversation_requests(
         for index, turn in enumerate(turns):
             requests.append({
                 "id": f"{turn['id']}/understand",
-                "system": answer.EXPOSURE_PROMPT,
+                "system": answer.UNDERSTAND_PROMPT,
                 "user": understanding_user(turns, index, window),
-                "schema": answer.EXPOSURE_SCHEMA,
+                "schema": answer.UNDERSTAND_SCHEMA,
                 "data": {"turn": index + 1},
             })  # fmt: skip
             if answers:

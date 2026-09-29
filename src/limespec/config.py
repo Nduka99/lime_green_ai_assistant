@@ -66,6 +66,11 @@ MAX_ANSWER_TOKENS = 2048
 # Bounds on the answer, so a model that starts repeating itself stops well inside
 # the token limit instead of being cut off mid-JSON.
 MAX_CLAIMS = 8
+# A question is searched as at most MAX_PARTS separate things; a question with
+# several gets up to MAX_PASSAGES passages, interleaved from each search (S2b C2,
+# within X39's budget of 32).
+MAX_PARTS = 6
+MAX_PASSAGES = 12
 MAX_QUOTES_PER_CLAIM = 3
 CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
 

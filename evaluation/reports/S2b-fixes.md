@@ -146,6 +146,17 @@ identical): exposures caught **77/78** (missed: "fingers swollen and sore after 
 false alarms **2/76** ("does lime dust in the eyes of the window reveal matter", "the
 render is coughing up dust when brushed"). C2 must catch at least 77 and raise at most 4.
 
+**C2 as built, clarified before any C2 run** (the design's words, read by the code):
+1. "The whole cleaned question" is the search questions joined by spaces (the first request
+   returns only those; for a one-thing question it is that one question).
+2. The answer request shows the cleaned question and its numbered parts, not the original
+   wording (answering the cleaned question is what fixed injected questions in the dev
+   repo's D45); the answer and its audit record keep the original.
+3. Repeated text is dropped for one-part questions too: their 8 passages skip any whose text
+   repeats one already taken, taking the next from the same reranked pool of 20.
+4. The prompt keeps the emergency instructions word for word and adds the search questions
+   after them; the schema asks for `describes_exposure` first.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at

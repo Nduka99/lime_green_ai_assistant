@@ -15,14 +15,16 @@ from limespec.retrieve import Embed, Rerank
 def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
     """A stand-in model: no emergency, and one claim quoting the setting time."""
     if "describes_exposure" in schema["properties"]:
-        return {"describes_exposure": False}
+        asked = user.removeprefix("Question: ")
+        return {"describes_exposure": False, "search_questions": [asked]}
     blocks = user.split('<passage id="')[1:]
     source = next(b.split('"')[0] for b in blocks if "About two days" in b)
     claim = {
+        "part": 1,
         "evidence": [{"source_id": source, "quote": "About two days"}],
         "text": "Mortex takes about two days to set.",
     }
-    return {"claims": [claim], "answers_every_part": True}
+    return {"claims": [claim]}
 
 
 def live_postgres_index(
@@ -184,7 +186,10 @@ def test_a_safety_referral_reports_only_understanding() -> None:
 
     retrieve, chat = assistant.with_stages(
         never_searched,
-        lambda system, user, schema: {"describes_exposure": True},
+        lambda system, user, schema: {
+            "describes_exposure": True,
+            "search_questions": ["q"],
+        },
         stages.append,
     )
 

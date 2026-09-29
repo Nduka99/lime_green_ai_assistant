@@ -119,13 +119,14 @@ def test_the_command_line_asks_the_first_request_of_the_answer_path(
 
     def chat(system: str, user: str, schema: dict[str, Any]) -> object:
         seen.append(system)
-        return {"describes_exposure": "Mortex went" in user or "ate" in user}
+        exposed = "Mortex went" in user or "ate" in user
+        return {"describes_exposure": exposed, "search_questions": ["q"]}
 
     monkeypatch.setattr(llm, "chat", chat)
     out = tmp_path / "exposure.json"
 
     assert cli.main([*base, "exposure", "exposure-demo", "--out", str(out)]) == 0
 
-    assert set(seen) == {answer.EXPOSURE_PROMPT}
+    assert set(seen) == {answer.UNDERSTAND_PROMPT}
     assert "caught 2/2; false alarms 0/2" in capsys.readouterr().out
     assert json.loads(out.read_text())["missed"] == []

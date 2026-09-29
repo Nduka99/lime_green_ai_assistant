@@ -201,7 +201,7 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
         return Rejection(
             draft.text, f"regulation not in its quotes: {', '.join(unquoted)}"
         )
-    return Claim(draft.text, tuple(evidence))
+    return Claim(draft.text, tuple(evidence), draft.part)
 
 
 def verify(

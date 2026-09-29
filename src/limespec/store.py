@@ -202,9 +202,15 @@ def vector_ranking(
 
 
 def search(
-    conn: Connection, version_id: int, question: str, embed: Embed, rerank: Rerank
+    conn: Connection,
+    version_id: int,
+    question: str,
+    embed: Embed,
+    rerank: Rerank,
+    top: int | None = None,
 ) -> list[Passage]:
-    """The top passages of one index version for a question, best first.
+    """The top passages of one index version for a question, best first: `top` of
+    them, or `config.TOP_K`.
 
     Keyword and vector rankings, fused, then the reranker orders the best
     candidates (`retrieve.rerank_top`).
@@ -218,7 +224,7 @@ def search(
         ]
     )
     candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
-    return rerank_top(question, candidates, rerank)
+    return rerank_top(question, candidates, rerank, top)
 
 
 def record_answer(

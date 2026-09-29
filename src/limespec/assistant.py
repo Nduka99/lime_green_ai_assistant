@@ -12,7 +12,7 @@ from typing import Any
 import psycopg
 
 from limespec import config, llm, store, telemetry
-from limespec.answer import EXPOSURE_SCHEMA, PROMPT_SHA256, Chat, Retrieve, answer
+from limespec.answer import PROMPT_SHA256, UNDERSTAND_SCHEMA, Chat, Retrieve, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
 from limespec.view import view
@@ -37,13 +37,19 @@ def with_stages(
     checking (verification runs once the answer request returns; its outcome is
     traced on the answer's span)."""
 
+    searched = False
+
     def staged_retrieve(query: str) -> list[Passage]:
-        on_stage("searching")
+        # A question with several parts is searched several times: one stage event.
+        nonlocal searched
+        if not searched:
+            on_stage("searching")
+            searched = True
         with telemetry.span("searching"):
             return retrieve(query)
 
     def staged_chat(system: str, user: str, schema: dict[str, Any]) -> object:
-        if schema is EXPOSURE_SCHEMA:
+        if schema is UNDERSTAND_SCHEMA:
             on_stage("understanding")
             with telemetry.span("understanding"):
                 return chat(system, user, schema)
@@ -65,7 +71,16 @@ def ask_and_record(
         version_id = served_index(conn)
         started = time.perf_counter()
         retrieve, chat = with_stages(
-            lambda query: store.search(conn, version_id, query, llm.embed, llm.rerank),
+            # Each search returns its whole reranked pool; `answer` takes the top
+            # 8, or interleaves several searches up to 12 (S2b C2).
+            lambda query: store.search(
+                conn,
+                version_id,
+                query,
+                llm.embed,
+                llm.rerank,
+                config.RERANK_CANDIDATES,
+            ),
             llm.chat,
             on_stage,
         )

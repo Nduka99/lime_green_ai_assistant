@@ -45,14 +45,7 @@ class DraftClaim:
 
     text: str
     evidence: tuple[DraftEvidence, ...]
-
-
-@dataclass(frozen=True)
-class DraftAnswer:
-    """The answer request's reply, after its shape is checked, before verification."""
-
-    claims: tuple[DraftClaim, ...]
-    answers_every_part: bool
+    part: int = 1  # the number of the question part it answers (C2)
 
 
 @dataclass(frozen=True)
@@ -78,6 +71,7 @@ class Claim:
 
     text: str
     evidence: tuple[Evidence, ...]
+    part: int = 1  # the number of the question part it answers (C2)
 
 
 @dataclass(frozen=True)
