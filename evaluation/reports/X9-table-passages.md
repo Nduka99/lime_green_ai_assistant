@@ -112,3 +112,55 @@ section would not fit, and takes its first section's path as its context. Measur
 readings: median 671 characters, 102 of 1,461 passages under 40 (`table` form). A row
 passage's context names the table's column headers, or its header lines when no column
 headers were read. The arms, data, measures and selection rule are unchanged.
+
+## Result
+
+Run on 29 September 2026 at `0d6e288`: set `x9-tables` (405 lookups) registered before any
+arm; each arm built with `limespec ingest --no-live --all-pages --pdf-form FORM` from the
+160 cached site pages and the 98 production readings (258 documents), then scored with
+`evaluation quote-retrieval`; `evaluation select-form` applied the rule. Intervals are
+95%, clusters (tables; conv-v1 turns) resampled 10,000 times.
+
+| Arm | Version | Passages | Lookups Success@8 (vs `table`) | MRR@8 | conv-v1 Success@8 (vs `table`) | MRR@8 |
+|---|---|---|---|---|---|---|
+| `table` | 8 | 2,283 | 0.827 | 0.721 | 0.700 | 0.580 |
+| `rows` | 9 | 3,202 | 0.822 (−0.005 [−0.028, +0.010]) | 0.671 | 0.725 (+0.025 [0.000, +0.083]) | 0.597 |
+| `both` | 10 | 3,482 | 0.832 (+0.005 [0.000, +0.015]) | 0.730 | 0.675 (−0.025 [−0.081, 0.000]) | 0.569 |
+| `page` | 11 | 1,845 | **0.859 (+0.032 [+0.002, +0.105])** | 0.761 | 0.725 (+0.025 [0.000, +0.077]) | 0.599 |
+
+Ceilings (evidence quotable from any passage of its document): lookups 0.857 for `table`,
+`rows` and `both` and 0.859 for `page`; conv-v1 0.925 for every arm. In `page`, every lookup
+whose evidence is in the index is found in the top 8 (success equals the ceiling); in
+conv-v1, 8 quotes are in the index but not in the top 8.
+
+**Selected by the rule: `page`.** Every arm is eligible (none loses more than one conv-v1
+quote); only `page` beats `table` on lookups by more than the 0.02 tie, and it holds the
+fewest passages. The lower end of its lookup interval is +0.002, so the gain is real but
+small.
+
+**Where evidence is missing from every arm** (the ceiling): the lookups cluster in a few
+tables (`x8-pages-r3` page 3, about 23; page 2, 10; page 7, 6; page 20, 5; `x8-pages`
+page 1, 4; `x8-pages-r2` pages 10–11, 5) and three conv-v1 quotes (c13t1, c13t2, c17t1,
+labels and values quoted across a layout the reading orders differently). Their causes are
+diagnosed next, before the candidate index: a reading fault is fixed in the reader, not in
+these questions.
+
+**Diagnosis of the ceiling** (29 September 2026, from the readings and the truth images):
+
+| Cause | Where | Lookups |
+|---|---|---|
+| The page's curly quotes and inch marks, straightened by docling-parse's sanitisation (Docling exposes no option for it) | Solo EPD "POCP (“smog”)" row; woodfibre brochure "9” brick wall", "13.5” brick…" | about 29 |
+| Superscripts written with a space before them by Docling ("N/mm 2", "m 2 .min 0.5", "PO4 3 e"); the page and the text layer have none | Eco Render and Ashlar Mortar data sheets, the Coloured Cement DoP water row, the EPD unit | about 16 |
+| A cell GLM-OCR read whose words did not match the PDF's, so it was dropped | EPD ozone row's unit | 1 |
+| Not yet examined | `x8-pages-r2` pages 10–11, `x8-pages-r3` pages 5, 12, 14, 17, 18 | about 11 |
+
+Neither of the two main causes is about search or the passage form: the evidence is present,
+spelt differently from the page. They need different fixes. Typography can be matched: a
+quote and its passage may differ in the form of quotes, apostrophes, primes and dashes,
+which change no meaning, and folding them in `find_quote` also serves answers when a model
+quotes the page's own characters. Superscript spacing cannot be matched safely (letting
+"3 6" match "36" would defeat the number check), so it belongs in the reader: Docling's
+`enforce_same_font` option ("split text cells at font boundaries") is the first candidate,
+to be measured on the X8 pages before any re-reading. Each fix is pre-registered with its
+gate before code. X9's selection stands as run; re-scoring after these fixes is reported
+as a check, not a new selection.
