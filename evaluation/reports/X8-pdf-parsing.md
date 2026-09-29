@@ -884,3 +884,41 @@ GLM-OCR round-3 run for item 5):
 5. The `glm-ocr` arm on `x8-pages-r3` (the adopted configuration) is no worse: grid
    ≥ 0.984, lowest table ≥ 0.800, text and numbers not lower.
 6. `scripts/check.py` passes. The time added per page is reported.
+
+**First run** (29 September 2026, code `27058d7`): items 1 and 3 pass (visible words
+158,560 / 158,560; no hidden recovered word; sections 0.9937); 2,547 hidden words removed;
+the corpus read in 32 min (33 min before). **Item 2 fails as written: 39 hidden words
+remain** (limit 19), in 22 items of three documents: "Revision", "Scale @A4", "Al" and
+contact lines from CAD title blocks, and two whole paragraphs.
+
+**Diagnosis.** For these items Docling's box is not where pdfium places the words, so the
+box-level rule finds nothing to remove:
+
+- docling-parse places text of scaled, placed CAD sheets elsewhere than pdfium does
+  ("Revision" boxed at x = 368, drawn by pdfium, hidden, at x = 507);
+- docling-parse reads text pdfium does not extract on that page at all: "It is very
+  important to insulate between the floor void…" (IWI Architect Reference p9) sits in a
+  box 5 points high at the page's bottom edge, where the drawn page is blank, and the page
+  shows it nowhere.
+
+Measured before any change: 44 of 16,298 Docling items (115 words) have no visible pdfium
+word centred in their box. Four of them are visible values on the two carbon-footprint
+pages ("1", "3.29E-01", "2.66E-01"): pdfium glues each value to the next row
+("3.29E-011"), so its word's centre falls outside Docling's box. With "a visible word
+overlaps the box" instead, 40 items (111 words) remain: 26 in the IWI Architect Reference,
+13 in the IWI guide, 1 in the roof design guide. Every one was checked against its page
+image: all are hidden (title-block labels, the two paragraphs, clipped fragments such as
+"hat", "ings", "um"; the one "Drawing No." whose page shows the words is a hidden duplicate
+of the header's own element).
+
+**Amendment** (before the code change):
+
+5. An item whose box no visible pdfium word overlaps (1 point margin) keeps none of its
+   words; like any item left with no letter or digit, it is dropped (a figure stays). A
+   table whose cells are all left empty is dropped whole.
+6. On a page where pdfium reads no word, nothing is known to be hidden and Docling's text
+   stands.
+
+If docling-parse ever misplaces visible text this way, recovery puts its words back from
+pdfium, so no visible word is lost (gate item 1); the number of recovered lines shows it.
+The gate is unchanged.
