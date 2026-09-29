@@ -186,8 +186,10 @@ def test_a_pdf_is_read_through_the_converter(
     assert calls == [(Path("sheet.pdf"), (2, 2))]
     assert all(isinstance(element, Element) for element in found)
     assert found[-1] == Element(2, "recovered", "A line the reading lost")
+    # pdfium shows only "Detail" on page 2, so the five other items there (10 words)
+    # lie where no reader sees them and are dropped; the figure stays.
     elements = len(pdf.elements(datasheet()))
-    assert recovered == [(elements, pages, {}, checks)]
+    assert recovered == [(elements - 5, pages, {2: 10}, checks)]
 
 
 HIDDEN = {"Mixing", "Mesh", "here", "M5"}
@@ -212,6 +214,23 @@ def test_words_a_page_hides_are_taken_out_of_every_item() -> None:
     assert ("table_row", "1") in texts  # the contents table without "Mixing"
     water = next(e for e in found if e.text == "Add 4 litres of water.")
     assert water.section == ("Mortex Mortar",)  # a hidden heading is no section
+
+
+def test_a_table_the_page_hides_is_dropped_whole(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    doc = datasheet()
+    table = next(item for item, _ in doc.iterate_items() if hasattr(item, "data"))
+
+    def nothing(page: int, bbox: Any, text: str) -> str:
+        return ""
+
+    monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
+    monkeypatch.setattr(tables, "recognise", lambda image, url: ANSWER)
+    words = {1: TABLE_WORDS}
+
+    assert pdf.table_rows(table, 1, (), doc, nothing) == []
+    assert pdf.vlm_table(table, 1, (), doc, words, "u", Counter(), nothing) == []
 
 
 def test_the_converter_reads_text_cells_without_ocr() -> None:

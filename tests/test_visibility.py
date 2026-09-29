@@ -174,8 +174,15 @@ def test_hidden_words_are_those_a_box_holds_only_where_they_are_not_seen() -> No
     assert visibility.hidden_inside(LINES, (0, 100, 100, 150)) == set()
 
 
+def test_a_box_shows_a_word_that_overlaps_it() -> None:
+    # "PRODUCT" runs from 10 to 50: it overlaps this box, though centred outside it.
+    assert visibility.shows_inside(LINES, (45.0, 15.0, 52.0, 25.0))
+    assert not visibility.shows_inside(LINES, (290.0, 0.0, 330.0, 30.0))  # hidden
+    assert not visibility.shows_inside(LINES, (0.0, 100.0, 50.0, 150.0))  # empty
+
+
 def test_an_item_keeps_only_the_words_its_page_shows() -> None:
-    pages = {1: ((600.0, 800.0), LINES)}
+    pages = {1: ((600.0, 800.0), LINES), 2: ((600.0, 800.0), [])}
     removed: Counter[int] = Counter()
 
     def keep(number: int, bbox: Any, text: str) -> str:
@@ -184,6 +191,10 @@ def test_an_item_keeps_only_the_words_its_page_shows() -> None:
     heading = (0.0, 0.0, 130.0, 60.0)
     assert keep(1, heading, "PRODUCT DESCRIPTION VP-009") == "PRODUCT DESCRIPTION"
     assert keep(1, heading, "PRODUCT  DESCRIPTION") == "PRODUCT  DESCRIPTION"
-    assert keep(1, (0.0, 100.0, 50.0, 150.0), "the VP-009") == "the VP-009"
-    assert keep(1, None, "VP-009") == keep(2, heading, "VP-009") == "VP-009"
-    assert removed == Counter({1: 1})
+    # The page shows nothing over this box: text read, or placed, where no one sees it.
+    nowhere = (0.0, 100.0, 50.0, 150.0)
+    assert keep(1, nowhere, "It is very important") == keep(1, nowhere, "") == ""
+    # No box, no page read, or no pdfium word on the page: nothing is known hidden.
+    assert keep(1, None, "VP-009") == keep(3, heading, "VP-009") == "VP-009"
+    assert keep(2, heading, "VP-009") == "VP-009"
+    assert removed == Counter({1: 5})

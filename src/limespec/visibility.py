@@ -141,6 +141,24 @@ def read_pages(path: Path, first: int, last: int) -> dict[int, Page]:
     return pages
 
 
+def overlaps(box: Box, bbox: Box) -> bool:
+    """Whether a word's box overlaps an item's box (widened by MARGIN)."""
+    left, top, right, bottom = bbox
+    w_left, w_top, w_right, w_bottom = box
+    across = w_left < right + MARGIN and w_right > left - MARGIN
+    down = w_top < bottom + MARGIN and w_bottom > top - MARGIN
+    return across and down
+
+
+def shows_inside(lines: list[Line], bbox: Box) -> bool:
+    """Whether the page shows any word with a letter or digit over the box."""
+    for line in lines:
+        for text, box, seen in line:
+            if seen and key(text) and overlaps(box, bbox):
+                return True
+    return False
+
+
 def hidden_inside(lines: list[Line], bbox: Box) -> set[str]:
     """The spellings (as `key`) of the words inside the box that the page hides
     there and shows nowhere else inside it."""
@@ -170,15 +188,19 @@ def keep_visible(
     text: str,
 ) -> str:
     """The text of an item on page `number` without the words the page hides inside
-    the item's box; `removed` counts the words taken out on each page."""
+    the item's box, and none of it where the page shows no word over the box (text
+    docling-parse reads, or places, where no reader sees it). Where pdfium reads no
+    word on the page, nothing is known to be hidden. `removed` counts the words taken
+    out on each page."""
     page = pages.get(number)
-    if page is None or bbox is None:
-        return text
-    hidden = hidden_inside(page[1], bbox)
-    if not hidden:
+    if page is None or bbox is None or not page[1]:
         return text
     words = text.split()
-    kept = [word for word in words if key(word) not in hidden]
+    if shows_inside(page[1], bbox):
+        hidden = hidden_inside(page[1], bbox)
+        kept = [word for word in words if key(word) not in hidden]
+    else:
+        kept = []
     if len(kept) == len(words):
         return text
     removed[number] += len(words) - len(kept)

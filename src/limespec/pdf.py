@@ -58,6 +58,11 @@ def keep_all(page: int, bbox: Box | None, text: str) -> str:
     return text
 
 
+def readable(texts: Iterable[str]) -> bool:
+    """Whether any of the texts holds a letter or a digit."""
+    return any(char.isalnum() for text in texts for char in text)
+
+
 @cache
 def converter(images_scale: float = 0.0) -> DocumentConverter:
     """Docling's converter, loading its layout and table models once. Given an
@@ -173,6 +178,9 @@ def table_rows(
     bbox = box(item, document)
     # Docling's grid repeats a spanning cell in each position it covers.
     whole = [[keep(page, bbox, cell.text) for cell in row] for row in grid]
+    held = [cell.text for row in grid for cell in row]
+    if readable(held) and not readable(text for row in whole for text in row):
+        return []  # everything it held lies where no reader sees it
     headers = []
     for column in range(len(grid[0])):
         texts: list[str] = []
@@ -298,11 +306,10 @@ def vlm_table(
     page = item.prov[0].page_no
     height = document.pages[page].size.height
     bbox = box(item, document)
-    inside = [
-        word
-        for word in words_inside(bbox, words.get(page, []), height)
-        if keep(page, bbox, word)
-    ]
+    under = words_inside(bbox, words.get(page, []), height)
+    inside = [word for word in under if keep(page, bbox, word)]
+    if under and not inside:
+        return []  # the page shows none of the table's words
     read = tables.structure(cells, inside, header_words(item))
     stats["cells"] += len(cells)
     stats["dropped"] += read.dropped
@@ -361,7 +368,7 @@ def elements(
         page = item.prov[0].page_no
         bbox = box(item, document)
         shown = keep(page, bbox, text)
-        hidden = shown != text and not any(char.isalnum() for char in shown)
+        hidden = shown != text and not readable([shown])
         if hidden and label not in FIGURES:
             continue  # everything it held lies where no reader sees it
         text = shown
