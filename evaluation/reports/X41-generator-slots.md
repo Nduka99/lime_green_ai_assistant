@@ -115,3 +115,47 @@ their old lines throughout):
 against 524 tokens/s), since with 2,048-token micro-batches the CPU-held experts are
 copied to the GPU and multiplied there. `K'` = `K`. (`K-A` shared the CPU briefly with a
 12-second test run, which may be part of why it was the slowest pass.)
+
+**Step 6, two slots** (`np2` = `K` + `-np 2 --no-kv-unified -c 32768`). Load-only logs:
+KV 320 → 640 MiB (two 16,384-token shares), recurrent state 62.8 → 125.6 MiB, compute
+buffers unchanged (518 MiB GPU, 96 MiB host); the server's own GPU 3,091 → 3,473 MiB.
+
+| Gate item | `K'` | `np2` | Holds |
+|---|---|---|---|
+| 1. One at a time: replies; s per answer | — | 40/40 identical to `K-A` and `K-B`; −0.23 s against `K-A`, −0.03 [−0.10, +0.05] against `K-B` | yes |
+| 2. GPU peak (all processes); min available | 6,509 MiB; 14.8 GB | 6,891 MiB; 14.4 GB | yes |
+| 3. Understanding reuse, later turns; answer-request reuse | 0.465; 0.007 | 0.465; **0.149** | yes |
+| 4. All 40 answers, two at a time | 535–542 s one at a time | **452 s** (0.84–0.85) | yes |
+
+- **Why answers get faster, not just busier:** with two slots each request type keeps its
+  own checkpoint on the GPU, so an answer request resumes after its ~341-token system
+  prompt: its prompt reading fell from 4.27 to 2.83 s (M4's interleaved pattern, 86 answer
+  requests). Fewer new tokens also means one 2,048-token micro-batch instead of two for a
+  typical ~2,300-token answer prompt, so the CPU-held experts are copied to the GPU once.
+- **Two customers at once:** per request, median 20.6 s and p95 41.3 s (one at a time 12.5
+  and 20.8 s): the two share the GPU and the CPU-held experts (output 15.3 tokens/s each,
+  30.6 together, the same as one alone). One slot under the same load, simulated from
+  `K-A` and `K-B`'s own service times (two clients, one queue): median 25.0–25.2 s, p95
+  39.6–40.1 s, 517–525 s in all. So two slots cut the median wait by ~4.5 s and finish the
+  load 14% sooner, at an equal p95.
+- **Answers under concurrent load are not reproducible:** 22 of the 40 replies sent two at
+  a time differ from the same requests sent alone; verified, 11 keep or remove different
+  claims and 1 changes status (a771, refused alone, answered with one claim beside
+  another request). This is the batch-shape arithmetic X39 (step 2) and A5 measured (at
+  most 2 verdicts per set), now depending on what else is running.
+
+## Conclusion (29 September 2026)
+
+`-tb 16` is not kept (not faster beyond noise). **Two slots meet every condition for a
+recommendation**: identical replies one at a time, memory within the limits (+382 MiB GPU),
+answer requests ~1.4 s faster through prompt reuse, and 14% more answers per minute under
+two concurrent users. The costs are the memory, and answers that depend on concurrent
+traffic, as the reranker's did before D96. Proposed line (needs the user's OK):
+
+    -m models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf -c 32768 -np 2 --no-kv-unified -ngl all
+    --n-cpu-moe 40 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048
+    --cors-origins localhost --port 8080
+
+Afterwards 8080 was restarted on today's line (unchanged) and 8081/8082 on D96's lines:
+all healthy; own GPU 3,091 / 2,675 / 463 MiB; 18.2 GB available; the 8090 page answered
+end to end in 11.3 s.
