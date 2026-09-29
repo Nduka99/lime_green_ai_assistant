@@ -1,0 +1,101 @@
+# X9: passages from PDF readings, and the form of a table passage
+
+Pre-registered on 29 September 2026, before any passage code or run. Plan: PLAN §0f and
+Phase 3 (S2); readings: `data/elements/` from the production reading (X8 report,
+"Production reading").
+
+## Question
+
+The PDF readings hold 18,599 elements: headings, paragraphs, lists, recovered lines,
+figures and 274 tables read with GLM-OCR. Which passage form for a table lets the
+assistant find and quote table evidence best, without losing text evidence? Whole tables,
+one passage per row, both, or whole pages?
+
+## What is known
+
+- **Element-based chunks.** Starting a chunk at each title, merging elements up to 2,048
+  characters and keeping tables apart beat fixed-size chunks on FinanceBench: page
+  accuracy 84.4% vs 68–73%, QA accuracy 53.2% vs at most 41.8%
+  ([Jimeno Yepes et al. 2024](https://arxiv.org/html/2402.05131)).
+- **Page-level chunks** had the best average accuracy in NVIDIA's comparison but varied
+  by document and question
+  ([NVIDIA 2024](https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/)).
+- **Rows as retrieval units.** OTT-QA splits each table into rows, "combined with the
+  headers, metadata … as a table segment", its basic retrieval unit, and notes that such
+  segments "often have incomplete context by themselves"
+  ([Chen et al. 2021](https://arxiv.org/abs/2010.10439)). Structure-aware row chunking
+  raised Recall@1 from 0.37 to 0.75 with BM25 on one legal dataset
+  ([arXiv 2605.00318](https://arxiv.org/abs/2605.00318)).
+- **Whole tables.** TARGET retrieves whole tables written as markdown rows; dense
+  retrievers beat BM25 for tables ([Ji et al. 2025](https://arxiv.org/abs/2505.11545)).
+- **Docling's own chunker** writes each table value as `row label, column header = value`,
+  adds the heading path to a chunk only for embedding, and chunks every content layer
+  (docling-core 2.99, `hierarchical_chunker.py`, `chunker/base.py`).
+- **Context headers** (document and section) in the searched and embedded text cut
+  retrieval failures by 35–67% ([Anthropic 2024](https://www.anthropic.com/news/contextual-retrieval)).
+- **Quoting.** A claim is kept only if its quote appears in the passage with only case and
+  whitespace differing (`verify.find_quote`). Measured on conv-v1: of 40 quotes from PDFs,
+  35 appear in the readings and 5 do not, all of them a table row quoted as the page reads
+  ("Reaction to Fire Class A1 EN998") where the reading puts ` | ` between cells.
+  No conv-v1 quote lies only in a running header or footer.
+- **Links.** `#page=N` is the standard fragment for a PDF page (RFC 8118, §3) and opens
+  the page in Chrome's and Firefox's viewers; text fragments do not work in PDFs.
+
+## Fixed in every arm
+
+1. **Documents.** Every PDF with a reading in `data/elements/` joins the index beside
+   every cached site page (`data/site/`). A PDF's title is the linking product page's
+   title and the site's own link text ("Warmshell Aerogel — SDS"), else the file name.
+2. **Text passages.** On each page, consecutive elements under the same section path form
+   passages of at most 1,500 characters (the existing budget, split as web sections are);
+   a heading starts a new passage; a figure contributes its caption; recovered lines stay
+   where they were placed. Running headers and footers are left out of passages (kept in
+   the readings). A passage never crosses a page.
+3. **Context header.** Each passage has a context of document title › section path (›
+   table caption for a table passage). The context is embedded and searched with the
+   passage, and never quoted or shown as the source's words.
+4. **Page.** Each PDF passage records its page; its link opens the PDF at that page
+   (`url#page=N`).
+5. **Price fence** unchanged: a passage stating a price is stored and never searched.
+6. **Table cells are separated by ` | `, and verification reads that separator as
+   whitespace** (`verify.find_quote`): it is this project's mark, not the document's
+   words, so a row quoted as the page reads it verifies.
+
+## Arms
+
+| Arm | Table passages |
+|---|---|
+| `table` | Each table is one passage: its header rows, then one line per row, cells joined by ` | `. A table over 1,500 characters is split between rows, each part starting with the header rows. |
+| `rows` | Each row is one passage, its cells joined by ` | `; the context adds the column headers. Header rows form one passage. |
+| `both` | The `table` and `rows` passages. |
+| `page` | No section grouping: each page's elements in reading order form passages of at most 1,500 characters, tables inline as in `table`. |
+
+## Data and measures
+
+1. **conv-v1 PDF evidence:** the 40 quotes from PDFs in 30 turns; query = the turn's
+   standalone question. A passage is relevant if it belongs to the quote's document and
+   `find_quote` finds the quote in it.
+2. **Table lookups,** generated by committed code from the sealed truth grids of
+   `x8-pages`, `x8-pages-r2` and `x8-pages-r3` (34 tables): one question per data cell
+   whose row label, column header and value are non-empty and not a dash: "In the
+   {document title}, what is the {column header} for {row label}?". Identical questions
+   are asked once. A passage is relevant if it belongs to that document's page and
+   `find_quote` finds both the row label and the value in it. The questions are
+   registered as set `x9-tables` before any arm runs. They are template questions,
+   derived from truth written for X8, not from any arm.
+
+Each arm is built as an index version beside the live one (`ingest --no-live`) and
+searched by the production pipeline (BM25 and vectors fused, reranked, top 8). Measures
+per set: **Success@8** (a relevant passage in the reranked top 8), MRR@8, and the
+ceiling (the share of evidence any passage of the arm holds). Also reported: passages
+per arm and paired bootstrap intervals (10,000 resamples; table lookups resampled by
+table).
+
+## Selection rule
+
+The baseline arm is `table` (whole tables, as the readings keep them, D82). An arm is
+eligible if its conv-v1 Success@8 is at most one quote below the baseline's. Among
+eligible arms, the highest table-lookup Success@8 wins; within 0.02, the arm with fewer
+passages wins. The winning form goes into the S2 candidate index, whose own gates (keyed
+web sets no worse, guardrails 100%, conv-v1 coverage ≥ 30 answerable follow-ups) are
+written before its run. If no arm beats `table` beyond the 0.02 tie, `table` stays.
