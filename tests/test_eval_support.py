@@ -94,7 +94,7 @@ def test_the_client_can_name_another_server(monkeypatch: pytest.MonkeyPatch) -> 
             body = {"data": [{"index": 0, "embedding": [0.1, 0.2]}]}
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     assert llm.embed(["x"], "http://127.0.0.1:8084/v1/embeddings") == [[0.1, 0.2]]
     assert llm.rerank("q", ["d"], "http://127.0.0.1:8084/v1/rerank") == [0.5]

@@ -27,7 +27,7 @@ def test_chat_sends_the_fixed_request_and_returns_parsed_json(
         body = chat_reply(json.dumps({"claims": []}))
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     assert llm.chat("system text", "user text", SCHEMA) == {"claims": []}
     payload = sent["json"]
@@ -51,7 +51,7 @@ def test_a_cut_off_reply_is_a_clear_error_even_if_it_is_valid_json(
         body = chat_reply(content, finish_reason="length")
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="did not finish"):
         llm.chat("s", "u", SCHEMA)
@@ -64,7 +64,7 @@ def test_a_finished_reply_that_is_not_json_is_a_clear_error(
         body = chat_reply("not json")
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="not valid JSON"):
         llm.chat("s", "u", SCHEMA)
@@ -90,7 +90,7 @@ def test_a_malformed_server_response_is_a_clear_error(
             )
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="malformed response"):
         llm.chat("s", "u", SCHEMA)
@@ -104,7 +104,7 @@ def test_a_non_text_reply_content_is_a_clear_error(
         body["choices"][0]["message"]["content"] = None
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="not valid JSON"):
         llm.chat("s", "u", SCHEMA)
@@ -116,7 +116,7 @@ def test_an_unavailable_generation_model_is_a_clear_error(
     def post(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match=config.CHAT_URL):
         llm.chat("s", "u", SCHEMA)
@@ -132,7 +132,7 @@ def test_embed_returns_vectors_in_input_order(monkeypatch: pytest.MonkeyPatch) -
             200, json={"data": data}, request=httpx.Request("POST", url)
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     assert llm.embed(["first", "second"]) == [[1.0, 0.0], [0.0, 1.0]]
 
@@ -152,7 +152,7 @@ def test_rerank_sends_the_query_and_documents_and_returns_scores_in_input_order(
             200, json={"results": results}, request=httpx.Request("POST", url)
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     assert llm.rerank("question", ["first", "second"]) == [-2.5, 0.9]
     assert sent["url"] == config.RERANK_URL
@@ -200,7 +200,7 @@ def test_malformed_embeddings_fail_before_retrieval_or_indexing(
             request=httpx.Request("POST", url),
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="embedding.*malformed response"):
         llm.embed(["first passage", "second passage"])
@@ -222,7 +222,7 @@ def test_a_malformed_rerank_response_is_a_clear_error(
     def post(url: str, **kwargs: Any) -> httpx.Response:
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="malformed response"):
         llm.rerank("question", ["first"])
@@ -237,7 +237,7 @@ def test_a_rerank_response_missing_a_passage_is_a_clear_error(
             200, json={"results": results}, request=httpx.Request("POST", url)
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="did not score every passage"):
         llm.rerank("question", ["first", "second"])
@@ -264,7 +264,7 @@ def test_rerank_requires_each_passage_index_exactly_once(
             200, json={"results": results}, request=httpx.Request("POST", url)
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="did not score every passage"):
         llm.rerank("question", ["first", "second"])
@@ -280,7 +280,7 @@ def test_a_non_finite_rerank_score_is_malformed(
             request=httpx.Request("POST", url),
         )
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match="malformed response"):
         llm.rerank("question", ["first"])
@@ -292,7 +292,7 @@ def test_unreachable_reranking_server_is_a_clear_error(
     def post(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match=config.RERANK_URL):
         llm.rerank("question", ["first"])
@@ -304,7 +304,7 @@ def test_unreachable_embedding_server_is_a_clear_error(
     def post(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError, match=config.EMBEDDING_URL):
         llm.embed(["question"])
@@ -323,7 +323,7 @@ def test_a_server_is_healthy_only_when_its_health_route_answers_200(
         asked.append(url)
         return httpx.Response(statuses[url], request=httpx.Request("GET", url))
 
-    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr(llm.CLIENT, "get", get)
 
     assert llm.healthy("http://127.0.0.1:8081/v1/embeddings") is True
     assert llm.healthy("http://127.0.0.1:8080/v1/chat/completions") is False  # loading
@@ -334,7 +334,7 @@ def test_an_unreachable_server_is_not_healthy(monkeypatch: pytest.MonkeyPatch) -
     def get(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr(llm.CLIENT, "get", get)
 
     assert llm.healthy(config.RERANK_URL) is False
 
@@ -349,7 +349,7 @@ def test_a_chat_request_is_traced_with_its_tokens_but_no_text(
         )
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     llm.chat("secret system text", "secret user text", SCHEMA)
 
@@ -377,7 +377,7 @@ def test_search_requests_are_traced_as_embeddings_and_rerank(
             body = {"results": [{"index": 0, "relevance_score": 1.0}]}
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     llm.embed(["question"])
     llm.rerank("question", ["passage"])
@@ -394,7 +394,7 @@ def test_a_failed_model_request_ends_its_span_with_an_error(
     def post(url: str, **kwargs: Any) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     with pytest.raises(llm.ModelServerError):
         llm.chat("s", "u", SCHEMA)
@@ -418,7 +418,7 @@ def test_model_requests_are_measured_by_operation_with_their_tokens(
             body["usage"] = {"prompt_tokens": 812, "completion_tokens": 9}
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
 
     llm.embed(["question"])
     llm.chat("s", "u", SCHEMA)
@@ -446,7 +446,7 @@ def test_model_requests_carry_the_key_when_one_is_configured(
             body = chat_reply(json.dumps({"claims": []}))
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
     monkeypatch.setattr(config, "MODEL_API_KEY", "")
 
     llm.embed(["question"])

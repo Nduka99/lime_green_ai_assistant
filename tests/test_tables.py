@@ -43,7 +43,7 @@ def test_the_model_is_asked_with_the_image_and_prompt(
         body = {"choices": [{"message": {"content": "<table></table>"}}]}
         return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(llm.CLIENT, "post", post)
     monkeypatch.setattr(llm, "auth", lambda: {"Authorization": "Bearer k"})
 
     answer = tables.recognise(IMAGE, "http://127.0.0.1:8083", "OCR:")
@@ -69,7 +69,7 @@ def test_a_failed_or_malformed_answer_is_a_model_server_error(
     monkeypatch: pytest.MonkeyPatch, response: httpx.Response
 ) -> None:
     response.request = httpx.Request("POST", "http://x")
-    monkeypatch.setattr(httpx, "post", lambda url, **kwargs: response)
+    monkeypatch.setattr(llm.CLIENT, "post", lambda url, **kwargs: response)
 
     with pytest.raises(llm.ModelServerError, match="vision model at http://x"):
         tables.recognise(IMAGE, "http://x")

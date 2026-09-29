@@ -61,7 +61,7 @@ def recognise(image: Image, url: str, prompt: str = PROMPT) -> str:
         "max_tokens": MAX_TOKENS,
     }
     try:
-        response = httpx.post(
+        response = llm.CLIENT.post(
             f"{url}/v1/chat/completions",
             json=body,
             headers=llm.auth(),

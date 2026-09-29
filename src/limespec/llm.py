@@ -13,6 +13,13 @@ class ModelServerError(RuntimeError):
     """A model server could not be reached or returned an unusable response."""
 
 
+# One client for every call to the model servers. Building a client loads the
+# certificate bundle, about 0.4 s per call on the laptop even for plain HTTP (X40), and
+# a shared client reuses connections. httpx clients are thread-safe (encode/httpx
+# discussion #1633); the streamed answer runs in a thread.
+CLIENT = httpx.Client()
+
+
 def auth() -> dict[str, str]:
     """The model servers' key as a bearer token, when one is configured."""
     if not config.MODEL_API_KEY:
@@ -26,7 +33,7 @@ def embed(texts: list[str], url: str = "") -> list[list[float]]:
     url = url or config.EMBEDDING_URL
     with telemetry.embeddings_span():
         try:
-            response = httpx.post(
+            response = CLIENT.post(
                 url,
                 json={"input": texts, "model": config.EMBEDDING_MODEL},
                 headers=auth(),
@@ -76,7 +83,7 @@ def rerank(query: str, documents: list[str], url: str = "") -> list[float]:
     url = url or config.RERANK_URL
     with telemetry.rerank_span():
         try:
-            response = httpx.post(
+            response = CLIENT.post(
                 url,
                 json={"query": query, "documents": documents},
                 headers=auth(),
@@ -134,7 +141,7 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
     """Send one chat request whose reply must follow `schema`; return its JSON."""
     with telemetry.chat_span():
         try:
-            response = httpx.post(
+            response = CLIENT.post(
                 config.CHAT_URL,
                 json=chat_payload(system, user, schema),
                 headers=auth(),
@@ -170,7 +177,7 @@ def healthy(url: str) -> bool:
     """Whether the llama.cpp server behind `url` has loaded its model: its /health
     answers 200 when ready and 503 while the model is still loading."""
     try:
-        response = httpx.get(
+        response = CLIENT.get(
             str(httpx.URL(url).join("/health")),
             timeout=config.HEALTH_TIMEOUT_SECONDS,
         )
