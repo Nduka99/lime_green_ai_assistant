@@ -93,6 +93,17 @@
     "sitting-x2-answers/verdicts.json": "b196886bedafb314fa9c78787bb175ada521d8b1007bbf3cff2d244f01352c5a"
    }
   },
+  "heldout-v4": {
+   "description": "Held-out v4: 64 single-question cases x 2 wordings over site pages and PDFs, written by an independent model blind to the assistant from brief.md and the source text in plan.json (seed-40 plan), v4c53 redrawn (seed 41) after feedback-1; blind order seed 44 (D93)",
+   "files": {
+    "brief.md": "3da89e06e53906d68fea1882c23b98515cc9092075650352abd5bf583d00f369",
+    "feedback-1.md": "9d911459e2f4818bcba1afbf0b1cabd53f7d3e82858397003e2a7a383e4b4dbc",
+    "key.json": "4e341a2827adfbef692e58f8ff2b5e1519f32c26b8cd5ba0e504d0fb728acc44",
+    "plan-before-part-5.json": "e22efb081871d1f386aa3b83b0cf513ceb50bb7dceb780e378fef7e4b309f44e",
+    "plan.json": "1ecbab8684dace8a581896474e51c038d5fe516d237fa808a1cd31c7e7456e51",
+    "questions.json": "6fea31bbd29cd355e72e6d61ea4cefa1cd55f11b422acdf1405d2ac1394500ee"
+   }
+  },
   "x8-pages": {
    "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
    "files": {
