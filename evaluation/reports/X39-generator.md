@@ -83,7 +83,10 @@ A step is kept only if all three hold:
    kept until it is diagnosed. Differing replies are reported with their verified outcome
    (status, claims kept and removed by `verify`).
 2. **Memory fits beside the other servers:** peak GPU memory ≤ 7.5 GB (all processes)
-   and available physical memory ≥ 8 GB throughout the pass.
+   and available physical memory ≥ 8 GB throughout the pass. GB here is the card's own
+   unit (its "8 GB" is 8,188 MiB in `nvidia-smi`): 7,680 MiB and 8,192 MiB (clarified
+   before any run; with today's 8080 serving, the GPU held 7,022 MiB and 10,656 MB of
+   memory was available, desktop applications included).
 3. **Faster beyond noise:** over the 40 prompts, the 95% interval of the mean paired
    difference in seconds per answer (step − kept; prompts resampled, 10,000 draws, seed
    39) lies wholly below zero, and the mean saving is larger than the absolute mean
