@@ -88,6 +88,11 @@ never adopted by rule. It is recommended only if all hold:
 4. two at a time: all 40 replies in at most 0.9 × the time `K'` takes one at a time
    (step 1 or 3's sum).
 
+**Amendment 1 (before any run).** X40 found that `-v` prints every prompt-cache entry at
+every save, so its cost grows with the cache and distorts timings. Timed passes here run
+without `-v`; the buffer sizes come from separate load-only starts with `-v` (no requests),
+one for `K` and one for `np2`.
+
 Reported beside the gate: per-request seconds two at a time (median, p95); how many of
 the 40 replies differ from one-at-a-time replies (the server is not batch-invariant, so
 an answer may depend on what else runs), with their verified outcomes (status, claims
