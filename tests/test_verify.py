@@ -72,6 +72,16 @@ def test_a_quote_must_start_and_end_at_word_edges() -> None:
     assert find_quote("joints of 3 to 60 mm.", text) == "joints of 3 to 60 mm."
 
 
+def test_a_table_row_can_be_quoted_as_the_page_reads_it() -> None:
+    row = "Reaction to fire | Class A1 | EN 998-1\nlime|green"
+
+    # The " | " between cells is this project's mark, not the document's words.
+    assert find_quote("Reaction to fire Class A1", row) == "Reaction to fire | Class A1"
+    assert find_quote("fire | Class A1 | EN", row) == "fire | Class A1 | EN"
+    assert find_quote("Reaction to | fire", row) is None  # no mark there
+    assert find_quote("lime green", row) is None  # a bar in a word is its own
+
+
 def test_the_quote_link_escapes_text_fragment_syntax() -> None:
     link = quote_link("https://example.test/p", "low-carbon, lime & sand\nmix")
 

@@ -46,19 +46,24 @@ REGULATION_TERMS = {
 }
 # "Part L" of the Building Regulations, including sub-parts such as "Part L1B".
 PART = re.compile(r"\bpart\s+([a-r])(?:[0-9][a-z]?)?\b", re.IGNORECASE)
+# The gap between two quoted words: whitespace, which may hold the " | " this project
+# puts between a table's cells (X9). The mark is not the document's words, so a row
+# quoted as the page reads it ("Reaction to fire Class A1") still matches.
+WORD_GAP = r"\s+(?:\|\s+)*"
 
 
 def find_quote(quote: str, text: str) -> str | None:
     """The passage's own wording of `quote`, or None if the passage does not contain it.
 
     Only case and whitespace may differ, because a model may re-wrap lines; the
-    words must appear in the same order with nothing between them. The quote must
-    start and end at word edges, so "3 to 6" cannot match "3 to 60 mm".
+    words must appear in the same order with nothing between them but the mark
+    between table cells (WORD_GAP). The quote must start and end at word edges, so
+    "3 to 6" cannot match "3 to 60 mm".
     """
     words = quote.split()
     if not words:
         return None
-    pattern = r"(?<!\w)" + r"\s+".join(re.escape(word) for word in words) + r"(?!\w)"
+    pattern = r"(?<!\w)" + WORD_GAP.join(re.escape(word) for word in words) + r"(?!\w)"
     match = re.search(pattern, text, re.IGNORECASE)
     return match.group(0) if match else None
 
