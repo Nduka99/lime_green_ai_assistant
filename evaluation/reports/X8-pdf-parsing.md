@@ -850,3 +850,37 @@ no reader sees them, in 313 mostly-hidden elements: the clipped title blocks and
 CAD sheets in the IWI Architect Reference (1,247 words) and the IWI guide (242), and the
 two carbon-footprint reports' clipped product descriptions (325). docling-parse extracts
 clipped text (its clip options concern its renderer, which D85 turned off).
+
+## After X8: Docling's own text keeps only what the page shows (design and gate)
+
+Written on 29 September 2026, before any code; word-level filtering approved by the user.
+
+**Change.**
+
+1. Every page of a PDF is read once by pdfium: its words, each marked visible or not by the
+   rules of the second amendment above (the page drawn with and without its text).
+2. Each Docling item (text, heading, caption, key-value cell, table cell, and the PDF words
+   a vision model's table cells are spelt from) loses the words that lie inside its box
+   only where the page does not show them: a word is removed when some pdfium word inside
+   the box has its spelling and is hidden, and none with its spelling is visible there.
+   An item left with no letter or digit is dropped; a figure stays with what is left of
+   its caption.
+3. Headings are filtered before they become sections, so hidden text never reaches a
+   section path.
+4. Recovery then runs on the filtered reading as before. Each page's check adds the
+   number of words removed.
+
+**Gate** (baselines: `data/elements/` at `fd71812`, `data/runs/recovery/` for X8, the
+GLM-OCR round-3 run for item 5):
+
+1. Visible pdfium words in the reading: pooled ≥ 0.999 and no page below 0.99.
+2. Words of the reading that occur on their page only where not visible (the finding's
+   measure, recovered lines included): at most 19 (1% of the 1,919 found), each listed
+   with its cause.
+3. No recovered element holds a hidden word; ≥ 0.95 of recovered words carry a section on
+   pages with sections.
+4. The `docling` arm on `x8-pages`, `x8-pages-r2` and `x8-pages-r3` is no worse on cells,
+   pairs, sentences, numbers or grid, page by page; words kept against pypdf reported.
+5. The `glm-ocr` arm on `x8-pages-r3` (the adopted configuration) is no worse: grid
+   ≥ 0.984, lowest table ≥ 0.800, text and numbers not lower.
+6. `scripts/check.py` passes. The time added per page is reported.
