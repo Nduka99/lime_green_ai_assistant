@@ -82,6 +82,37 @@ def test_a_table_row_can_be_quoted_as_the_page_reads_it() -> None:
     assert find_quote("lime green", row) is None  # a bar in a word is its own
 
 
+def test_the_page_s_typography_and_compatibility_forms_match_their_plain_forms() -> (
+    None
+):
+    row = 'POCP ("smog") | kg C2H4e\n9" brick wall | U value\n3-6 mm | N/mm² | fine'
+
+    assert find_quote("POCP (“smog”)", row) == 'POCP ("smog")'
+    assert find_quote("9” brick wall", row) == '9" brick wall'
+    assert find_quote("3–6 mm", row) == "3-6 mm"
+    assert find_quote("N/mm2", row) == "N/mm²"
+    assert find_quote("ﬁne", row) == "fine"
+
+
+def test_spacing_may_differ_where_a_digit_meets_a_non_digit() -> None:
+    text = "Water absorption | 0.8kg/(m 2 .min 0.5 ) | 1 to 3 N/mm 2 | EN 1015-11"
+
+    assert find_quote("0.8kg/(m2.min0.5)", text) == "0.8kg/(m 2 .min 0.5 )"
+    assert find_quote("1 to 3 N/mm2", text) == "1 to 3 N/mm 2"
+    assert find_quote("EN1015-11", text) == "EN 1015-11"
+
+
+def test_spacing_between_letters_or_digits_and_within_numbers_is_kept() -> None:
+    assert find_quote("36 mm", "3 6 mm") is None
+    assert find_quote("1.5 kg", "Step 1. 5 kg") is None
+    assert find_quote("1, 2", "1,2 m") is None
+    assert find_quote("1,2 m", "1, 2 m") is None
+    assert find_quote("therapist", "the rapist") is None
+    assert find_quote("the rapist", "therapist") is None
+    assert find_quote("3 to 6", "joints of 3 to 60 mm") is None
+    assert find_quote("oints", "joints") is None
+
+
 def test_the_quote_link_escapes_text_fragment_syntax() -> None:
     link = quote_link("https://example.test/p", "low-carbon, lime & sand\nmix")
 

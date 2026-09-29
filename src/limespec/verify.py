@@ -20,6 +20,7 @@ repaired or regenerated.
 """
 
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from urllib.parse import quote as percent_encode
 
@@ -50,22 +51,80 @@ PART = re.compile(r"\bpart\s+([a-r])(?:[0-9][a-z]?)?\b", re.IGNORECASE)
 # puts between a table's cells (X9). The mark is not the document's words, so a row
 # quoted as the page reads it ("Reaction to fire Class A1") still matches.
 WORD_GAP = r"\s+(?:\|\s+)*"
+# Where a digit meets a non-digit, or at punctuation, whitespace is optional: Docling
+# spaces superscripts that the page and its text layer do not ("N/mm 2").
+OPTIONAL_GAP = r"\s*(?:\|\s+)*"
+# Typographic forms of one character; the page's curly quotes, which Docling writes
+# straight, are the same quote marks.
+TYPOGRAPHY = str.maketrans(
+    dict.fromkeys("‘’‚′", "'")
+    | dict.fromkeys("“”„″", '"')
+    | dict.fromkeys("–—−‐‑", "-")
+)
+# The units a quote is matched by: a number, with its decimal point or comma, is one
+# unit ("1.5" never matches "1. 5"); any other character is its own unit.
+UNIT = re.compile(r"\d+(?:[.,]\d+)*|\S")
+
+
+def folded(text: str) -> tuple[str, list[int]]:
+    """The text with typographic and Unicode compatibility forms folded (NFKC: "²"
+    as "2", "ﬁ" as "fi"), and each folded character's position in the text."""
+    chars = []
+    where = []
+    for index, char in enumerate(text):
+        form = unicodedata.normalize("NFKC", char.translate(TYPOGRAPHY))
+        for piece in form.translate(TYPOGRAPHY):
+            chars.append(piece)
+            where.append(index)
+    return "".join(chars), where
+
+
+def same_kind(before: str, after: str) -> bool:
+    """Whether two neighbouring units are letters, or digits, where spacing is
+    part of the words ("therapist" is not "the rapist", nor "36" "3 6")."""
+    letters = before[-1].isalpha() and after[0].isalpha()
+    return letters or (before[-1].isdigit() and after[0].isdigit())
+
+
+def quote_pattern(quote: str) -> str:
+    """The pattern a quote is found by (X9 report, "Follow-up: quote matching")."""
+    units = list(UNIT.finditer(folded(quote)[0]))
+    # A point or comma between two digits belongs to a number: spacing around it
+    # stays as the quote has it ("1, 2" is not "1,2").
+    decimal = set()
+    for index in range(1, len(units) - 1):
+        before, mark, after = (unit.group() for unit in units[index - 1 : index + 2])
+        if mark in ".," and before[-1].isdigit() and after[0].isdigit():
+            decimal |= {index - 1, index}
+    parts = []
+    for index, unit in enumerate(units):
+        if index:
+            previous = units[index - 1]
+            spaced = unit.start() > previous.end()
+            if index - 1 in decimal or same_kind(previous.group(), unit.group()):
+                parts.append(WORD_GAP if spaced else "")
+            else:
+                parts.append(OPTIONAL_GAP)
+        parts.append(re.escape(unit.group()))
+    return r"(?<!\w)" + "".join(parts) + r"(?!\w)"
 
 
 def find_quote(quote: str, text: str) -> str | None:
     """The passage's own wording of `quote`, or None if the passage does not contain it.
 
-    Only case and whitespace may differ, because a model may re-wrap lines; the
-    words must appear in the same order with nothing between them but the mark
-    between table cells (WORD_GAP). The quote must start and end at word edges, so
-    "3 to 6" cannot match "3 to 60 mm".
+    Case, typographic forms and Unicode compatibility forms may differ, and so may
+    whitespace where a model re-wraps lines or where a digit meets a non-digit
+    (superscripts); between letters, or digits, spacing must be the quote's. The
+    table cell mark reads as whitespace. The quote must start and end at word edges,
+    so "3 to 6" cannot match "3 to 60 mm".
     """
-    words = quote.split()
-    if not words:
+    if not quote.split():
         return None
-    pattern = r"(?<!\w)" + WORD_GAP.join(re.escape(word) for word in words) + r"(?!\w)"
-    match = re.search(pattern, text, re.IGNORECASE)
-    return match.group(0) if match else None
+    text_folded, where = folded(text)
+    match = re.search(quote_pattern(quote), text_folded, re.IGNORECASE)
+    if match is None:
+        return None
+    return text[where[match.start()] : where[match.end() - 1] + 1]
 
 
 def quote_link(url: str, quote: str, page: int | None = None) -> str:
