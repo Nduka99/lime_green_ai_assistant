@@ -450,8 +450,9 @@ def evidence_used(
     request: Request, reply: Reply, passages: Mapping[int, Passage]
 ) -> dict[str, Any]:
     """The verified outcome of one reply: its status, claims kept and removed, and
-    for each evidence passage whether a kept claim quotes it."""
-    evidence_ids = request["data"]["evidence_ids"]
+    for each evidence passage whether a kept claim quotes it (none for requests
+    without keyed evidence, such as R40's)."""
+    evidence_ids = request.get("data", {}).get("evidence_ids", [])
     if not finished(reply):
         return {"status": "failed", "kept": 0, "removed": 0,
                 "used": [False] * len(evidence_ids)}  # fmt: skip

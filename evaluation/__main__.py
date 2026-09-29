@@ -319,6 +319,12 @@ def parser() -> argparse.ArgumentParser:
     diagnosed.add_argument("requests", type=Path)
     diagnosed.add_argument("kept", type=Path)
     diagnosed.add_argument("step", type=Path)
+    verified = commands.add_parser(
+        "generator-outcomes", help="verified outcomes of two passes' replies (X41)"
+    )
+    verified.add_argument("requests", type=Path)
+    verified.add_argument("kept", type=Path)
+    verified.add_argument("step", type=Path)
     curved = commands.add_parser("degradation-curve", help="score M3's pass")
     curved.add_argument("requests", type=Path)
     curved.add_argument("run", type=Path)
@@ -1084,6 +1090,28 @@ def run_support_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_generator_outcomes(args: argparse.Namespace) -> int:
+    requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
+    ids = {i for r in requests.values() for i in r["passage_ids"]}
+    with assistant.connect() as conn:
+        passages = {p.id: p for p in store.load_passages(conn, sorted(ids))}
+    found = []
+    for path in (args.kept, args.step):
+        outcomes = {}
+        for reply in grades.read_json(path)["replies"]:
+            request = requests[reply["id"]]
+            outcomes[reply["id"]] = generator.evidence_used(request, reply, passages)
+        found.append(outcomes)
+    kept, step = found
+    changed = {
+        i: {"kept": kept[i], "step": step[i]} for i in kept if kept[i] != step[i]
+    }
+    statuses = [Counter(o["status"] for o in each.values()) for each in found]
+    summary = {"kept": statuses[0], "step": statuses[1], "outcome_changed": changed}
+    print(json.dumps(summary, indent=1))
+    return 0
+
+
 def run_degradation_curve(args: argparse.Namespace) -> int:
     requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
     replies = grades.read_json(args.run)["replies"]
@@ -1181,6 +1209,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_generator_compare(args)
         if args.command == "generator-diagnose":
             return run_generator_diagnose(args)
+        if args.command == "generator-outcomes":
+            return run_generator_outcomes(args)
         if args.command == "degradation-curve":
             return run_degradation_curve(args)
         if args.command == "prompt-reuse":

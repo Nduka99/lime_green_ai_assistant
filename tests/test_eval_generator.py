@@ -644,6 +644,37 @@ def test_the_curve_is_scored_from_a_pass_and_its_requests(
     assert len(json.loads(out.read_text())["rows"]) == 6
 
 
+def test_two_passes_are_verified_and_changed_outcomes_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def content(quote: str) -> str:
+        claim = {"evidence": [{"source_id": "S1", "quote": quote}], "text": "Duro."}
+        return json.dumps({"claims": [claim], "answers_every_part": True})
+
+    requests = [{"id": i, "passage_ids": [1]} for i in ("a1", "a2")]
+    kept = [
+        reply("a1", content("free of cement")),
+        reply("a2", content("free of cement")),
+    ]
+    step = [reply("a1", content("free of cement")), reply("a2", content("not there"))]
+    paths = []
+    for name, data in (("requests", {"requests": requests}), ("kept", {"replies": kept}),
+                       ("step", {"replies": step})):  # fmt: skip
+        paths.append(tmp_path / f"{name}.json")
+        paths[-1].write_text(json.dumps(data))
+    monkeypatch.setattr(assistant, "connect", no_connection)
+    monkeypatch.setattr(
+        store, "load_passages", lambda conn, ids: [passage(1, "free of cement")]
+    )
+
+    assert cli.main(["generator-outcomes", *map(str, paths)]) == 0
+
+    found = json.loads(capsys.readouterr().out)
+    assert found["kept"] == {"answered": 2}
+    assert found["step"] == {"answered": 1, "insufficient_evidence": 1}
+    assert list(found["outcome_changed"]) == ["a2"]
+
+
 def test_prompt_reuse_is_printed_from_a_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
