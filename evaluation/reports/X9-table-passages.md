@@ -204,3 +204,21 @@ prices) are unchanged.
    falls for an item. Reported as a check of X9, not a new selection.
 3. `scripts/check.py` passes. The effect on answers is judged by the S2 candidate's own
    gate (keyed sets no worse, guardrails 100%), written before its run.
+
+**Result** (29 September 2026, code `437bd31`, `f123b7f`; the same four versions re-scored,
+nothing rebuilt):
+
+| Arm | Lookups Success@8 | Lookup ceiling | conv-v1 Success@8 | conv-v1 ceiling | Items worse / better |
+|---|---|---|---|---|---|
+| `table` | 0.827 → 0.946 | 0.857 → 0.975 | 0.700 → 0.700 | 0.925 → 0.925 | 0 / 48 |
+| `rows` | 0.822 → 0.941 | 0.857 → 0.975 | 0.725 → 0.725 | 0.925 → 0.925 | 0 / 48 |
+| `both` | 0.832 → 0.951 | 0.857 → 0.975 | 0.675 → 0.675 | 0.925 → 0.925 | 0 / 48 |
+| `page` | 0.859 → 0.978 | 0.859 → 0.978 | 0.725 → 0.725 | 0.925 → 0.925 | 0 / 48 |
+
+Gate: tests pass (item 1), every lookup ceiling is at least 0.95 and no conv-v1 ceiling
+fell, and no item's success fell (item 2), `scripts/check.py` passes (item 3). **The rule is
+adopted.** The same 48 lookups (the typography, superscript and compatibility-form cases)
+turned found in every arm. X9's selection and its differences are unchanged: `page` leads
+`table` by +0.032 [+0.002, +0.105] on lookups. What remains below the ceiling is GLM-OCR
+table structure (cells split into rows, dropped cells) and the three conv-v1 quotes taken
+across a layout the reading orders differently.
