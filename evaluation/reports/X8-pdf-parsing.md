@@ -922,3 +922,22 @@ of the header's own element).
 If docling-parse ever misplaces visible text this way, recovery puts its words back from
 pdfium, so no visible word is lost (gate item 1); the number of recovered lines shows it.
 The gate is unchanged.
+
+**Second run** (29 September 2026, code `74cfea0`; corpus read in 32 min, 0 failures):
+
+| Gate item | Result |
+|---|---|
+| 1. Visible pdfium words in the reading | 158,560 / 158,560; no page below 0.99 |
+| 2. Hidden words left in the reading | 0 (limit 19) |
+| 3. Hidden words in recovered lines; recovered words with a section | 0; 1,422 / 1,431 = 0.9937 |
+| 4. `docling` arm on the three X8 sets, page by page | no page worse on any measure |
+| 5. `glm-ocr` arm on `x8-pages-r3` | run with the production reading (below) |
+| 6. `scripts/check.py`; time | passes; 32 min for the corpus (33 before) |
+
+2,798 hidden words were removed. Recovered lines stayed at 231, so no visible text was
+dropped and put back. Against pypdf, the `docling` arm keeps 4,594 / 5,427 / 6,598 words on
+the three sets (before 4,751 / 5,577 / 6,601). The losses are all hidden text, checked against
+the truth images: the IWI drawing's title block (`x8-pages` p15, 153 words), the two
+carbon-footprint reports' clipped product descriptions (their visible sentences are still
+found), "© Christian Brailey Architects" (roof guide p2), "Page 1 of 4" (care guide cover)
+and One Click LCA field codes (EPD p7).
