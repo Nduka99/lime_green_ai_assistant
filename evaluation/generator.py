@@ -13,6 +13,8 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any
 
 import httpx
@@ -156,20 +158,31 @@ def run_pass(
     cache_prompt: bool,
     sample: Sample,
     post: Post = httpx.post,
+    concurrency: int = 1,
 ) -> dict[str, Any]:
-    """Send the warm-up requests, then every request in order, sampling memory
-    throughout."""
+    """Send the warm-up requests, then every request in order, `concurrency` at a
+    time (X41), sampling memory throughout. `wall_seconds` runs from the first
+    request to the last reply."""
     samples: list[dict[str, float]] = []
     stop = threading.Event()
     sampler = threading.Thread(target=sample_until, args=(stop, samples, sample))
     sampler.start()
     try:
         warm_up = [send(url, r, cache_prompt, post) for r in requests["warm_up"]]
-        replies = [send(url, r, cache_prompt, post) for r in requests["requests"]]
+        started = time.perf_counter()
+        with ThreadPoolExecutor(concurrency) as pool:
+            one = partial(send, url, cache_prompt=cache_prompt, post=post)
+            replies = list(pool.map(one, requests["requests"]))
+        wall = time.perf_counter() - started
     finally:
         stop.set()
         sampler.join()
-    return {"warm_up": warm_up, "replies": replies, "memory": extremes(samples)}
+    return {
+        "warm_up": warm_up,
+        "replies": replies,
+        "wall_seconds": wall,
+        "memory": extremes(samples),
+    }
 
 
 def seconds(reply: Reply) -> float:

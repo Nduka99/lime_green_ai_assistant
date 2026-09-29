@@ -25,7 +25,7 @@
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
     uv run --env-file .env python -m evaluation replay-requests RUN.json ... --out F
     uv run --env-file .env python -m evaluation generator-pass URL REQUESTS.json \
-        --out PASS.json [--pid N] [--cache-prompt]            # X39, a scratch server
+        --out PASS.json [--pid N] [--cache-prompt] [--concurrency 2]  # X39/X41
     uv run python -m evaluation generator-compare KEPT.json STEP.json --noise A B
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
@@ -306,6 +306,7 @@ def parser() -> argparse.ArgumentParser:
     passed.add_argument("--out", type=Path, required=True)
     passed.add_argument("--pid", type=int, help="the server's process id, for memory")
     passed.add_argument("--cache-prompt", action="store_true", help="reuse prompts")
+    passed.add_argument("--concurrency", type=int, default=1, help="requests at once")
     passed.add_argument("--server", default="", help="its command line, recorded")
     compared = commands.add_parser("generator-compare", help="a step against kept")
     compared.add_argument("kept", type=Path)
@@ -942,6 +943,7 @@ def run_generator_pass(args: argparse.Namespace) -> int:
         requests,
         args.cache_prompt,
         lambda: generator.memory_sample(args.pid),
+        concurrency=args.concurrency,
     )
     result["server"] = args.server
     write_json(args.out, result)
@@ -950,7 +952,8 @@ def run_generator_pass(args: argparse.Namespace) -> int:
         f"{len(result['replies'])} replies in {args.out}: prompt "
         f"{speeds['prompt_per_second']:.0f} tokens/s, generation "
         f"{speeds['generation_per_second']:.1f} tokens/s, "
-        f"{speeds['mean_seconds']:.1f} s per request; memory {result['memory']}"
+        f"{speeds['mean_seconds']:.1f} s per request, "
+        f"{result['wall_seconds']:.0f} s in all; memory {result['memory']}"
     )
     return 0
 

@@ -4,6 +4,7 @@ reuse. Servers, audit records and keys are invented."""
 import json
 import os
 import subprocess
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -153,6 +154,26 @@ def test_a_pass_sends_the_warm_up_first_and_keeps_memory_extremes() -> None:
     assert [r["id"] for r in found["replies"]] == ["r"]
     assert found["memory"]["gpu_mib"] >= 5000.0
     assert found["memory"]["available_mib"] <= 9000.0
+    assert found["wall_seconds"] >= 0
+
+
+def test_a_pass_can_send_requests_together_and_keeps_their_order() -> None:
+    both_in = threading.Barrier(2, timeout=5)
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        both_in.wait()  # returns only when two requests are in flight at once
+        return chat_response(kwargs["json"]["messages"][1]["content"],
+                             timings=timings(1, 1))  # fmt: skip
+
+    request = {"system": "s", "schema": {}}
+    requests = {
+        "warm_up": [],
+        "requests": [{**request, "id": n, "user": n} for n in ("a", "b", "c", "d")],
+    }
+
+    found = generator.run_pass(URL, requests, False, dict, post, concurrency=2)
+
+    assert [r["id"] for r in found["replies"]] == ["a", "b", "c", "d"]
 
 
 def test_extremes_are_peaks_except_the_lowest_available_memory() -> None:
@@ -533,9 +554,12 @@ def test_a_pass_is_saved_with_its_server_command_and_speeds(
     requests.write_text(json.dumps({"warm_up": [], "requests": [{"id": "r"}]}))
     seen: dict[str, Any] = {}
 
-    def run_pass(url: str, found: Any, cache: bool, sample: Any) -> dict[str, Any]:
-        seen.update(url=url, cache=cache, memory=sample())
-        return {"warm_up": [], "replies": [reply("r")], "memory": {"gpu_mib": 1.0}}
+    def run_pass(
+        url: str, found: Any, cache: bool, sample: Any, concurrency: int
+    ) -> dict[str, Any]:
+        seen.update(url=url, cache=cache, memory=sample(), concurrency=concurrency)
+        return {"warm_up": [], "replies": [reply("r")], "wall_seconds": 3.0,
+                "memory": {"gpu_mib": 1.0}}  # fmt: skip
 
     monkeypatch.setattr(generator, "run_pass", run_pass)
     monkeypatch.setattr(
@@ -544,10 +568,12 @@ def test_a_pass_is_saved_with_its_server_command_and_speeds(
     out = tmp_path / "pass.json"
 
     arguments = ["generator-pass", "http://127.0.0.1:8083/", str(requests), "--out",
-                 str(out), "--pid", "42", "--server", "-c 8192"]  # fmt: skip
+                 str(out), "--pid", "42", "--server", "-c 8192",
+                 "--concurrency", "2"]  # fmt: skip
     assert cli.main(arguments) == 0
 
-    assert seen == {"url": URL, "cache": False, "memory": {"pid": 42.0}}
+    assert seen == {"url": URL, "cache": False, "memory": {"pid": 42.0},
+                    "concurrency": 2}  # fmt: skip
     assert json.loads(out.read_text())["server"] == "-c 8192"
     assert "1 replies" in capsys.readouterr().out
 
