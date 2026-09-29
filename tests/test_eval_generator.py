@@ -445,6 +445,14 @@ def test_reuse_compares_first_turns_with_later_ones() -> None:
                               "mean_prompt_seconds": 0.1}  # fmt: skip
     assert found["later"]["reused"] == pytest.approx(400 / 600)
     assert found["later"]["mean_processed"] == 100.0
+    assert found["answers"]["turns"] == 1
+
+
+def test_reuse_leaves_out_groups_with_no_requests() -> None:
+    requests = generator.conversation_requests(CONVERSATIONS, 2, [])
+    replies = [{"id": "c1t1/understand", "timings": timings(100, 0)}]
+
+    assert list(generator.reuse(requests, replies)) == ["first"]
 
 
 # The command line.

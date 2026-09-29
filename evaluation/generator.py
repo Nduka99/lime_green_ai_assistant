@@ -574,15 +574,21 @@ def conversation_requests(
 
 def reuse(requests: Sequence[Request], replies: Sequence[Reply]) -> dict[str, Any]:
     """Understanding requests' prompt tokens, tokens processed and reused, and
-    prompt seconds: first turns against later turns."""
+    prompt seconds: first turns against later turns, and the answer requests
+    between them when interleaved (X41)."""
     turn_of = {r["id"]: r["data"]["turn"] for r in requests if "data" in r}
-    groups: dict[str, list[dict[str, Any]]] = {"first": [], "later": []}
+    groups: dict[str, list[dict[str, Any]]] = {"first": [], "later": [], "answers": []}
     for reply in replies:
-        if reply["id"] in turn_of:
-            group = "first" if turn_of[reply["id"]] == 1 else "later"
-            groups[group].append(reply["timings"])
+        if reply["id"] not in turn_of:
+            groups["answers"].append(reply["timings"])
+        elif turn_of[reply["id"]] == 1:
+            groups["first"].append(reply["timings"])
+        else:
+            groups["later"].append(reply["timings"])
     found = {}
     for name, timings in groups.items():
+        if not timings:
+            continue
         processed = sum(t["prompt_n"] for t in timings)
         cached = sum(t["cache_n"] for t in timings)
         found[name] = {
