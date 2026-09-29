@@ -145,8 +145,9 @@ def test_an_index_keeps_passages_per_page_with_exact_byte_hashes(
     prepared = prepare_index([*fixture_pages, copy], fake_embed)
 
     assert prepared.manifest["pages"] == "5"
-    assert prepared.manifest["passages"] == "10"
-    assert len(prepared.vectors) == 10
+    # 10 page passages and the category page's compiled product list (X12).
+    assert prepared.manifest["passages"] == "11"
+    assert len(prepared.vectors) == 11
     hashes = {url: sha256 for url, _, _, sha256 in prepared.pages}
     assert hashes[copy_url] == hashlib.sha256(windows_bytes).hexdigest()
     assert sum(row[0] == copy_url for row in prepared.passages) == 2

@@ -25,7 +25,7 @@ from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from urllib.parse import quote as percent_encode
 
-from limespec import prices
+from limespec import lists, prices
 from limespec.models import Claim, DraftClaim, Evidence, Passage, Rejection
 
 # A sign belongs to a number only where it cannot be a range dash: "-5 °C" has a
@@ -141,6 +141,14 @@ def quote_link(url: str, quote: str, page: int | None = None) -> str:
     return f"{url}#:~:text={percent_encode(text, safe='').replace('-', '%2D')}"
 
 
+def source_link(passage: Passage, quote: str) -> str:
+    """Where a citation opens: the quote highlighted on its page, except for a compiled
+    product list, whose sentence is not on the page, so the page opens as it is."""
+    if passage.heading == lists.HEADING:
+        return passage.url
+    return quote_link(passage.url, quote, passage.page)
+
+
 def numbers(text: str) -> set[str]:
     """Every number in the text, preserving an explicit plus or minus sign."""
     found = NUMBER.findall(text)
@@ -180,7 +188,7 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
                 title=passage.title,
                 heading=passage.heading,
                 quote=quote,
-                link=quote_link(passage.url, quote, passage.page),
+                link=source_link(passage, quote),
                 fetched_at=passage.fetched_at,
             )
         )

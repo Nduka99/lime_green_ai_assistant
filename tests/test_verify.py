@@ -1,6 +1,6 @@
 """Claim verification policy. Invented passages only."""
 
-from limespec import prices
+from limespec import lists, prices
 from limespec.models import Claim, DraftClaim, DraftEvidence, Passage, Rejection
 from limespec.verify import check_claim, find_quote, quote_link, verify
 
@@ -317,3 +317,23 @@ def test_a_claim_stating_a_price_is_removed_even_with_its_quote() -> None:
     )
 
     assert reason(result) == "states a price"
+
+
+def test_a_compiled_list_is_cited_by_its_page_without_a_highlight() -> None:
+    compiled = Passage(
+        13,
+        "https://example.test/products-by-colour/cinders",
+        "Cinders",
+        lists.HEADING,
+        lists.list_passage("Cinders", ["Ashlar Lime Mortar", "Contour Repair"]),
+        "2026-09-29T10:00:00+00:00",
+    )
+
+    result = check_claim(
+        claim("Cinders comes in Ashlar Lime Mortar.",
+              ("S1", "Ashlar Lime Mortar; Contour Repair")),
+        {"S1": compiled},
+    )  # fmt: skip
+
+    assert isinstance(result, Claim)
+    assert result.evidence[0].link == "https://example.test/products-by-colour/cinders"

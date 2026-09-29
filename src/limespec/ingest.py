@@ -18,7 +18,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from bs4 import BeautifulSoup
 
-from limespec import config, store
+from limespec import config, lists, store
 from limespec.models import described
 from limespec.passages import pieces
 from limespec.retrieve import Embed
@@ -294,6 +294,11 @@ def prepare_index(
             raise IngestError(f"{url}: {error}") from error
         page_rows.append((url, title, fetched_at, hashlib.sha256(raw).hexdigest()))
         rows += [(url, title, heading, text, "", None) for heading, text in passages]
+        # A product grid also becomes one passage holding its whole list (X12).
+        products = lists.grid_products(raw.decode("utf-8"))
+        if products:
+            compiled = lists.list_passage(title, products)
+            rows.append((url, title, lists.HEADING, compiled, "", None))
     for page_row, passage_rows in documents:
         page_rows.append(page_row)
         rows += passage_rows
