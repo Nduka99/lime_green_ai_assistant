@@ -814,3 +814,39 @@ visible-only recovery, `f02d624`–`7157b5a`). Measured at word level over all 5
 
 The gate is unchanged. The gate script measures visibility with rules 1–3 and 5, in its
 own code.
+
+**Result** (29 September 2026, code `fd71812`; corpus read in 33 min, 98 documents, 584
+pages, 0 failures). Measured by a separate script with the second amendment's visibility
+rules:
+
+| Gate item | Result |
+|---|---|
+| 1. Visible pdfium words in the reading | 158,560 / 158,560 = 1.00000; no page below 0.99 |
+| 2. Recovered elements holding a word the page does not show | 0 |
+| 3. Recovered words with a section, on pages with sections | 1,417 / 1,426 = 0.9937 |
+| 4. `docling` arm on the three X8 sets, page by page | no page worse on cells, pairs, sentences, numbers or grid |
+| 5. `scripts/check.py` | passes |
+
+Recovered lines fell from 593 (pypdf lines at the page end) to 230 (1,847 words), and 487
+words the parser lacks are not shown and stay out. No recovered line repeats text Docling
+has (bullets were 194). Against pypdf (which reads hidden text too), the `docling` arm
+keeps 4,751 / 5,577 / 6,601 words on the three sets (before: 4,758 / 5,605 / 6,602). Every
+word lost is a bullet, one of pypdf's own splits or joins (`syste m`, `01intermediate`,
+`14808-60-7quartz`), a compound pdfium keeps whole (`self-declared`, `cradle-to-gate`), or
+a superscript Docling spaces (`14m 2`).
+
+**Decision:** the gate passes; visible-only recovery stays.
+
+**Known limits.** Recovered lines follow Docling's reading order. On the two Type 3
+carbon-footprint pages Docling reads almost nothing and puts a figure first, so recovered
+lines follow that order. In the AMAGEL safety data sheet, headings 11–16 are drawn as
+boxed table rows and Docling reads them as tables, so pages 2–5 fall under "4. FIRST AID
+MEASURES"; recovered lines inherit that section. Both matter for passage context headers
+(X9), not for the text indexed.
+
+**Found while measuring: Docling's own reading holds hidden text.** With the same
+visibility rules, 1,919 of Docling's 168,562 words (1.1%) occur on their page only where
+no reader sees them, in 313 mostly-hidden elements: the clipped title blocks and notes of
+CAD sheets in the IWI Architect Reference (1,247 words) and the IWI guide (242), and the
+two carbon-footprint reports' clipped product descriptions (325). docling-parse extracts
+clipped text (its clip options concern its renderer, which D85 turned off).
