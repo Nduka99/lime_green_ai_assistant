@@ -29,6 +29,12 @@ REPLAYED = {"answered", "insufficient_evidence"}  # emergencies make no answer r
 # A 64-passage prompt is about 25,000 tokens: minutes on the laptop at worst.
 TIMEOUT_SECONDS = 900.0
 MIB = 1024 * 1024
+# Two replies that part where the kept configuration's top two tokens were this close
+# differ by arithmetic (llama.cpp is not batch-invariant), not by a defect (X39 gate).
+NEAR_TIE_NATS = 0.5
+# Candidates read at the parting position: the schema's grammar can force tokens the
+# model ranks far down (valid JSON's first token ranks 25-40 at position 0).
+CANDIDATES = 1000
 
 SIZES = (8, 16, 32, 64)  # passages per answer request (M3)
 POSITIONS = ("first", "middle", "last")  # where the evidence sits among them
@@ -225,6 +231,61 @@ def noise(first: Sequence[Reply], second: Sequence[Reply]) -> float:
     configuration: how far a setting must beat it to count."""
     by_id = {reply["id"]: reply for reply in first}
     return abs(metrics.mean([seconds(r) - seconds(by_id[r["id"]]) for r in second]))
+
+
+def first_difference(first: Sequence[int], second: Sequence[int]) -> int:
+    """The position of the first token that differs; the shorter length when one
+    sequence starts the other."""
+    for index, (a, b) in enumerate(zip(first, second, strict=False)):
+        if a != b:
+            return index
+    return min(len(first), len(second))
+
+
+def lead(position: Mapping[str, Any], kept_id: int, step_id: int) -> float | None:
+    """How far, in nats, the kept configuration's token led the step's token at one
+    position (its log-probabilities before sampling); None when either token is not
+    among the candidates read."""
+    logprobs = {c["id"]: c["logprob"] for c in position["top_logprobs"]}
+    if kept_id not in logprobs or step_id not in logprobs:
+        return None
+    return float(logprobs[kept_id] - logprobs[step_id])
+
+
+def diagnose(
+    base_url: str,
+    request: Request,
+    kept_content: str,
+    step_content: str,
+    post: Post = httpx.post,
+) -> dict[str, Any]:
+    """Where two replies to one request part, and by how much the kept configuration
+    (serving at `base_url`) preferred its own token there. A lead under
+    `NEAR_TIE_NATS` is a numeric difference, not a defect (the gate's rule)."""
+
+    def call(path: str, body: dict[str, Any]) -> Any:
+        response = post(
+            base_url + path, json=body, headers=llm.auth(), timeout=TIMEOUT_SECONDS
+        )
+        response.raise_for_status()
+        return response.json()
+
+    kept = call("/tokenize", {"content": kept_content})["tokens"]
+    step = call("/tokenize", {"content": step_content})["tokens"]
+    index = first_difference(kept, step)
+    if index >= min(len(kept), len(step)):
+        return {"index": index, "lead": None, "numeric": False}
+    payload = llm.chat_payload(request["system"], request["user"], request["schema"])
+    template = {k: payload[k] for k in ("messages", "chat_template_kwargs")}
+    prompt = call("/apply-template", template)["prompt"]
+    tokens = call("/tokenize", {"content": prompt, "add_special": True,
+                                "parse_special": True})["tokens"]  # fmt: skip
+    found = call("/completion", {"prompt": tokens + kept[:index], "n_predict": 1,
+                                 "n_probs": CANDIDATES, "temperature": 0,
+                                 "cache_prompt": False})  # fmt: skip
+    ahead = lead(found["completion_probabilities"][0], kept[index], step[index])
+    numeric = ahead is not None and ahead < NEAR_TIE_NATS
+    return {"index": index, "lead": ahead, "numeric": numeric}
 
 
 # M3: where the answers degrade.

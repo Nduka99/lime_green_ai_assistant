@@ -621,3 +621,98 @@ def test_prompt_reuse_is_printed_from_a_pass(
 
     assert cli.main(["prompt-reuse", str(requests_file), str(run)]) == 0
     assert json.loads(capsys.readouterr().out)["later"]["turns"] == 2
+
+
+# The near-tie diagnosis.
+
+
+def test_the_first_difference_is_a_position_or_the_shorter_length() -> None:
+    assert generator.first_difference([1, 2, 3], [1, 5, 3]) == 1
+    assert generator.first_difference([1, 2], [1, 2, 3]) == 2
+
+
+def test_the_lead_is_read_from_the_kept_configuration_s_candidates() -> None:
+    position = {"top_logprobs": [{"id": 7, "logprob": -0.2},
+                                 {"id": 9, "logprob": -0.5}]}  # fmt: skip
+
+    assert generator.lead(position, 7, 9) == pytest.approx(0.3)
+    assert generator.lead(position, 7, 4) is None
+
+
+def fake_server(
+    tokens: dict[str, list[int]], logprobs: list[dict[str, Any]]
+) -> tuple[list[tuple[str, dict[str, Any]]], Any]:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        path = url.removeprefix("http://127.0.0.1:8083")
+        body = kwargs["json"]
+        calls.append((path, body))
+        if path == "/tokenize":
+            found: Any = {"tokens": tokens[body["content"]]}
+        elif path == "/apply-template":
+            found = {"prompt": "TEMPLATE"}
+        else:
+            found = {"completion_probabilities": [{"top_logprobs": logprobs}]}
+        return httpx.Response(200, json=found, request=httpx.Request("POST", url))
+
+    return calls, post
+
+
+def test_a_difference_at_a_near_tie_is_numeric() -> None:
+    tokens = {"kept": [1, 2, 3], "step": [1, 2, 4], "TEMPLATE": [100, 101]}
+    near = [{"id": 3, "logprob": -0.6}, {"id": 4, "logprob": -0.8}]
+    far = [{"id": 3, "logprob": -0.1}, {"id": 4, "logprob": -3.0}]
+    request = {"system": "s", "user": "u", "schema": {}}
+
+    calls, post = fake_server(tokens, near)
+    found = generator.diagnose("http://127.0.0.1:8083", request, "kept", "step", post)
+    _, distant = fake_server(tokens, far)
+    defect = generator.diagnose(
+        "http://127.0.0.1:8083", request, "kept", "step", distant
+    )
+
+    assert found == {"index": 2, "lead": pytest.approx(0.2), "numeric": True}
+    assert calls[-1][1]["prompt"] == [100, 101, 1, 2]
+    assert calls[-2][1]["parse_special"] is True
+    assert defect["numeric"] is False
+
+
+def test_a_reply_that_stops_early_is_left_for_reading() -> None:
+    tokens = {"kept": [1, 2], "step": [1, 2, 3]}
+    calls, post = fake_server(tokens, [])
+
+    found = generator.diagnose(
+        "http://127.0.0.1:8083", {"system": "s", "user": "u", "schema": {}},
+        "kept", "step", post,
+    )  # fmt: skip
+
+    assert found == {"index": 2, "lead": None, "numeric": False}
+    assert [path for path, _ in calls] == ["/tokenize", "/tokenize"]
+
+
+def test_the_command_line_diagnoses_only_differing_replies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    requests = tmp_path / "requests.json"
+    requests.write_text(json.dumps({"warm_up": [], "requests": [
+        {"id": "a", "system": "s", "user": "u", "schema": {}},
+        {"id": "b", "system": "s", "user": "v", "schema": {}},
+    ]}))  # fmt: skip
+    kept, step = tmp_path / "kept.json", tmp_path / "step.json"
+    kept.write_text(json.dumps({"replies": [reply("a", "x"), reply("b", "y")]}))
+    step.write_text(json.dumps({"replies": [reply("a", "x"), reply("b", "z")]}))
+    seen: list[str] = []
+
+    def diagnose(url: str, request: Any, first: str, second: str) -> dict[str, Any]:
+        seen.append(f"{url} {request['id']} {first} {second}")
+        return {"index": 0, "lead": 2.0, "numeric": False}
+
+    monkeypatch.setattr(generator, "diagnose", diagnose)
+
+    arguments = ["generator-diagnose", "http://127.0.0.1:8083/", str(requests),
+                 str(kept), str(step)]  # fmt: skip
+    assert cli.main(arguments) == 0
+
+    assert seen == ["http://127.0.0.1:8083 b y z"]
+    assert "1 replies differ; not numeric: ['b']" in capsys.readouterr().out

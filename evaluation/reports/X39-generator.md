@@ -173,3 +173,43 @@ a later experiment with its own gate, not a default change.
   S4 (multimodal generation) needs; that choice is S4's.
 - The passage budget and context size go to PLAN §0h and S2 round 2 (B, A5, C ladder),
   which then runs on the settled settings.
+
+## Amendment 1 (29 September, after M2 steps 1–3, before any later step)
+
+**Found.** Every memory-mapped configuration, today's included, leaves 3.1–3.3 GB of
+memory available during a pass, against the 8 GB floor of gate item 2. The server's
+working set reaches 29.8 GB: 12.4 GB private (the CPU backend's repacked copies of
+expert tensors; 13.8 GB at `-ub 2048`, 15.7 GB at `-ub 4096` as host compute buffers
+grow) beside about 17 GB of the mapped file still resident. With the generator stopped,
+about 31 GB is available. Steps 2 and 3 therefore fail item 2 as written, as today's
+settings would; the cause is the memory map, not the batch size.
+
+**Re-ordered.** Step 4 (`--load-mode none`, which the load log itself recommends) removes
+the mapped copy, so it runs next, on the base configuration. If it is kept, steps 2 and 3
+run again on top of it and are judged by the same gate. Nothing else changes.
+
+**Diagnosis reads deeper.** At the first token the schema's grammar forces tokens the
+model ranks 25th–40th (it would start with prose), so reading 20 candidates left three
+first-token differences without a lead. The diagnosis now reads 1,000; the 0.5-nat rule
+is unchanged.
+
+### M2 steps 1–3 as measured (40 prompts, `cache_prompt` false)
+
+| Step | Prompt tok/s | Output tok/s | s per answer | Peak GPU MiB | Min available MB | Server private MB |
+|---|---|---|---|---|---|---|
+| 1 base (pass A) | 275 | 30.3 | 17.5 | 5,046 | 3,320 | 12,438 |
+| 2 `-b 2048 -ub 2048` | 483 | 30.7 | 13.3 | 5,118 | 3,217 | 13,805 |
+| 3 `-b 4096 -ub 4096` | 563 | 30.6 | 13.0 | 5,516 | 3,075 | 15,663 |
+
+- Step 2 against 1: −4.12 s per answer [−5.40, −3.00]; 17 of 40 replies identical; all
+  23 differences start at a near-tie (leads −0.56 to +0.36 nats, three of them at the
+  first token: compact against indented JSON), so all are numeric. Every reply finished.
+- Step 3 against 2: −0.30 s [−0.97, +0.46]: not faster beyond its interval.
+- Load log (base, `-c 8192`): flash attention `auto` resolves to enabled, so step 5 is a
+  no-op; KV cache 160 MiB (8,192 cells × 10 layers, f16: the predicted 20 KB per token);
+  recurrent state 62.8 MiB; GPU compute buffer 411 MiB; model 2,039 MiB on the GPU and
+  20,798 MiB mapped on the CPU.
+- Idle GPU without the generator: 2,207 MiB (embedding and reranking servers, desktop).
+- Output layout: 4–5 of 40 replies are indented JSON rather than compact; on a prompt
+  answered both ways with the same content, indented took 320 output tokens against 239.
+  Recorded for a later change (a compact-only grammar), not changed here.

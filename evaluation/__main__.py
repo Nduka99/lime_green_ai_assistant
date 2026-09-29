@@ -310,6 +310,13 @@ def parser() -> argparse.ArgumentParser:
     compared.add_argument("kept", type=Path)
     compared.add_argument("step", type=Path)
     compared.add_argument("--noise", type=Path, nargs=2, help="base passes A and B")
+    diagnosed = commands.add_parser(
+        "generator-diagnose", help="where differing replies part, and how close"
+    )
+    diagnosed.add_argument("url", help="a server running the kept configuration")
+    diagnosed.add_argument("requests", type=Path)
+    diagnosed.add_argument("kept", type=Path)
+    diagnosed.add_argument("step", type=Path)
     curved = commands.add_parser("degradation-curve", help="score M3's pass")
     curved.add_argument("requests", type=Path)
     curved.add_argument("run", type=Path)
@@ -951,6 +958,25 @@ def run_generator_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_generator_diagnose(args: argparse.Namespace) -> int:
+    requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
+    kept = {r["id"]: r for r in grades.read_json(args.kept)["replies"]}
+    step = grades.read_json(args.step)["replies"]
+    found = {}
+    for reply in step:
+        if reply["content"] != kept[reply["id"]]["content"]:
+            found[reply["id"]] = generator.diagnose(
+                args.url.rstrip("/"),
+                requests[reply["id"]],
+                kept[reply["id"]]["content"],
+                reply["content"],
+            )
+    print(json.dumps(found, indent=1))
+    defects = [i for i, row in found.items() if not row["numeric"]]
+    print(f"{len(found)} replies differ; not numeric: {defects or 'none'}")
+    return 0
+
+
 def run_degradation_curve(args: argparse.Namespace) -> int:
     requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
     replies = grades.read_json(args.run)["replies"]
@@ -1046,6 +1072,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_generator_pass(args)
         if args.command == "generator-compare":
             return run_generator_compare(args)
+        if args.command == "generator-diagnose":
+            return run_generator_diagnose(args)
         if args.command == "degradation-curve":
             return run_degradation_curve(args)
         if args.command == "prompt-reuse":
