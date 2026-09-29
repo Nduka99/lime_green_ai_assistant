@@ -331,3 +331,32 @@ The KV cache is exactly 20 KiB per token (10 attention layers × 2 KV heads × 2
 V × 2 bytes), as predicted; the recurrent state is fixed. Even 65,536 tokens fit the GPU
 limit (7,680 MiB) beside the other servers. M3's 64-passage prompts hold 10,085–18,703
 tokens (median 16,318), so M3 runs at `-c 32768`.
+
+### M4. Prompt reuse per chat turn (kept configuration, `-c 8192`)
+
+conv-v1, 20 conversations, 86 turns; understanding stand-in with history in reference
+mode. Tokens reused are the server's `cache_n`; prompt seconds are its own.
+
+| Arm | Cache | First turns: prompt tokens / reused | Later turns: prompt tokens / reused | Understanding prompt s (later) | Min available MB |
+|---|---|---|---|---|---|
+| w2, alone | 8 GiB | 151 / 74.2% | 229 / 51.5% | 1.10 | 10,380 |
+| w2, interleaved | 8 GiB | 151 / 74.2% | 229 / 51.5% | 1.10 | 6,250 |
+| w4, alone | 8 GiB | 151 / 74.2% | 254 / 46.5% | 1.15 | 9,396 |
+| w4, interleaved | 8 GiB | 151 / 74.2% | 254 / 46.5% | 1.15 | 6,085 |
+| w4, interleaved | 2 GiB | 151 / 74.2% | 254 / 46.5% | 1.17 | 11,847 |
+| w4, interleaved | off | 151 / 0% | 254 / 0% | 2.14 | 13,802 |
+
+- **What is reused:** the system prompt (about 112 tokens) and little more. A later turn's
+  history is processed again every turn (it reuses about 118 of 254 tokens): this
+  hybrid model can resume only from saved states, and none is saved inside a short
+  prompt. At these sizes that costs about a second per turn; a window of 4 turns costs
+  0.05 s more than a window of 2.
+- **The host cache restores the understanding prefix after an answer request:**
+  interleaving answer requests changed nothing with a cache; without one, every
+  understanding request is processed whole (2.1 s instead of 1.2 s).
+- **Cache size (rule fixed in amendment 2): 2 GiB.** Its reuse equals the default's
+  (46.5% on later turns); off loses it all. With 2 GiB, 11.8 GB stays available.
+- **Reported, outside the rule:** answer requests reused 6.0% of their prompt with 8 GiB
+  (the shared system prompt) but 0.7% with 2 GiB, so their prompt processing took 4.29 s
+  instead of 3.76 s. 8 GiB fails the memory floor (6.1 GB available); 4 GiB, untested,
+  might keep both and is left as an option.
