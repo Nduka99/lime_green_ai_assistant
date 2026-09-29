@@ -951,3 +951,15 @@ text kept against pypdf as item 4 does, since pypdf includes hidden text.
 
 **Decision** (user, on this evidence): the filter is adopted, and the production reading
 runs with GLM-OCR.
+
+## Production reading (29 September 2026)
+
+`uv run --env-file .env --group ingest limespec read-pdfs --vlm http://127.0.0.1:8083` at
+`53c2964`, GLM-OCR (f16, Q8_0 projector) on 8083 with the generator stopped: 98 documents,
+584 pages, 0 failures, 44 min. GLM-OCR read 274 tables (6,542 cells); 235 cells (3.6%) were
+dropped because their words did not match the PDF's own, so they are never quotable.
+226 lines recovered, 2,645 hidden words removed, 16 pages flagged: 8 with little or no text
+(covers, drawings) and 8 whose Docling reading misses visible text that recovery restores
+(the two carbon-footprint reports, the AMAGEL data sheet, EPD pages, two IWI Architect
+Reference pages). The readings in `data/elements/` are the input to passages (X9). The
+servers were restored afterwards (8080–8082 healthy, 8090 answering).
