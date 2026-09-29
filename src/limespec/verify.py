@@ -22,6 +22,7 @@ repaired or regenerated.
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from urllib.parse import quote as percent_encode
 
 from limespec import prices
@@ -66,9 +67,11 @@ TYPOGRAPHY = str.maketrans(
 UNIT = re.compile(r"\d+(?:[.,]\d+)*|\S")
 
 
-def folded(text: str) -> tuple[str, list[int]]:
+@lru_cache(maxsize=512)  # about 25 MB at most: passages are up to 1,500 characters
+def folded(text: str) -> tuple[str, tuple[int, ...]]:
     """The text with typographic and Unicode compatibility forms folded (NFKC: "²"
-    as "2", "ﬁ" as "fi"), and each folded character's position in the text."""
+    as "2", "ﬁ" as "fi"), and each folded character's position in the text.
+    Remembered, as the same passages are checked again and again."""
     chars = []
     where = []
     for index, char in enumerate(text):
@@ -76,7 +79,7 @@ def folded(text: str) -> tuple[str, list[int]]:
         for piece in form.translate(TYPOGRAPHY):
             chars.append(piece)
             where.append(index)
-    return "".join(chars), where
+    return "".join(chars), tuple(where)
 
 
 def same_kind(before: str, after: str) -> bool:
