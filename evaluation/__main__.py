@@ -66,9 +66,10 @@ from evaluation import (
     reach,
     retrieval,
     sets,
+    support,
 )
 from limespec import acquire, assistant, config, ingest, llm, pdf, store, tables
-from limespec.models import Passage
+from limespec.models import Passage, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 X8_SETS = ("x8-pages", "x8-pages-r2", "x8-pages-r3")  # sealed truth with tables
@@ -321,6 +322,20 @@ def parser() -> argparse.ArgumentParser:
     curved.add_argument("requests", type=Path)
     curved.add_argument("run", type=Path)
     curved.add_argument("--out", type=Path, required=True)
+    sized = commands.add_parser("support-sizes", help="longest inputs (X40)")
+    sized.add_argument("role", choices=["embed", "rerank"])
+    sized.add_argument("url", help="a server of that role, e.g. http://127.0.0.1:8081")
+    sized.add_argument("--version", type=int, required=True)
+    loaded = commands.add_parser("support-workload", help="X40's workload on a server")
+    loaded.add_argument("role", choices=["embed", "rerank"])
+    loaded.add_argument("url", help="the server under test")
+    loaded.add_argument("--version", type=int, required=True)
+    loaded.add_argument("--pid", type=int, required=True, help="the server's process")
+    loaded.add_argument("--log", type=Path, required=True, help="the server's log")
+    loaded.add_argument("--out", type=Path, required=True)
+    matched = commands.add_parser("support-compare", help="an arm against arm 0")
+    matched.add_argument("base", type=Path)
+    matched.add_argument("arm", type=Path)
     reused = commands.add_parser("prompt-reuse", help="summarise M4's pass")
     reused.add_argument("requests", type=Path)
     reused.add_argument("run", type=Path)
@@ -977,6 +992,95 @@ def run_generator_diagnose(args: argparse.Namespace) -> int:
     return 0
 
 
+def dev_questions(args: argparse.Namespace) -> list[str]:
+    """The dev sets' questions in file order: frozen90, held-out v2, held-out v3."""
+    found = []
+    for name in ("frozen90", "heldout-v2", "heldout-v3"):
+        folder = sets.require(name, args.root, args.registry)
+        found += [
+            q["question"]
+            for q in grades.read_json(folder / "questions.json")["questions"]
+        ]
+    return found
+
+
+def tokens(url: str, text: str) -> int:
+    """How many tokens the server at `url` reads for `text`."""
+    response = httpx.post(
+        url.rstrip("/") + "/tokenize", json={"content": text}, headers=llm.auth(),
+        timeout=ANSWER_TIMEOUT_SECONDS,
+    )  # fmt: skip
+    response.raise_for_status()
+    return len(response.json()["tokens"])
+
+
+def support_inputs(
+    args: argparse.Namespace,
+) -> tuple[list[str], list[str], list[tuple[str, list[str]]], tuple[str, list[str]]]:
+    """X40's inputs: every searchable passage's embedding text, 50 queries, and 100
+    rerank calls of 20 keyword candidates plus one of 100 (version `args.version`)."""
+    questions = dev_questions(args)
+    with assistant.connect() as conn:
+        passages = store.searchable_passages(conn, args.version)
+
+        def candidates(question: str, limit: int) -> list[str]:
+            ids = store.keyword_ranking(conn, args.version, question, limit)
+            return [described(p.title, p.context, p.text)
+                    for p in store.load_passages(conn, ids)]  # fmt: skip
+
+        calls = [(q, candidates(q, 20)) for q in questions[:100]]
+        deep = (questions[0], candidates(questions[0], 100))
+    texts = [described(p.title, p.context, p.text) for p in passages]
+    queries = [config.QUERY_INSTRUCTION + q for q in questions[:50]]
+    return texts, queries, calls, deep
+
+
+def run_support_sizes(args: argparse.Namespace) -> int:
+    texts, queries, calls, deep = support_inputs(args)
+    if args.role == "embed":
+        longest = max(tokens(args.url, text) for text in [*texts, *queries])
+    else:
+        documents = {d for _, docs in [*calls, deep] for d in docs}
+        # A rerank input is the question and one candidate, plus a few special tokens.
+        longest = (max(tokens(args.url, q) for q, _ in calls)
+                   + max(tokens(args.url, d) for d in documents) + 4)  # fmt: skip
+    print(f"{args.role}: longest input {longest} tokens; size "
+          f"{support.smallest_power(longest)}")  # fmt: skip
+    return 0
+
+
+def run_support_workload(args: argparse.Namespace) -> int:
+    texts, queries, calls, deep = support_inputs(args)
+    if args.role == "embed":
+        found = support.embed_workload(
+            texts, queries, lambda batch: llm.embed(batch, args.url)
+        )
+    else:
+        found = support.rerank_workload(
+            calls, deep, lambda q, docs: llm.rerank(q, docs, args.url)
+        )
+    found["gpu_mib"] = support.gpu_process_mib(args.pid)
+    found["kv_full"] = support.kv_full_lines(args.log.read_text(encoding="utf-8"))
+    write_json(args.out, found)
+    summary = {k: round(v, 3) for k, v in found.items() if isinstance(v, (int, float))}
+    print(json.dumps(summary))
+    return 0
+
+
+def run_support_compare(args: argparse.Namespace) -> int:
+    base = grades.read_json(args.base)
+    arm = grades.read_json(args.arm)
+    if "vectors" in base:
+        outputs: dict[str, float] = {
+            "lowest_cosine": support.same_vectors(base["vectors"], arm["vectors"])
+        }
+    else:
+        outputs = support.same_scores(base["scores"], arm["scores"])
+    measures = {k: v for k, v in arm.items() if isinstance(v, (int, float))}
+    print(json.dumps({**outputs, **measures}, indent=1))
+    return 0
+
+
 def run_degradation_curve(args: argparse.Namespace) -> int:
     requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
     replies = grades.read_json(args.run)["replies"]
@@ -1078,6 +1182,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_degradation_curve(args)
         if args.command == "prompt-reuse":
             return run_prompt_reuse(args)
+        if args.command == "support-sizes":
+            return run_support_sizes(args)
+        if args.command == "support-workload":
+            return run_support_workload(args)
+        if args.command == "support-compare":
+            return run_support_compare(args)
         return run_ask(args)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)

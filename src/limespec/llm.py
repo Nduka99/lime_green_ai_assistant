@@ -20,12 +20,14 @@ def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {config.MODEL_API_KEY}"}
 
 
-def embed(texts: list[str]) -> list[list[float]]:
-    """Return one embedding vector per text, in the same order."""
+def embed(texts: list[str], url: str = "") -> list[list[float]]:
+    """Return one embedding vector per text, in the same order. `url` names another
+    embedding server (an experiment's); by default the configured one."""
+    url = url or config.EMBEDDING_URL
     with telemetry.embeddings_span():
         try:
             response = httpx.post(
-                config.EMBEDDING_URL,
+                url,
                 json={"input": texts, "model": config.EMBEDDING_MODEL},
                 headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
@@ -33,7 +35,7 @@ def embed(texts: list[str]) -> list[list[float]]:
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise ModelServerError(
-                f"embedding server at {config.EMBEDDING_URL} failed: {error}"
+                f"embedding server at {url} failed: {error}"
             ) from error
     try:
         items = response.json()["data"]
@@ -63,16 +65,19 @@ def embed(texts: list[str]) -> list[list[float]]:
     return [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
 
 
-def rerank(query: str, documents: list[str]) -> list[float]:
+def rerank(query: str, documents: list[str], url: str = "") -> list[float]:
     """Return one relevance score per document, in the same order (higher is better).
 
     The reranker is a cross-encoder: it reads the question together with each
     document, so it can judge relevance that shares no words with the question.
+    `url` names another reranking server (an experiment's); by default the configured
+    one.
     """
+    url = url or config.RERANK_URL
     with telemetry.rerank_span():
         try:
             response = httpx.post(
-                config.RERANK_URL,
+                url,
                 json={"query": query, "documents": documents},
                 headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
@@ -80,7 +85,7 @@ def rerank(query: str, documents: list[str]) -> list[float]:
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise ModelServerError(
-                f"reranking server at {config.RERANK_URL} failed: {error}"
+                f"reranking server at {url} failed: {error}"
             ) from error
     try:
         results = response.json()["results"]
