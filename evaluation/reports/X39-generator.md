@@ -360,3 +360,73 @@ mode. Tokens reused are the server's `cache_n`; prompt seconds are its own.
   (the shared system prompt) but 0.7% with 2 GiB, so their prompt processing took 4.29 s
   instead of 3.76 s. 8 GiB fails the memory floor (6.1 GB available); 4 GiB, untested,
   might keep both and is left as an option.
+
+### M3. Where the answers degrade (kept configuration, `-c 32768`, cache off)
+
+27 questions (the dev sets' answerable cases in their original wording; 5 left out by the
+registered rules: two quotes in no single passage of version 11, three cases with 5–7
+evidence passages), 12 requests each, 324 replies: every one finished and parsed.
+"Used" is the share of evidence passages that a verified claim quotes; intervals are 95%,
+questions resampled 10,000 times.
+
+| Passages | Used | Against 8 (paired) | Evidence first | Middle | Last | Answered | Claims kept / removed | s per answer | Prompt tokens, median (max) |
+|---|---|---|---|---|---|---|---|---|---|
+| 8 | 0.874 [0.802, 0.975] | — | 0.906 | 0.887 | 0.830 | 81 / 81 | 184 / 9 | 11.8 | 2,351 (3,033) |
+| 16 | 0.849 [0.783, 0.951] | −0.022 [−0.065, +0.016] | 0.868 | 0.906 | 0.774 | 80 / 81 | 193 / 8 | 14.5 | 4,243 (5,368) |
+| 32 | 0.830 [0.770, 0.947] | −0.031 [−0.078, +0.012] | 0.906 | 0.792 | 0.792 | 81 / 81 | 201 / 12 | 20.1 | 9,117 (10,401) |
+| 64 | 0.818 [0.737, 0.918] | −0.062 [−0.128, +0.004] | 0.887 | 0.868 | 0.698 | 80 / 81 | 200 / 10 | 29.9 | 16,318 (18,703) |
+
+**Passage budget (rule fixed before the run): 32.** 16 and 32 keep the lower bound of
+their loss against 8 above −0.10; 64 does not (−0.128).
+
+- **Position matters more than count.** Evidence placed first is used 0.87–0.91 at every
+  size; placed last it falls to 0.698 at 64 passages. The reranker puts the best passages
+  first, so the realistic case is the stable one; evidence buried late in a long list is
+  where use is lost. This is not the classic "lost in the middle" shape: here the end of
+  the list, next to the question, suffers most.
+- **Nothing else degrades:** answers stay answered, and verification removes as few claims
+  at 64 passages as at 8. Nine questions lose use at 64 passages and two gain.
+- **Cost:** each doubling adds 3–10 s per answer on this laptop.
+- **Context size:** 32 passages need at most 10,401 prompt tokens, plus up to 2,048 of
+  output, so `-c 16384` holds the budget with margin (M1: 5,216 MiB of GPU after load).
+  GPU peak during M3 at `-c 32768`: 6,111 MiB; 13.6 GB available.
+- **For S2 round 2:** the ladder may give one answer request up to 32 passages without a
+  loss beyond the margin; whether more passages help is recall's question (evidence here
+  was always present), and each doubling costs time.
+
+### M1 replay on the final configuration (`-c 16384`, 2 GiB cache, prompt reuse on)
+
+40 replies, all finished; 10.5 s per answer (the shared system prompt is reused: 341
+tokens, 15% of prompt tokens); GPU peak 5,268 MiB; 15.7 GB available; the cache holds at
+2 GiB by evicting entries of 297–373 MiB. Gate item 2 passes. With prompt reuse on, 31 of
+40 replies equal the reuse-off replies: reuse changes where prompt chunks break, the same
+class of numeric change as step 2 (not diagnosed reply by reply; reuse was always on in
+production).
+
+## Conclusion (29 September 2026)
+
+**Proposed generator command** (needs the user's OK; the startup script lives outside
+this repo):
+
+    -m models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf -c 16384 -np 1 -ngl all --n-cpu-moe 40
+    --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048 --cors-origins localhost
+    --port 8080
+
+| | Today | Proposed |
+|---|---|---|
+| Seconds per answer (reuse off / on) | 17.4 / — | 13.0 / 10.5 |
+| Memory available while answering | 3.3–5.1 GB | 15.7 GB |
+| GPU peak (all processes) | 5,046 MiB | 5,268 MiB |
+| Context | 8,192 | 16,384 (32 passages fit) |
+
+- **Passage budget for S2 round 2: up to 32 passages per answer request.** Evidence
+  placed late in a long list is where use is lost; keep the reranker's order.
+- **Not adopted:** batch 4096 (no faster), MTP (different weights, not exact under the
+  grammar, no `--mmproj`), n-gram speculation (slower).
+- **Candidates for later experiments, each with its own gate:** describe the JSON in the
+  prompt and constrain the grammar to compact output (the model ranks valid JSON's first
+  token ~35th; indented replies cost +34% tokens); a 4 GiB prompt cache (might keep the
+  answer request's system-prompt reuse while passing the memory floor); MTP once
+  speculation is exact under a grammar; Qwen's non-thinking sampling.
+- 8080 and 8090 were restored with the unchanged startup script and checked (8080 health
+  200; 8090 answered end to end).
