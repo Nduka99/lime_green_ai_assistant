@@ -112,6 +112,34 @@ dropped, and the outcome recorded. Kept rungs stack.
 The code before the first rung is tagged `s2b-before-fixes`; the fixes are frozen at the
 commit that ends the ladder, tagged `s2b-fixes-frozen`.
 
+### Ladder results
+
+**Rung 0 again, `unfixed-d96`** (version 11 on the D96/D97 servers, 29 Sept, 0 errors):
+status 87 / 49 / 69 and reach 0.808 / 0.400 / 0.667, both identical to A5's `unfixed`;
+guardrails perfect (expected refusals 8/10, 5/10, 15/15). Answers differ in wording on
+30 / 16 / 27 questions (arithmetic); nothing moved, so none was graded (amendment).
+
+**C1, compiled product lists — stays** (version 12: 1,900 passages, 55 of them lists;
+`s2b-c1`, 30 Sept, 0 errors). Against `unfixed-d96`:
+
+| | frozen90 | held-out v2 | held-out v3 |
+|---|---|---|---|
+| Status as the key expects | 87 → 88 | 49 → 49 | 69 → 69 |
+| Parts reached (top 8) | 0.808 → 0.808 | **0.400 → 0.464** | 0.667 → 0.667 |
+| Questions with every part reached | 57 → 57 | 10 → 15 | 27 → 27 |
+| Prices shown; emergencies referred | 0; 10/10 | 0; 5/5 | 0; 5/5 |
+| Expected refusals refused | 8 → 9 of 10 | 5 → 5 of 10 | 15 → 15 of 15 |
+
+Target (list cases, parts reached): v2 c08 0/10 → 10/10, c01 3/20 → 2/20, c07 2/15 →
+2/15; v3 k05 0/5 → 0/5, k06 0/5 → 0/5; together 5/65 → 14/65. The target improves and
+nothing falls, so C1 stays. **Measure's limit, recorded:** reach credits a part only when
+a passage holding the key's quote is shown, and the list cases' keys quote the product
+cards, so an answer taken from a compiled list earns nothing. The answers show more than
+reach: k05 now lists "Ashlar Lime Mortar, Natural Lime Mortar, and Coloured Cement Mortar"
+(before, a mix of conservation products), and one k06 wording lists the insulation page's
+products and systems; another k06 wording ("list of all insulation products on lime green
+site") is unchanged. These are judged in the gate's blind grading.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
