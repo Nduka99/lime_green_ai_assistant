@@ -21,6 +21,10 @@
     uv run --env-file .env python -m evaluation coverage conv-v1 --version N  # X36
     uv run --env-file .env python -m evaluation reach SET RUN.json  # evidence given
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
+    uv run --env-file .env python -m evaluation replay-requests RUN.json ... --out F
+    uv run --env-file .env python -m evaluation generator-pass URL REQUESTS.json \
+        --out PASS.json [--pid N] [--cache-prompt]            # X39, a scratch server
+    uv run python -m evaluation generator-compare KEPT.json STEP.json --noise A B
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
 A finished run is graded, then copied into a sitting folder of its set and
@@ -48,6 +52,7 @@ from evaluation import (
     cases,
     catalogue,
     conversations,
+    generator,
     grades,
     guardrails,
     keys,
@@ -258,6 +263,44 @@ def parser() -> argparse.ArgumentParser:
     shown.add_argument("runs", type=Path, nargs="+", help="the files given to blind")
     shown.add_argument("--dir", type=Path, required=True)
     shown.add_argument("--json", action="store_true")
+    replayed = commands.add_parser(
+        "replay-requests", help="rebuild answer requests from audit records (X39)"
+    )
+    replayed.add_argument("runs", type=Path, nargs="+", help="answers files from ask")
+    replayed.add_argument("--out", type=Path, required=True)
+    degraded = commands.add_parser(
+        "degradation-requests", help="answer requests of 8-64 passages (X39 M3)"
+    )
+    degraded.add_argument("sets", nargs="+", help="keyed sets")
+    degraded.add_argument("--version", type=int, required=True)
+    degraded.add_argument("--warm-up", type=Path, required=True, help="replay file")
+    degraded.add_argument("--out", type=Path, required=True)
+    turned = commands.add_parser(
+        "conversation-requests", help="understanding requests per turn (X39 M4)"
+    )
+    turned.add_argument("name", help="a conversation set, e.g. conv-v1")
+    turned.add_argument("--window", type=int, required=True, help="turns of history")
+    turned.add_argument("--warm-up", type=Path, required=True, help="replay file")
+    turned.add_argument("--interleave", action="store_true", help="answer requests too")
+    turned.add_argument("--out", type=Path, required=True)
+    passed = commands.add_parser("generator-pass", help="send requests, time them")
+    passed.add_argument("url", help="the scratch server, e.g. http://127.0.0.1:8083")
+    passed.add_argument("requests", type=Path)
+    passed.add_argument("--out", type=Path, required=True)
+    passed.add_argument("--pid", type=int, help="the server's process id, for memory")
+    passed.add_argument("--cache-prompt", action="store_true", help="reuse prompts")
+    passed.add_argument("--server", default="", help="its command line, recorded")
+    compared = commands.add_parser("generator-compare", help="a step against kept")
+    compared.add_argument("kept", type=Path)
+    compared.add_argument("step", type=Path)
+    compared.add_argument("--noise", type=Path, nargs=2, help="base passes A and B")
+    curved = commands.add_parser("degradation-curve", help="score M3's pass")
+    curved.add_argument("requests", type=Path)
+    curved.add_argument("run", type=Path)
+    curved.add_argument("--out", type=Path, required=True)
+    reused = commands.add_parser("prompt-reuse", help="summarise M4's pass")
+    reused.add_argument("requests", type=Path)
+    reused.add_argument("run", type=Path)
     return main
 
 
@@ -763,6 +806,141 @@ def run_ask(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def run_replay_requests(args: argparse.Namespace) -> int:
+    records = [record for path in args.runs for record in grades.read_json(path)]
+    by_id = {r["answer_id"]: r for r in records if "answer_id" in r}
+    requests = []
+    with assistant.connect() as conn:
+        for answer_id in generator.replay_ids(records):
+            _, passages = store.given_passages(conn, answer_id)
+            # The view's question is the one the model was asked (stripped).
+            question = by_id[answer_id]["view"]["question"]
+            requests.append(
+                generator.answer_request(f"a{answer_id}", question, passages)
+            )
+    write_json(args.out, {"warm_up": requests[:1], "requests": requests[1:]})
+    print(f"1 warm-up and {len(requests) - 1} requests in {args.out}")
+    return 0
+
+
+def run_degradation_requests(args: argparse.Namespace) -> int:
+    requests: list[generator.Request] = []
+    skipped = []
+    with assistant.connect() as conn:
+        version = store.searchable_passages(conn, args.version)
+        for name in args.sets:
+            folder = sets.require(name, args.root, args.registry)
+            key = grades.read_json(folder / "key.json")
+            questions = grades.read_json(folder / "questions.json")["questions"]
+            for case, question in generator.degradation_cases(key, questions):
+                ranking = generator.deep_ranking(
+                    conn, args.version, question["question"], llm.embed, llm.rerank
+                )
+                quotes = generator.case_quotes(case)
+                evidence = generator.evidence_passages(quotes, ranking, version)
+                label = f"{name}/{case['id']}"
+                if evidence is None:
+                    skipped.append(f"{label}: a quote is in no passage")
+                    continue
+                if len(evidence) > generator.MAX_EVIDENCE:
+                    skipped.append(f"{label}: {len(evidence)} evidence passages")
+                    continue
+                others = generator.distractors(ranking, evidence, quotes)
+                requests.extend(
+                    generator.degradation_requests(
+                        name, case, question, evidence, others
+                    )
+                )
+    warm_up = grades.read_json(args.warm_up)["warm_up"]
+    write_json(args.out, {"warm_up": warm_up, "requests": requests, "skipped": skipped})
+    print(f"{len(requests)} requests in {args.out}; {len(skipped)} cases left out")
+    for reason in skipped:
+        print(f"  {reason}")
+    return 0
+
+
+def run_conversation_requests(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    replay = grades.read_json(args.warm_up)
+    answers = replay["requests"] if args.interleave else []
+    requests = generator.conversation_requests(key, args.window, answers)
+    write_json(args.out, {"warm_up": replay["warm_up"], "requests": requests})
+    print(f"{len(requests)} requests in {args.out}")
+    return 0
+
+
+def run_generator_pass(args: argparse.Namespace) -> int:
+    requests = grades.read_json(args.requests)
+    url = args.url.rstrip("/") + "/v1/chat/completions"
+    result = generator.run_pass(
+        url,
+        requests,
+        args.cache_prompt,
+        lambda: generator.memory_sample(args.pid),
+    )
+    result["server"] = args.server
+    write_json(args.out, result)
+    speeds = generator.speeds(result["replies"])
+    print(
+        f"{len(result['replies'])} replies in {args.out}: prompt "
+        f"{speeds['prompt_per_second']:.0f} tokens/s, generation "
+        f"{speeds['generation_per_second']:.1f} tokens/s, "
+        f"{speeds['mean_seconds']:.1f} s per request; memory {result['memory']}"
+    )
+    return 0
+
+
+def run_generator_compare(args: argparse.Namespace) -> int:
+    kept = grades.read_json(args.kept)
+    step = grades.read_json(args.step)
+    noise = 0.0
+    if args.noise:
+        first, second = (grades.read_json(path)["replies"] for path in args.noise)
+        noise = generator.noise(first, second)
+    found = generator.compare(kept["replies"], step["replies"], noise)
+    found["noise"] = noise
+    found["speeds"] = {
+        "kept": generator.speeds(kept["replies"]),
+        "step": generator.speeds(step["replies"]),
+    }
+    found["memory"] = step["memory"]
+    print(json.dumps(found, indent=1))
+    return 0
+
+
+def run_degradation_curve(args: argparse.Namespace) -> int:
+    requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
+    replies = grades.read_json(args.run)["replies"]
+    ids = {i for r in requests.values() for i in r["passage_ids"]}
+    with assistant.connect() as conn:
+        passages = {p.id: p for p in store.load_passages(conn, sorted(ids))}
+    rows = []
+    for reply in replies:
+        request = requests[reply["id"]]
+        outcome = generator.evidence_used(request, reply, passages)
+        rows.append({"id": reply["id"], **request["data"], **outcome})
+    found = generator.curve(rows)
+    write_json(args.out, {"curve": found, "rows": rows})
+    for size, entry in found["sizes"].items():
+        against = entry["against_smallest"]
+        print(
+            f"{size:>3} passages: used {entry['used']:.3f} "
+            f"[{entry['low']:.3f}, {entry['high']:.3f}]; against the smallest "
+            f"{against['difference']:+.3f} [{against['low']:+.3f}, "
+            f"{against['high']:+.3f}]"
+        )
+    print(f"passage budget: {found['budget']}")
+    return 0
+
+
+def run_prompt_reuse(args: argparse.Namespace) -> int:
+    requests = grades.read_json(args.requests)["requests"]
+    replies = grades.read_json(args.run)["replies"]
+    print(json.dumps(generator.reuse(requests, replies), indent=1))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
@@ -814,6 +992,20 @@ def main(argv: list[str] | None = None) -> int:
             return run_blind(args)
         if args.command == "unblind":
             return run_unblind(args)
+        if args.command == "replay-requests":
+            return run_replay_requests(args)
+        if args.command == "degradation-requests":
+            return run_degradation_requests(args)
+        if args.command == "conversation-requests":
+            return run_conversation_requests(args)
+        if args.command == "generator-pass":
+            return run_generator_pass(args)
+        if args.command == "generator-compare":
+            return run_generator_compare(args)
+        if args.command == "degradation-curve":
+            return run_degradation_curve(args)
+        if args.command == "prompt-reuse":
+            return run_prompt_reuse(args)
         return run_ask(args)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)

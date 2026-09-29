@@ -131,7 +131,8 @@ are expected; anything else is reported and diagnosed before the ladder is read.
   position within n, with 95% intervals from resampling questions.
 - **Passage budget (rule fixed now):** the largest n whose paired difference from n = 8 in
   evidence passages used (same questions and positions; questions resampled, 10,000
-  draws, seed 39) has a 95% interval with its lower bound above −0.10. This bounds how
+  draws, seed 39) has a 95% interval with its lower bound above −0.10, and every smaller
+  n too (clarified with the harness code, before any run). This bounds how
   many passages S2 round 2's ladder may give one answer request; it does not say more
   passages help, because here the evidence is always present (recall is the ladder's
   own measure).

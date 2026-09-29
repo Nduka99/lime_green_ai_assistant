@@ -38,9 +38,13 @@ def fuse(rankings: Sequence[list[int]], k: int = config.RRF_K) -> list[int]:
 
 
 def rerank_top(
-    question: str, candidates: list[Passage], rerank: Rerank
+    question: str,
+    candidates: list[Passage],
+    rerank: Rerank,
+    top: int | None = None,
 ) -> list[Passage]:
-    """The reranker's best passages among the fused candidates, best first."""
+    """The reranker's best passages among the fused candidates, best first: `top` of
+    them, or `config.TOP_K`."""
     if not candidates:
         return []
     # The title (and a PDF passage's context) tells the reranker which product and
@@ -49,4 +53,4 @@ def rerank_top(
     scores = rerank(question, texts)
     # A stable sort keeps the fused order among equal scores, so ties are deterministic.
     order = sorted(range(len(candidates)), key=lambda i: -scores[i])
-    return [candidates[i] for i in order[: config.TOP_K]]
+    return [candidates[i] for i in order[: config.TOP_K if top is None else top]]

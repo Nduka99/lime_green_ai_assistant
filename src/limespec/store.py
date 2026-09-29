@@ -305,6 +305,17 @@ def passage_count(conn: Connection, version_id: int) -> int:
     return int(row[0])
 
 
+def searchable_passages(conn: Connection, version_id: int) -> list[Passage]:
+    """Every passage search can return in an index version (not those with a price,
+    X16), in stored order."""
+    rows = conn.execute(
+        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial "
+        "ORDER BY id",
+        (version_id,),
+    ).fetchall()
+    return load_passages(conn, [row[0] for row in rows])
+
+
 def searchable_texts(conn: Connection, version_id: int) -> list[str]:
     """The text of every passage search can return in an index version (not those
     with a price, X16)."""

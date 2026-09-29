@@ -101,13 +101,13 @@ def rerank(query: str, documents: list[str]) -> list[float]:
     return [score for _, score in sorted(zip(indices, scores, strict=True))]
 
 
-def chat(system: str, user: str, schema: dict[str, Any]) -> object:
-    """Send one chat request whose reply must follow `schema`; return the parsed JSON.
+def chat_payload(system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
+    """The body of one chat request whose reply must follow `schema`.
 
     The request names no model: the server answers with whichever GGUF it has
     loaded, which lets the same client work with any model.
     """
-    payload = {
+    return {
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -123,11 +123,15 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
         # a reasoning budget alone does not stop Qwen3.x from thinking.
         "chat_template_kwargs": {"enable_thinking": False},
     }
+
+
+def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+    """Send one chat request whose reply must follow `schema`; return its JSON."""
     with telemetry.chat_span():
         try:
             response = httpx.post(
                 config.CHAT_URL,
-                json=payload,
+                json=chat_payload(system, user, schema),
                 headers=auth(),
                 timeout=config.CHAT_TIMEOUT_SECONDS,
             )
