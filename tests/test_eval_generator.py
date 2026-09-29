@@ -658,8 +658,9 @@ def test_two_passes_are_verified_and_changed_outcomes_listed(
     ]
     step = [reply("a1", content("free of cement")), reply("a2", content("not there"))]
     paths = []
-    for name, data in (("requests", {"requests": requests}), ("kept", {"replies": kept}),
-                       ("step", {"replies": step})):  # fmt: skip
+    files = {"requests": {"requests": requests}, "kept": {"replies": kept},
+             "step": {"replies": step}}  # fmt: skip
+    for name, data in files.items():
         paths.append(tmp_path / f"{name}.json")
         paths[-1].write_text(json.dumps(data))
     monkeypatch.setattr(assistant, "connect", no_connection)
