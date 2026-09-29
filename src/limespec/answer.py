@@ -223,9 +223,15 @@ def read_output(output: object, source_ids: Sequence[str]) -> DraftAnswer:
     return DraftAnswer(claims, output["answers_every_part"])
 
 
+def describes_exposure(question: str, chat: Chat) -> bool:
+    """The first request: does the question describe an exposure emergency?"""
+    output = chat(EXPOSURE_PROMPT, f"Question: {question}", EXPOSURE_SCHEMA)
+    return read_exposure(output)
+
+
 def answer(question: str, retrieve: Retrieve, chat: Chat) -> Answer:
     """Answer one question from the indexed pages."""
-    if read_exposure(chat(EXPOSURE_PROMPT, f"Question: {question}", EXPOSURE_SCHEMA)):
+    if describes_exposure(question, chat):
         # Fixed text only: no retrieval, and nothing the model writes is shown.
         return Answer(question, "safety_referral", SAFETY_REFERRAL, (), (), ())
     passages = tuple(retrieve(question))

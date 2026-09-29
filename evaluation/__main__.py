@@ -68,7 +68,7 @@ from evaluation import (
     sets,
     support,
 )
-from limespec import acquire, assistant, config, ingest, llm, pdf, store, tables
+from limespec import acquire, answer, assistant, config, ingest, llm, pdf, store, tables
 from limespec.models import Passage, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
@@ -319,6 +319,11 @@ def parser() -> argparse.ArgumentParser:
     diagnosed.add_argument("requests", type=Path)
     diagnosed.add_argument("kept", type=Path)
     diagnosed.add_argument("step", type=Path)
+    exposed = commands.add_parser(
+        "exposure", help="the first request on an exposure set (C2's safety bar)"
+    )
+    exposed.add_argument("name", help="e.g. exposure-v1")
+    exposed.add_argument("--out", type=Path, required=True)
     verified = commands.add_parser(
         "generator-outcomes", help="verified outcomes of two passes' replies (X41)"
     )
@@ -588,9 +593,9 @@ def run_transcription(args: argparse.Namespace) -> int:
     for page in blank:
         path = acquire.store_path(page["entry"].split(":", 1)[1])
         image = pdf.page_image(path, page["page"], pdf.IMAGES_SCALE)
-        answer = tables.recognise(image, args.vlm, args.prompt)
-        scored = parsing.transcription(page["words"], answer)
-        answers[page["number"]] = {"answer": answer, **scored}
+        written = tables.recognise(image, args.vlm, args.prompt)
+        scored = parsing.transcription(page["words"], written)
+        answers[page["number"]] = {"answer": written, **scored}
         for measure, (found, total) in scored.items():
             counts[f"{measure} found"] += found
             counts[f"{measure} total"] += total
@@ -1090,6 +1095,20 @@ def run_support_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_exposure(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    questions = grades.read_json(folder / "questions.json")
+    result = guardrails.exposures(
+        questions, lambda q: answer.describes_exposure(q, llm.chat)
+    )
+    write_json(args.out, result)
+    print(
+        f"exposures caught {result['caught']}/{result['exposures']}; false alarms "
+        f"{len(result['false_alarms'])}/{result['ordinary']}"
+    )
+    return 0
+
+
 def run_generator_outcomes(args: argparse.Namespace) -> int:
     requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
     ids = {i for r in requests.values() for i in r["passage_ids"]}
@@ -1209,6 +1228,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_generator_compare(args)
         if args.command == "generator-diagnose":
             return run_generator_diagnose(args)
+        if args.command == "exposure":
+            return run_exposure(args)
         if args.command == "generator-outcomes":
             return run_generator_outcomes(args)
         if args.command == "degradation-curve":

@@ -10,6 +10,7 @@ beside them. Results name question ids only, never answer text.
 """
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from evaluation import grades, pairs
@@ -69,3 +70,20 @@ def text(result: dict[str, Any]) -> str:
     lines += [f"PRICE {qid}" for qid in result["priced"]]
     lines += [f"MISSED EMERGENCY {qid}" for qid in result["missed"]]
     return "\n".join(lines)
+
+
+def exposures(
+    questions: dict[str, Any], describes: Callable[[str], bool]
+) -> dict[str, Any]:
+    """The first request's reading of an exposure set (`exposure-v1`): exposures it
+    catches, and look-alike questions it flags as exposures (false alarms), each
+    named by its position in the set."""
+    missed = [n for n, q in enumerate(questions["exposures"]) if not describes(q)]
+    alarms = [n for n, q in enumerate(questions["ordinary"]) if describes(q)]
+    return {
+        "exposures": len(questions["exposures"]),
+        "caught": len(questions["exposures"]) - len(missed),
+        "missed": missed,
+        "ordinary": len(questions["ordinary"]),
+        "false_alarms": alarms,
+    }
