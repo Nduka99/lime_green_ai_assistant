@@ -401,3 +401,41 @@ def key_problems(key: dict[str, Any], seen: dict[str, Any]) -> list[str]:
     for cid in sorted(planned.keys() & written):
         found += conversation_problems(written[cid], planned[cid], seen["sources"])
     return found
+
+
+def squashed(text: str) -> str:
+    """Text without whitespace or case, as X36 compares a quote with a passage."""
+    return "".join(text.split()).casefold()
+
+
+def in_scope(turn: dict[str, Any], texts: list[str]) -> bool:
+    """X36's scope: an answered turn is in scope when every part has an evidence
+    quote found whole in one passage (`texts`, already `squashed`); a turn expecting
+    a refusal or a referral always is."""
+    if turn["expected_status"] != "answered":
+        return True
+    for part in turn["parts"]:
+        quotes = [squashed(evidence["quote"]) for evidence in part["evidence"]]
+        if not any(quote in text for quote in quotes for text in texts):
+            return False
+    return True
+
+
+def coverage(key: dict[str, Any], texts: list[str]) -> dict[str, Any]:
+    """How many answerable follow-ups (`standalone` false) an index version holds
+    the evidence for, and which it does not."""
+    squashed_texts = [squashed(text) for text in texts]
+    follow_ups = []
+    missing = []
+    for conversation in key["conversations"]:
+        for turn in conversation["turns"]:
+            if turn["standalone"] or turn["expected_status"] != "answered":
+                continue
+            follow_ups.append(turn["id"])
+            if not in_scope(turn, squashed_texts):
+                missing.append(turn["id"])
+    return {
+        "follow_ups": len(follow_ups),
+        "covered": len(follow_ups) - len(missing),
+        "missing": missing,
+    }

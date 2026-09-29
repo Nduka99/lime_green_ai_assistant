@@ -18,6 +18,7 @@
     uv run python -m evaluation table-questions --out data/eval/x9-tables/questions.json
     uv run --env-file .env python -m evaluation quote-retrieval --version N --out FILE
     uv run python -m evaluation select-form table=FILE rows=FILE both=FILE page=FILE
+    uv run --env-file .env python -m evaluation coverage conv-v1 --version N  # X36
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
@@ -178,6 +179,11 @@ def parser() -> argparse.ArgumentParser:
     )
     searched.add_argument("--version", type=int, required=True)
     searched.add_argument("--out", type=Path, required=True, help="a JSON file")
+    covered = commands.add_parser(
+        "coverage", help="count the answerable follow-ups an index version covers (X36)"
+    )
+    covered.add_argument("name")
+    covered.add_argument("--version", type=int, required=True)
     selected = commands.add_parser(
         "select-form", help="compare X9's arms and apply its selection rule"
     )
@@ -511,6 +517,30 @@ def run_quote_retrieval(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_coverage(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    plan = grades.read_json(folder / "plan.json")
+    with assistant.connect() as conn:
+        texts = store.searchable_texts(conn, args.version)
+    found = conversations.coverage(key, texts)
+    formats = {entry["id"]: entry["format"] for entry in catalogue.catalogue()}
+    turns = {turn["id"]: turn for c in key["conversations"] for turn in c["turns"]}
+    kinds: Counter[str] = Counter()
+    for turn_id in found["missing"]:
+        for part in turns[turn_id]["parts"]:
+            for evidence in part["evidence"]:
+                entry = plan["sources"][evidence["source"]]["entry"]
+                kinds[formats.get(entry, "unknown")] += 1
+    print(
+        f"{found['covered']} of {found['follow_ups']} answerable follow-ups in scope "
+        f"in version {args.version}"
+    )
+    for name, count in kinds.most_common():
+        print(f"{count:5}  quotes of uncovered turns from {name}")
+    return 0
+
+
 def run_select_form(args: argparse.Namespace) -> int:
     arms = {}
     for run in args.runs:
@@ -644,6 +674,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_quote_retrieval(args)
         if args.command == "select-form":
             return run_select_form(args)
+        if args.command == "coverage":
+            return run_coverage(args)
         if args.command == "page-candidates":
             return run_page_candidates(args)
         if args.command == "blind":

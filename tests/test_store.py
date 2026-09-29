@@ -315,3 +315,18 @@ def test_a_document_s_passages_and_a_version_s_size_are_read(
     assert [p.heading for p in faq] == ["Delivery", "Samples"]
     assert store.passage_count(pg, version) == 3
     assert store.document_passages(pg, version, "https://example.test/none") == []
+
+
+def test_only_passages_search_can_return_are_counted_as_searchable(
+    pg: store.Connection,
+) -> None:
+    priced: list[store.PassageRow] = [
+        *PASSAGES[:2],
+        ("https://example.test/support/faq", "FAQ", "Samples", "Samples cost £5.",
+         "", None),
+    ]  # fmt: skip
+    version = store.write_version(
+        pg, PAGES, priced, [padded(v) for v in VECTORS], MANIFEST
+    )
+
+    assert store.searchable_texts(pg, version) == [row[3] for row in PASSAGES[:2]]

@@ -292,3 +292,14 @@ def passage_count(conn: Connection, version_id: int) -> int:
     ).fetchone()
     assert row is not None  # count(*) always yields a row
     return int(row[0])
+
+
+def searchable_texts(conn: Connection, version_id: int) -> list[str]:
+    """The text of every passage search can return in an index version (not those
+    with a price, X16)."""
+    rows = conn.execute(
+        "SELECT text FROM passages WHERE index_version_id = %s AND NOT commercial "
+        "ORDER BY id",
+        (version_id,),
+    ).fetchall()
+    return [str(row[0]) for row in rows]

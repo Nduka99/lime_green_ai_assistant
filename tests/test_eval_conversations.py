@@ -2,6 +2,8 @@
 
 import json
 import random
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +11,8 @@ import pytest
 from pypdf.errors import DependencyError, PdfReadError
 
 from evaluation import __main__ as cli
-from evaluation import conversations
+from evaluation import catalogue, conversations, sets
+from limespec import assistant, store
 
 PAGE = (
     "<html><body><main><h1>Duro Plaster</h1><p>Duro is a lime undercoat plaster.</p>"
@@ -324,3 +327,60 @@ def test_the_command_line_plans_and_writes_the_bundle(
     printed = capsys.readouterr().out
     assert "    1  page:product" in printed
     assert printed.endswith(f"1 conversations, 1 sources, 1 parts in {out}\n")
+
+
+COVERED_KEY: dict[str, Any] = {"conversations": [{"id": "c01", "turns": [
+    {"id": "c01t1", "standalone": True, "expected_status": "answered", "parts": []},
+    {"id": "c01t2", "standalone": False, "expected_status": "answered", "parts": [
+        {"evidence": [{"source": "c01-s1", "quote": "Add  4 LITRES"},
+                      {"source": "c01-s2", "quote": "never indexed"}]},
+        {"evidence": [{"source": "c01-s1", "quote": "Mix for 3 minutes."}]}]},
+    {"id": "c01t3", "standalone": False, "expected_status": "answered", "parts": [
+        {"evidence": [{"source": "c01-s3", "quote": "An image's alt text"}]}]},
+    {"id": "c01t4", "standalone": False, "expected_status": "safety_referral",
+     "parts": []},
+]}]}  # fmt: skip
+TEXTS = ["Mixing\nAdd 4 litres of water.", "Mix for 3 minutes. Then apply."]
+
+
+def test_a_follow_up_is_in_scope_when_every_part_has_a_quote_in_one_passage() -> None:
+    texts = [conversations.squashed(text) for text in TEXTS]
+    turns = COVERED_KEY["conversations"][0]["turns"]
+
+    assert conversations.in_scope(turns[1], texts)
+    assert not conversations.in_scope(turns[2], texts)
+    assert conversations.in_scope(turns[3], texts)  # a referral always is
+    assert conversations.coverage(COVERED_KEY, TEXTS) == {
+        "follow_ups": 2,
+        "covered": 1,
+        "missing": ["c01t3"],
+    }
+
+
+def test_coverage_is_counted_for_an_index_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "conv"
+    folder.mkdir()
+    plan = {"plan": [], "sources": {"c01-s1": {"entry": "page:a"},
+                                    "c01-s2": {"entry": "file:b"},
+                                    "c01-s3": {"entry": "file:c"}}}  # fmt: skip
+    (folder / "key.json").write_text(json.dumps(COVERED_KEY), encoding="utf-8")
+    (folder / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    sets.register("conv", "invented", tmp_path, tmp_path / "sets.json")
+
+    @contextmanager
+    def connect() -> Iterator[None]:
+        yield None
+
+    monkeypatch.setattr(assistant, "connect", connect)
+    monkeypatch.setattr(store, "searchable_texts", lambda conn, version: TEXTS)
+    monkeypatch.setattr(
+        catalogue, "catalogue", lambda: [{"id": "file:c", "format": "image"}]
+    )
+    base = ["--root", str(tmp_path), "--registry", str(tmp_path / "sets.json")]
+
+    assert cli.main([*base, "coverage", "conv", "--version", "11"]) == 0
+    output = capsys.readouterr().out
+    assert "1 of 2 answerable follow-ups in scope in version 11" in output
+    assert "1  quotes of uncovered turns from image" in output
