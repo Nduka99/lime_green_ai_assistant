@@ -169,17 +169,27 @@ def second_source(
     topics: Counter[str],
     rng: random.Random,
 ) -> Entry | None:
-    """A comparison's second product: same format, same topic when possible. A
-    multi-part case's second source: another format from the first source's subject
-    (a page and the files it links to), else any source of the same topic."""
+    """A comparison's second product: same format, same topic when possible, never
+    from the first source's subject (a page and the files it links to), which is the
+    same product. A multi-part case's second source: another format from the first
+    source's subject, else any source of the same topic."""
+    subject = [e for g in groups if first in g for e in g] or [first]
     if kind == "comparison":
-        same = [e for e in pool if e["format"] == first["format"] and e is not first]
+        same = [e for e in pool if e["format"] == first["format"] and e not in subject]
         on_topic = [e for e in same if e["topic"] == first["topic"]]
         return pick(on_topic, used, topics, rng) or pick(same, used, topics, rng)
-    subject = next((g for g in groups if first in g), [first])
     linked = [e for e in subject if e["format"] != first["format"]]
     on_topic = [e for e in pool if e["topic"] == first["topic"]]
     return pick(linked, used, topics, rng) or pick(on_topic, used, topics, rng)
+
+
+def usable_pool(entries: list[Entry], texts: dict[str, str]) -> list[Entry]:
+    """The sources a case may use: indexed, with enough text to quote."""
+    return [
+        e
+        for e in entries
+        if e["format"] not in UNINDEXED and conversations.usable(e, texts[e["id"]])
+    ]
 
 
 def plan(
@@ -187,11 +197,7 @@ def plan(
 ) -> list[dict[str, Any]]:
     """Every case: its id, type and source ids, out-of-domain cases last."""
     rng = random.Random(seed)
-    pool = [
-        e
-        for e in entries
-        if e["format"] not in UNINDEXED and conversations.usable(e, texts[e["id"]])
-    ]
+    pool = usable_pool(entries, texts)
     total = sum(n for kind, n in TYPES.items() if SOURCES.get(kind, 1))
     slots = allocate(dict(Counter(e["format"] for e in pool)), total)
     groups = conversations.subjects(pool)
@@ -218,6 +224,43 @@ def plan(
     return [{"id": f"v4c{n:02d}", **case} for n, case in enumerate(planned, 1)]
 
 
+def replace(
+    planned: list[dict[str, Any]],
+    flagged: set[str],
+    entries: list[Entry],
+    texts: dict[str, str],
+    seed: int,
+) -> list[dict[str, Any]]:
+    """The plan with each flagged case given new sources by the planning rules: a
+    first source of the format its old first source had (so each format keeps its
+    cases) and, where the type takes two, a second; never a source any case of the
+    plan has used, the flagged ones included."""
+    rng = random.Random(seed)
+    pool = usable_pool(entries, texts)
+    groups = conversations.subjects(pool)
+    by_id = {e["id"]: e for e in entries}
+    used = {source for case in planned for source in case["sources"]}
+    topics = Counter(by_id[source]["topic"] for source in used)
+    replaced = []
+    for case in planned:
+        if case["id"] not in flagged:
+            replaced.append(case)
+            continue
+        kind = case["type"]
+        name = by_id[case["sources"][0]]["format"]
+        first = pick([e for e in pool if e["format"] == name], used, topics, rng)
+        if first is None:
+            raise ValueError(f"no {name} source left to replace {case['id']}")
+        sources = [first]
+        if SOURCES.get(kind, 1) == 2:
+            other = second_source(kind, first, pool, groups, used, topics, rng)
+            if other is None and kind == "comparison":
+                raise ValueError(f"no second {name} source to replace {case['id']}")
+            sources += [other] if other else []
+        replaced.append({**case, "sources": [e["id"] for e in sources]})
+    return replaced
+
+
 def excerpt(text: str, limit: int, rng: random.Random) -> str:
     """The text if it fits; else a PDF from a random page's start, or a page's text
     from a random paragraph, cut at `limit` characters."""
@@ -229,6 +272,57 @@ def excerpt(text: str, limit: int, rng: random.Random) -> str:
     starts = [s for s in marks if s <= len(text) - limit] or [marks[0]]
     start = rng.choice(starts)
     return text[start : start + limit]
+
+
+def part_text(
+    planned: list[dict[str, Any]],
+    by_id: dict[str, Entry],
+    texts: dict[str, str],
+    limit: int,
+    rng: random.Random,
+    shown: dict[str, dict[str, Any]],
+) -> str:
+    """One part file: each case's sources as the writer sees them. What is shown is
+    recorded in `shown` by source id."""
+    lines = []
+    for case in planned:
+        lines += [f"# Case {case['id']}: {case['type']}", ""]
+        for number, entry_id in enumerate(case["sources"], 1):
+            source_id = f"{case['id']}-s{number}"
+            text = excerpt(texts[entry_id], limit, rng)
+            shown[source_id] = {"entry": entry_id, "text": text}
+            entry = by_id[entry_id]
+            lines += [
+                f"## Source {source_id} ({entry['format']})",
+                f"URL: {entry['url']}",
+            ]
+            whole = len(texts[entry_id])
+            if len(text) < whole:
+                lines.append(f"(part of a longer source: {whole:,} characters)")
+            lines += ["", text, ""]
+    return "\n".join(lines)
+
+
+def rebundle(
+    seen: dict[str, Any],
+    flagged: set[str],
+    entries: list[Entry],
+    texts: dict[str, str],
+    limit: int,
+    seed: int,
+) -> tuple[dict[str, Any], str]:
+    """What the writer has seen, with the flagged cases given new sources, and the
+    part file that shows them. The flagged cases' old sources leave `sources`."""
+    planned = replace(seen["plan"], flagged, entries, texts, seed)
+    shown = {
+        source_id: source
+        for source_id, source in seen["sources"].items()
+        if source_id.rsplit("-s", 1)[0] not in flagged
+    }
+    by_id = {e["id"]: e for e in entries}
+    cases = [case for case in planned if case["id"] in flagged]
+    text = part_text(cases, by_id, texts, limit, random.Random(seed), shown)
+    return {"plan": planned, "sources": shown}, text
 
 
 def bundle(
@@ -252,24 +346,10 @@ def bundle(
     shown: dict[str, dict[str, Any]] = {}
     parts = []
     for first in range(0, len(planned), per_part):
-        lines = []
-        for case in planned[first : first + per_part]:
-            lines += [f"# Case {case['id']}: {case['type']}", ""]
-            for number, entry_id in enumerate(case["sources"], 1):
-                source_id = f"{case['id']}-s{number}"
-                text = excerpt(texts[entry_id], limit, rng)
-                shown[source_id] = {"entry": entry_id, "text": text}
-                entry = by_id[entry_id]
-                lines += [
-                    f"## Source {source_id} ({entry['format']})",
-                    f"URL: {entry['url']}",
-                ]
-                whole = len(texts[entry_id])
-                if len(text) < whole:
-                    lines.append(f"(part of a longer source: {whole:,} characters)")
-                lines += ["", text, ""]
+        cases = planned[first : first + per_part]
         part = out / f"part-{first // per_part + 1}.md"
-        part.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        text = part_text(cases, by_id, texts, limit, rng, shown)
+        part.write_text(text, encoding="utf-8", newline="\n")
         parts.append(part)
     seen = json.dumps({"plan": planned, "sources": shown}, indent=1, ensure_ascii=False)
     (out / "plan.json").write_text(seen + "\n", encoding="utf-8", newline="\n")

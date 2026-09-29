@@ -15,6 +15,8 @@
     uv run python -m evaluation check-conversations KEY.json ... --plan PLAN.json \
         [--out data/eval/SET/key.json]           # writes the whole key when clean
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
+    uv run python -m evaluation replace-cases BUNDLE v4c53 --catalogue FILE --seed N \
+        --part 5                              # new sources for flagged cases
     uv run python -m evaluation table-questions --out data/eval/x9-tables/questions.json
     uv run --env-file .env python -m evaluation quote-retrieval --version N --out FILE
     uv run python -m evaluation select-form table=FILE rows=FILE both=FILE page=FILE
@@ -35,6 +37,7 @@ DIR/pairs.json, and `unblind`, which reads the verdicts from DIR/verdicts.json.
 
 import argparse
 import json
+import shutil
 import sys
 import time
 from collections import Counter
@@ -156,6 +159,19 @@ def parser() -> argparse.ArgumentParser:
         help="when clean, write key.json and questions.json here",
     )
     checked.add_argument("--seed", type=int, help="shuffles the blind questions")
+    redrawn = commands.add_parser(
+        "replace-cases", help="new sources for cases the writer flagged (v4)"
+    )
+    redrawn.add_argument("bundle", type=Path, help="the bundle folder")
+    redrawn.add_argument("cases", nargs="+", help="flagged case ids")
+    redrawn.add_argument("--catalogue", type=Path, required=True)
+    redrawn.add_argument("--seed", type=int, required=True)
+    redrawn.add_argument(
+        "--part", type=int, required=True, help="the new part's number"
+    )
+    redrawn.add_argument(
+        "--limit", type=int, default=8000, help="characters per source"
+    )
     guarded = commands.add_parser(
         "guardrails", help="check a run for shown prices and missed emergencies"
     )
@@ -421,6 +437,32 @@ def run_plan_cases(args: argparse.Namespace) -> int:
         print(f"{count:5}  {label}")
     sources = sum(len(c["sources"]) for c in planned)
     print(f"{len(planned)} cases, {sources} sources, {len(parts)} parts in {args.out}")
+    return 0
+
+
+def run_replace_cases(args: argparse.Namespace) -> int:
+    plan_file = args.bundle / "plan.json"
+    seen = grades.read_json(plan_file)
+    unknown = set(args.cases) - {case["id"] for case in seen["plan"]}
+    if unknown:
+        raise ValueError(f"not planned: {', '.join(sorted(unknown))}")
+    part = args.bundle / f"part-{args.part}.md"
+    if part.exists():
+        raise ValueError(f"{part} exists already")
+    entries = grades.read_json(args.catalogue)
+    texts = {
+        e["id"]: cases.source_text(e)
+        for e in entries
+        if e["format"] not in cases.UNINDEXED
+    }
+    replaced, text = cases.rebundle(
+        seen, set(args.cases), entries, texts, args.limit, args.seed
+    )
+    # The first plan stays beside the new one: the writer saw both.
+    shutil.copyfile(plan_file, args.bundle / f"plan-before-part-{args.part}.json")
+    write_json(plan_file, replaced)
+    part.write_text(text, encoding="utf-8", newline="\n")
+    print(f"{len(args.cases)} cases given new sources in {part}")
     return 0
 
 
@@ -964,6 +1006,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_plan_cases(args)
         if args.command == "check-cases":
             return run_check_cases(args)
+        if args.command == "replace-cases":
+            return run_replace_cases(args)
         if args.command == "grades":
             return run_grades(args)
         if args.command == "guardrails":

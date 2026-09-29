@@ -444,3 +444,107 @@ def test_the_command_line_seals_only_a_clean_key_once(
     sets.register("heldout-v4", "test", tmp_path / "eval", tmp_path / "sets.json")
     assert cli.main(command + ["--out-set", str(out), "--seed", "9"]) == 1
     assert capsys.readouterr().out.endswith("already holds a key\n")
+
+
+def test_a_comparison_never_pairs_two_sources_about_one_product() -> None:
+    page = entry("page:solo", "page:product", "plaster")
+    declaration = entry("file:dop", "pdf:performance", "plaster", pages=["page:solo"])
+    report = entry("file:lrv", "pdf:performance", "plaster", pages=["page:solo"])
+    other = entry("file:duro", "pdf:performance", "render")
+    pool_ = [page, declaration, report, other]
+    groups = [[page, declaration, report], [other]]
+
+    found = cases.second_source(
+        "comparison", declaration, pool_, groups, {"file:dop"}, Counter(),
+        random.Random(1),
+    )  # fmt: skip
+
+    assert found is other
+
+
+def test_flagged_cases_get_new_unused_sources_of_the_same_format() -> None:
+    entries = pool()
+    texts = texts_of(entries)
+    planned = cases.plan(entries, texts, seed=4)
+    comparison = next(c for c in planned if c["type"] == "comparison")
+    single = next(c for c in planned if c["type"] == "simple")
+    flagged = {comparison["id"], single["id"]}
+
+    replaced = cases.replace(planned, flagged, entries, texts, seed=5)
+
+    formats = {e["id"]: e["format"] for e in entries}
+    used = {s for c in planned for s in c["sources"]}
+    for old, new in zip(planned, replaced, strict=True):
+        if old["id"] not in flagged:
+            assert new == old
+            continue
+        assert len(new["sources"]) == len(old["sources"])
+        assert not used & set(new["sources"])
+        assert formats[new["sources"][0]] == formats[old["sources"][0]]
+    assert replaced == cases.replace(planned, flagged, entries, texts, seed=5)
+
+
+def test_a_replacement_that_cannot_be_drawn_is_a_clear_error() -> None:
+    entries = [entry(f"page:{n}", "page:product", "t") for n in range(3)]
+    texts = texts_of(entries)
+    planned = [
+        {"id": "v4c01", "type": "simple", "sources": ["page:0"]},
+        {"id": "v4c02", "type": "comparison", "sources": ["page:1", "page:2"]},
+    ]
+    spare = [*planned, {"id": "v4c03", "type": "simple", "sources": []}]
+    more = entries + [entry("page:3", "page:product", "t")]
+
+    with pytest.raises(ValueError, match="no page:product source left to replace"):
+        cases.replace(planned, {"v4c01"}, entries, texts, seed=1)
+    with pytest.raises(ValueError, match="no second page:product source to replace"):
+        cases.replace(spare, {"v4c02"}, more, texts_of(more), seed=1)
+
+
+def test_a_rebundle_shows_only_the_new_sources_and_drops_the_old() -> None:
+    entries = [entry(f"page:{n}", "page:product", f"t{n}") for n in range(6)]
+    texts = texts_of(entries)
+    planned = [
+        {"id": "v4c01", "type": "simple", "sources": ["page:0"]},
+        {"id": "v4c02", "type": "comparison", "sources": ["page:1", "page:2"]},
+    ]
+    shown = {sid: {"entry": "x", "text": "old"}
+             for sid in ("v4c01-s1", "v4c02-s1", "v4c02-s2")}  # fmt: skip
+
+    seen, text = cases.rebundle(
+        {"plan": planned, "sources": shown}, {"v4c02"}, entries, texts, 8000, 3
+    )
+
+    assert seen["plan"][0] == planned[0]
+    assert set(seen["plan"][1]["sources"]) <= {"page:3", "page:4", "page:5"}
+    assert seen["sources"]["v4c01-s1"]["text"] == "old"
+    assert seen["sources"]["v4c02-s2"]["entry"] == seen["plan"][1]["sources"][1]
+    assert text.startswith("# Case v4c02: comparison")
+    assert "v4c01" not in text
+
+
+def test_the_command_line_replaces_flagged_cases_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    entries = [entry(f"page:{n}", "page:product", f"t{n}") for n in range(6)]
+    monkeypatch.setattr(cases, "source_text", lambda e: "Words to quote. " * 20)
+    listed = tmp_path / "catalogue.json"
+    listed.write_text(json.dumps(entries))
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    planned = [{"id": "v4c01", "type": "comparison", "sources": ["page:0", "page:1"]}]
+    shown = {"v4c01-s1": {"entry": "page:0", "text": "old"}}
+    (bundle / "plan.json").write_text(json.dumps({"plan": planned, "sources": shown}))
+    command = ["replace-cases", str(bundle), "v4c01", "--catalogue", str(listed),
+               "--seed", "3", "--part", "5"]  # fmt: skip
+
+    assert cli.main(command) == 0
+    assert "1 cases given new sources" in capsys.readouterr().out
+    seen = json.loads((bundle / "plan.json").read_text(encoding="utf-8"))
+    assert seen["plan"][0]["sources"] != ["page:0", "page:1"]
+    before = json.loads((bundle / "plan-before-part-5.json").read_text())
+    assert before["plan"] == planned
+    assert (bundle / "part-5.md").read_text().startswith("# Case v4c01")
+    assert cli.main(command) == 1
+    assert "exists already" in capsys.readouterr().err
+    assert cli.main([*command[:2], "v4c99", *command[3:]]) == 1
+    assert "not planned: v4c99" in capsys.readouterr().err

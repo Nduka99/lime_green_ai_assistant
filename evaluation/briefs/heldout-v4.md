@@ -37,8 +37,10 @@ says, using only the sources given for that case.
   advice or warnings of your own. For `emergency`, leave it empty (""): the assistant
   gives a fixed referral written elsewhere. For the other refusals, say what is not
   covered.
-- `parts` (answered types only; empty otherwise): one entry per thing the customer asks,
-  each with `id` ("p1", "p2", …), `asks`, `expected_answer` and `evidence`: a list of
+- `parts` (answered types only; empty otherwise): one entry per thing the customer asks
+  (a `comparison` asks the property of each product: one part per product, each quoted
+  from that product's source), each with `id` ("p1", "p2", …), `asks`,
+  `expected_answer` and `evidence`: a list of
   `{"source": "v4c01-s1", "page": 2, "quote": "..."}`. `page` is the number from the
   `[page N]` marker above the quote in a PDF source; for a web page leave `page` out.
 - `must_not`: statements a wrong answer might make that the sources contradict or do
