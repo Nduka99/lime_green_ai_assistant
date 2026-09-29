@@ -255,3 +255,79 @@ two configurations' arithmetic moves the model on the tokens both replies share.
 (A regeneration through the completion endpoint, with the same prompt tokens and schema,
 reproduced only 6 of 23 kept replies: the two endpoints do not generate identically, so
 it was not used.) Every diagnosis is run again this way before the gate is read.
+
+## Results
+
+### M2. Speed per setting (40 replayed answer requests each)
+
+| Pass | Prompt tok/s | Output tok/s | s per answer | Peak GPU MiB | Min available MB | Server private MB | Drafts accepted |
+|---|---|---|---|---|---|---|---|
+| base (A) | 275 | 30.3 | 17.5 | 5,046 | 3,320 | 12,437 | – |
+| base (B, last) | 278 | 30.4 | 17.3 | 5,002 | 5,072 | 12,448 | – |
+| no map | 306 | 30.6 | 16.5 | 4,995 | 4,189 | 31,730 | – |
+| no map, cache off | 307 | 30.8 | 16.4 | 4,995 | 11,935 | 23,567 | – |
+| + `-b/-ub 2048` | 525 | 30.5 | 13.0 | 5,067 | 11,354 | 24,898 | – |
+| + `-b/-ub 4096` | 606 | 30.8 | 12.7 | 5,472 | 11,642 | 27,016 | – |
+| MTP file, no drafts | 527 | 30.9 | 12.4 | 5,074 | 11,572 | 24,847 | – |
+| MTP, 1 draft | 518 | 37.3 | 11.6 | 5,994 | 11,352 | 27,832 | 5,258 / 5,461 |
+| MTP, 2 drafts | 518 | 41.0 | 11.0 | 6,058 | 11,382 | 27,873 | 7,010 / 7,530 |
+| MTP, 3 drafts | 517 | 42.8 | 10.3 | 6,152 | 11,601 | 28,060 | 7,322 / 8,301 |
+| n-gram simple | 525 | 21.4 | 16.8 | 5,108 | 11,700 | 25,168 | 2,777 / 12,438 |
+| n-gram map-k | 524 | 27.3 | 14.1 | 5,106 | 11,629 | 25,191 | 708 / 3,506 |
+
+**Repeatability and noise.** Passes A and B gave the same 40 replies; B − A = −0.108 s
+per answer [−0.227, +0.005], so a step must save more than 0.108 s.
+
+**Gate, step by step** (differences are step − kept, seconds per answer, 95% interval):
+
+1. **No memory map** — same 40 replies as the base; −0.93 [−1.07, −0.82]; with the
+   prompt cache off (amendment 2; the cache changed no reply and no timing: −0.07
+   [−0.16, +0.03]) 11.9 GB stays available. **Kept.**
+2. **`-b 2048 -ub 2048`** on top — −3.47 [−4.68, −2.40]; 11.4 GB available, GPU 5,067
+   MiB. 23 of 40 replies differ. Read as amendment 3 sets out, every one reproduced;
+   20 part within 0.5 nats. The other three: a955 and a783 choose compact or indented
+   JSON at the first token (0.23–0.28 nats on the kept side, 0.75 on the step's), and
+   a894 chooses which source to cite next (0.62 on the kept side, 0.38 the other way on
+   the step's, so the gap moved about 1.0 nat). On the 2,150 tokens both replies share,
+   the batch change itself moves log-probabilities by median 0.000, 99th percentile
+   0.30, at most 0.96 nats: a gap moving by about 1 nat is this arithmetic, not a
+   defect. All 23 are numeric. **Kept.**
+3. **`-b 4096 -ub 4096`** — against step 2: −0.31 [−0.97, +0.46]. Not faster. Not kept.
+4. **`-fa on`** — flash attention was already on. Skipped as registered.
+5. **MTP file** — without drafts it gives 18 of 40 replies identical to the kept
+   configuration's: its weights differ (header: the importance matrix has 77 chunks, not
+   76; 5 tensors have other types; expert tensors differ byte for byte; the Q8_0 tensors
+   are identical). By the registered rule MTP needs a quality evaluation of its own.
+6. **MTP drafts** against the MTP file without drafts: 1 draft −0.84 [−1.47, −0.15];
+   2 drafts −1.45 [−2.13, −0.77]; 3 drafts −2.14 [−2.81, −1.41] (against 2 drafts −0.68
+   [−1.46, +0.05], within noise, so 2 would be chosen). But speculation is not shown to
+   be exact under the schema's grammar in this build: for 2 drafts, 17 of 19 differences
+   part within 0.5 nats, a894 is the 0.62-nat choice above, and a868 parts where the
+   model without drafts leads by 14 nats (a reply it would not write); and the
+   probabilities the server reports under speculation differ from the model's on shared
+   tokens by up to 8.6 nats (99th percentile 4.3). **Not kept.** Any later MTP work must
+   first show that speculation is exact under the grammar, then pass a quality
+   evaluation of the MTP file; llama.cpp also cannot yet run MTP with `--mmproj` (S4).
+7. **n-gram speculation** — slower: `ngram-simple` +3.82 [+2.73, +5.15] (22% of drafts
+   accepted, drafts up to 64 tokens), `ngram-map-k` +1.14 [+0.68, +1.66] (20%). Checking
+   a long draft costs more on this model, whose experts run on the CPU, than the
+   accepted tokens save. Not kept.
+
+**Kept configuration:** today's flags plus `--load-mode none -b 2048 -ub 2048`, with the
+prompt cache sized by M4: 17.4 s → 13.0 s per answer (−25%), same model file, replies
+numerically equivalent. The weights then sit in pinned host memory (`CUDA_Host` 19,275
+MiB), which is why prompt processing speeds up.
+
+### M1. Memory per context size (kept configuration, cache off, after load)
+
+| `-c` | KV cache | Recurrent state | GPU compute | Host compute | GPU total | Server private |
+|---|---|---|---|---|---|---|
+| 8,192 | 160 MiB | 62.8 MiB | 486 MiB | 64 MiB | 5,024 MiB | 24,460 MB |
+| 16,384 | 320 MiB | 62.8 MiB | 518 MiB | 96 MiB | 5,216 MiB | 24,687 MB |
+| 32,768 | 640 MiB | 62.8 MiB | 582 MiB | 160 MiB | 5,600 MiB | 25,135 MB |
+| 65,536 | 1,280 MiB | 62.8 MiB | 710 MiB | 288 MiB | 6,368 MiB | 26,034 MB |
+
+The KV cache is exactly 20 KiB per token (10 attention layers × 2 KV heads × 256 × K and
+V × 2 bytes), as predicted; the recurrent state is fixed. Even 65,536 tokens fit the GPU
+limit (7,680 MiB) beside the other servers. M3's 64-passage prompts hold 10,085–18,703
+tokens (median 16,318), so M3 runs at `-c 32768`.
