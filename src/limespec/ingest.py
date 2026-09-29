@@ -20,6 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from limespec import config, store
+from limespec.models import described
 from limespec.retrieve import Embed
 
 HEADINGS = ["h1", "h2", "h3", "h4"]
@@ -229,35 +230,50 @@ def corpus_hash(page_hashes: Sequence[tuple[str, str]]) -> str:
 class PreparedIndex:
     """Everything one index version holds, ready to be written to Postgres."""
 
-    pages: list[tuple[str, str, str, str]]  # url, title, fetched_at, sha256
-    passages: list[tuple[str, str, str, str]]  # url, title, heading, text
+    pages: list[store.PageRow]  # url, title, fetched_at, sha256
+    passages: list[store.PassageRow]  # url, title, heading, text, context, page
     vectors: list[list[float]]  # one per passage
     manifest: dict[str, str]
 
 
+def fingerprint_line(row: store.PassageRow) -> str:
+    """A passage as the fingerprint counts it: a web passage by its URL and text (as
+    every earlier version), a PDF passage also by its page and context."""
+    url, _, _, text, context, page = row
+    if page is None and not context:
+        return f"{url}\t{text}\n"
+    return f"{url}\t{page}\t{context}\t{text}\n"
+
+
 def prepare_index(
-    pages: Sequence[tuple[str, bytes, str]], embed: Embed
+    pages: Sequence[tuple[str, bytes, str]],
+    embed: Embed,
+    documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
 ) -> PreparedIndex:
-    """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages."""
-    page_rows: list[tuple[str, str, str, str]] = []  # url, title, fetched_at, sha256
-    rows: list[tuple[str, str, str, str]] = []  # url, title, heading, text
+    """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
+    documents whose passages are already built (PDFs, limespec.passages)."""
+    page_rows: list[store.PageRow] = []
+    rows: list[store.PassageRow] = []
     for url, raw, fetched_at in pages:
         try:
             title, passages = page_passages(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as error:
             raise IngestError(f"{url}: {error}") from error
         page_rows.append((url, title, fetched_at, hashlib.sha256(raw).hexdigest()))
-        rows += [(url, title, heading, text) for heading, text in passages]
+        rows += [(url, title, heading, text, "", None) for heading, text in passages]
+    for page_row, passage_rows in documents:
+        page_rows.append(page_row)
+        rows += passage_rows
 
     vectors: list[list[float]] = []
     for start in range(0, len(rows), config.EMBEDDING_BATCH_SIZE):
         batch = rows[start : start + config.EMBEDDING_BATCH_SIZE]
-        vectors += embed([f"{title}\n{text}" for _, title, _, text in batch])
+        vectors += embed([described(row[1], row[4], row[3]) for row in batch])
 
     # The site stamps each response with its render time, so page bytes (and the
     # corpus hash) change on every download; the passage hash changes only when
     # the indexed text does, which makes it the fingerprint for comparing builds.
-    passage_lines = "".join(f"{url}\t{text}\n" for url, _, _, text in rows)
+    passage_lines = "".join(fingerprint_line(row) for row in rows)
     manifest = {
         "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "corpus_sha256": corpus_hash([(row[0], row[3]) for row in page_rows]),

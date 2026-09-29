@@ -68,8 +68,12 @@ def find_quote(quote: str, text: str) -> str | None:
     return match.group(0) if match else None
 
 
-def quote_link(url: str, quote: str) -> str:
-    """A link that opens the page with the quote highlighted (a URL text fragment)."""
+def quote_link(url: str, quote: str, page: int | None = None) -> str:
+    """A link that opens the page with the quote highlighted (a URL text fragment),
+    or a PDF at the quote's page (RFC 8118 `page=`: browsers do not find text
+    fragments in PDFs)."""
+    if page is not None:
+        return f"{url}#page={page}"
     text = " ".join(quote.split())
     # Percent-encoding leaves '-' alone, but inside a text fragment it is syntax.
     return f"{url}#:~:text={percent_encode(text, safe='').replace('-', '%2D')}"
@@ -114,7 +118,7 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
                 title=passage.title,
                 heading=passage.heading,
                 quote=quote,
-                link=quote_link(passage.url, quote),
+                link=quote_link(passage.url, quote, passage.page),
                 fetched_at=passage.fetched_at,
             )
         )

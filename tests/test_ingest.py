@@ -143,9 +143,11 @@ def test_an_index_keeps_passages_per_page_with_exact_byte_hashes(
     assert len(prepared.vectors) == 10
     hashes = {url: sha256 for url, _, _, sha256 in prepared.pages}
     assert hashes[copy_url] == hashlib.sha256(windows_bytes).hexdigest()
-    assert sum(url == copy_url for url, _, _, _ in prepared.passages) == 2
+    assert sum(row[0] == copy_url for row in prepared.passages) == 2
     faq_text = next(
-        text for _, _, heading, text in prepared.passages if heading.startswith("How")
+        text
+        for _, _, heading, text, *_ in prepared.passages
+        if heading.startswith("How")
     )
     assert (
         faq_text == "How long does Mortex take to set?\nAbout two days in mild weather."
@@ -173,6 +175,26 @@ def test_passage_hash_ignores_byte_changes_that_do_not_change_the_text(
 
     assert first["corpus_sha256"] != second["corpus_sha256"]
     assert first["passages_sha256"] == second["passages_sha256"]
+
+
+def test_a_pdf_joins_the_index_with_its_page_and_context(
+    fixture_pages: list[tuple[str, bytes, str]], fake_embed: Embed
+) -> None:
+    url = "https://example.test/duro.pdf"
+    page_row = (url, "Duro Render — Data Sheet", "2026-09-12T10:00:00+00:00", "sha")
+    row = (url, page_row[1], "Performance", "Fire | Class A1", "Performance", 2)
+    read: list[str] = []
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        read.extend(texts)
+        return fake_embed(texts)
+
+    prepared = prepare_index(fixture_pages[:1], embed, [(page_row, [row])])
+    moved = prepare_index(fixture_pages[:1], embed, [(page_row, [(*row[:5], 3)])])
+
+    assert prepared.pages[-1] == page_row and prepared.passages[-1] == row
+    assert read[-1] == "Duro Render — Data Sheet\nPerformance\nFire | Class A1"
+    assert prepared.manifest["passages_sha256"] != moved.manifest["passages_sha256"]
 
 
 def test_a_failed_rebuild_leaves_the_live_index_intact(

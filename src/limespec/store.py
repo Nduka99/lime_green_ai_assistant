@@ -22,13 +22,16 @@ from limespec.retrieve import Embed, Rerank, fuse, rerank_top, unit_vector
 
 Connection = psycopg.Connection[tuple[Any, ...]]
 PageRow = tuple[str, str, str, str]  # url, title, fetched_at (ISO 8601), sha256
-PassageRow = tuple[str, str, str, str]  # url, title, heading, text
+# url, title, heading, text, context, page (None for a web page)
+PassageRow = tuple[str, str, str, str, str, int | None]
 
 # English stemming that keeps stop words (migration 20260928100000). pg_textsearch
 # finds a custom configuration only by its schema-qualified name.
 KEYWORD_CONFIG = "public.english_keep_stop"
-# What keyword search reads: the page title and the passage text, as SQLite did.
-KEYWORD_TEXT = sql.SQL("(title || ' ' || text)")
+# What keyword search reads: the title, the context (empty for web passages, X9) and
+# the text. pg_textsearch scores it with the named version's index, so versions
+# built before the context existed rank exactly as before.
+KEYWORD_TEXT = sql.SQL("(title || ' ' || context || ' ' || text)")
 
 
 def bm25_index(version_id: int) -> str:
@@ -80,17 +83,19 @@ def write_version(
         ).fetchone()
         assert version is not None
         rows = []
-        for (url, title, heading, text), vector in zip(passages, vectors, strict=True):
-            document_id = document_ids[url]
+        for passage, vector in zip(passages, vectors, strict=True):
+            url, title, heading, text, context, page = passage
             # A passage with a price is kept for audit but never searched (X16).
             commercial = prices.states_price(text)
             rows.append(
                 (
                     version[0],
-                    document_id,
+                    document_ids[url],
                     title,
                     heading,
                     text,
+                    context,
+                    page,
                     vector_text(vector),
                     commercial,
                 )
@@ -98,8 +103,8 @@ def write_version(
         with conn.cursor() as cursor:
             cursor.executemany(
                 "INSERT INTO passages (index_version_id, document_id, title, heading, "
-                "text, embedding, commercial) "
-                "VALUES (%s, %s, %s, %s, %s, %s::vector, %s)",
+                "text, context, page, embedding, commercial) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s)",
                 rows,
             )
         # A partial index keeps its own word statistics. The version id is a
@@ -254,13 +259,15 @@ def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]
     """The passages with these ids, in the order given."""
     rows = conn.execute(
         "SELECT passages.id, documents.url, passages.title, passages.heading, "
-        "passages.text, documents.fetched_at "
+        "passages.text, documents.fetched_at, passages.page, passages.context "
         "FROM passages JOIN documents ON documents.id = passages.document_id "
         "WHERE passages.id = ANY(%s)",
         (list(passage_ids),),
     ).fetchall()
     by_id = {}
-    for passage_id, url, title, heading, text, fetched_at in rows:
+    for passage_id, url, title, heading, text, fetched_at, page, context in rows:
         captured = fetched_at.astimezone(UTC).isoformat(timespec="seconds")
-        by_id[passage_id] = Passage(passage_id, url, title, heading, text, captured)
+        by_id[passage_id] = Passage(
+            passage_id, url, title, heading, text, captured, page, context
+        )
     return [by_id[passage_id] for passage_id in passage_ids]

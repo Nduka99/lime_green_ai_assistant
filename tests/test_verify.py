@@ -90,6 +90,12 @@ def test_the_quote_link_escapes_text_fragment_syntax() -> None:
     )
 
 
+def test_a_quote_from_a_pdf_links_to_its_page() -> None:
+    assert quote_link("https://example.test/a.pdf", "lime", 3) == (
+        "https://example.test/a.pdf#page=3"
+    )
+
+
 def test_an_unknown_source_id_is_rejected() -> None:
     result = check_claim(
         claim("Mortex is low carbon.", ("S9", "low-carbon mix")), SOURCES

@@ -14,13 +14,13 @@ PAGES = [
     ("https://example.test/support/faq", "FAQ", "2026-09-12T11:30:00+01:00",
      "sha-faq"),
 ]  # fmt: skip
-PASSAGES = [
+PASSAGES: list[store.PassageRow] = [
     ("https://example.test/products/duro", "Duro Render", "Duro Render",
-     "Duro Render\nDuro renders are free of cement."),
+     "Duro Render\nDuro renders are free of cement.", "", None),
     ("https://example.test/support/faq", "FAQ", "Delivery",
-     "Delivery\nWe deliver on weekdays."),
+     "Delivery\nWe deliver on weekdays.", "", None),
     ("https://example.test/support/faq", "FAQ", "Samples",
-     "Samples\nThe sample pack holds three colours."),
+     "Samples\nThe sample pack holds three colours.", "", None),
 ]  # fmt: skip
 # Two dimensions padded to the column's 1024; each passage points a different way.
 VECTORS = [[1.0, 0.0], [0.0, 1.0], [0.6, 0.8]]
@@ -39,6 +39,33 @@ def build(pg: store.Connection) -> int:
     return store.write_version(
         pg, PAGES, PASSAGES, [padded(v) for v in VECTORS], MANIFEST
     )
+
+
+def test_a_pdf_passage_keeps_its_page_and_is_found_by_its_context(
+    pg: store.Connection,
+) -> None:
+    pdf = ("https://example.test/duro.pdf", "Duro Render — Data Sheet",
+           "2026-09-12T10:00:00+00:00", "sha-pdf")  # fmt: skip
+    table = (
+        "https://example.test/duro.pdf",
+        "Duro Render — Data Sheet",
+        "Performance",
+        "Fire | Class A1",
+        "Performance › Reaction class",
+        2,
+    )
+    version = store.write_version(
+        pg, [*PAGES, pdf], [*PASSAGES, table],
+        [padded(v) for v in [*VECTORS, [0.8, 0.6]]], MANIFEST,
+    )  # fmt: skip
+
+    found = store.keyword_ranking(pg, version, "reaction class", 10)
+
+    [passage] = store.load_passages(pg, found)
+    assert (passage.text, passage.page) == ("Fire | Class A1", 2)
+    assert passage.context == "Performance › Reaction class"
+    [web] = store.load_passages(pg, store.keyword_ranking(pg, version, "weekdays", 10))
+    assert (web.page, web.context) == (None, "")
 
 
 def test_vectors_are_sent_as_unit_length_text() -> None:
@@ -226,10 +253,11 @@ def test_the_live_version_cannot_be_deleted(pg: store.Connection) -> None:
 def test_a_passage_with_a_price_is_stored_but_never_searched(
     pg: store.Connection,
 ) -> None:
-    priced = [
+    priced: list[store.PassageRow] = [
         *PASSAGES[:2],
         ("https://example.test/support/faq", "FAQ", "Samples",
-         "Samples\nThe sample pack costs £5.00 and holds three colours."),
+         "Samples\nThe sample pack costs £5.00 and holds three colours.", "",
+         None),
     ]  # fmt: skip
     version = store.write_version(
         pg, PAGES, priced, [padded(v) for v in VECTORS], MANIFEST

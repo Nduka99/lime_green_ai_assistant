@@ -12,7 +12,7 @@ import math
 from collections.abc import Callable, Sequence
 
 from limespec import config
-from limespec.models import Passage
+from limespec.models import Passage, described
 
 Embed = Callable[[list[str]], list[list[float]]]
 # One relevance score per document for a query, in the documents' order.
@@ -43,8 +43,10 @@ def rerank_top(
     """The reranker's best passages among the fused candidates, best first."""
     if not candidates:
         return []
-    # The title tells the reranker which product a short passage is about.
-    scores = rerank(question, [f"{p.title}\n{p.text}" for p in candidates])
+    # The title (and a PDF passage's context) tells the reranker which product and
+    # section a short passage is about.
+    texts = [described(p.title, p.context, p.text) for p in candidates]
+    scores = rerank(question, texts)
     # A stable sort keeps the fused order among equal scores, so ties are deterministic.
     order = sorted(range(len(candidates)), key=lambda i: -scores[i])
     return [candidates[i] for i in order[: config.TOP_K]]

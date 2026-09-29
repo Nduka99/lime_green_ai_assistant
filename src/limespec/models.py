@@ -10,14 +10,25 @@ Status = Literal["answered", "insufficient_evidence", "safety_referral"]
 
 @dataclass(frozen=True)
 class Passage:
-    """One section of one web page: the unit that is searched and cited."""
+    """One section of a web page or of a PDF page: the unit that is searched and
+    cited."""
 
     id: int
     url: str
-    title: str  # page title
-    heading: str  # section heading; the passage text starts with it
-    text: str
+    title: str  # page or document title
+    heading: str  # section heading; a web passage's text starts with it
+    text: str  # the source's own words: the only part a quote may come from
     fetched_at: str  # when the page was captured, ISO 8601 UTC
+    page: int | None = None  # a PDF passage's page
+    # Searched and embedded with the text, never quoted: a PDF passage's section
+    # path, table caption and column headers (X9). Empty for web passages.
+    context: str = ""
+
+
+def described(title: str, context: str, text: str) -> str:
+    """What the embedding model and the reranker read for a passage: its title,
+    context and text, one per line (a web passage has no context)."""
+    return "\n".join(part for part in (title, context, text) if part)
 
 
 @dataclass(frozen=True)
