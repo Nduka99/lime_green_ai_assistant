@@ -14,7 +14,7 @@ the user's OK.
 
 | Port | Model | Role | Command line (after `-m`) |
 |---|---|---|---|
-| 8080 | Qwen3.6-35B-A3B UD-Q4_K_XL (22.4 GB) | understanding and answering | `-c 16384 -np 1 -ngl all --n-cpu-moe 40 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048` |
+| 8080 | Qwen3.6-35B-A3B UD-Q4_K_XL (22.4 GB) | understanding and answering | `-c 32768 -np 2 --no-kv-unified -ngl all --n-cpu-moe 40 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048` |
 | 8081 | Qwen3-Embedding-0.6B f16 (1.2 GB) | query and passage vectors | `--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
 | 8082 | bge-reranker-v2-m3 Q8_0 (0.6 GB) | reranking search candidates | `--reranking -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
 
@@ -31,8 +31,13 @@ All three add `-ngl all --fit off --cors-origins localhost` and read their API k
   of five (306 → 525 tokens/s). 4,096 was no faster.
 - `--cache-ram 2048`: the host prompt cache; the 8 GiB default left 3–5 GB of RAM free.
   2 GiB keeps all measured conversation reuse.
-- `-c 16384`: room for 32 passages (≤ 10.4k tokens) plus a 2,048-token answer.
-- `-np 1`: one request at a time (X41 measures two).
+- `-c 32768 -np 2 --no-kv-unified`: two slots of 16,384 tokens each (room for 32 passages,
+  ≤ 10.4k tokens, plus a 2,048-token answer), each with its own buffer (X41, D97). A request
+  goes to the slot sharing its longest prefix, so answer requests resume after their system
+  prompt (prompt reading 4.27 → 2.83 s) and two customers are served at once (median wait
+  25 → 20.6 s under two clients). Asked alone, a reply equals one slot's; asked beside
+  another request it can differ (batch arithmetic: 11 of 40 changed claims). `-tb 16` was
+  not faster.
 - Flash attention is on by default (`auto`). Speculative decoding is off: MTP needs another
   model file and was not exact under a JSON grammar; n-gram drafting was slower.
 
@@ -65,6 +70,9 @@ total at `-c` 8k / 16k / 32k / 64k; its own share at 16k is ≈3.1 GB.
 
 **RAM** = CPU-held weights (pinned, not pageable, with `--load-mode none`) + host compute
 buffers + the host prompt cache + process overhead. Generator ≈ 22–25 GB private.
+
+GPU per server now (after load): generator 3,503 MiB (two slots), embedder 2,675 MiB
+(≈3,030 after its first full batch), reranker 463 MiB.
 
 ## Slots and context: set them explicitly
 

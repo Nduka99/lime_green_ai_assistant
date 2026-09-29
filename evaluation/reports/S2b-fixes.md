@@ -62,7 +62,8 @@ question unanswered, like a refusal); S2's scale counts it as wrong, as S2's sit
 
 **Amendment (29 September, before any rung runs).** After A5 the support servers changed
 (D96: one slot and no prompt cache; the reranker's near-tied candidates can order
-differently, and the top-8 set differed in 4 of 100 calls) and every model call now shares
+differently, and the top-8 set differed in 4 of 100 calls), the generator runs two slots
+(D97; asked one at a time, its replies equal one slot's) and every model call now shares
 one HTTP client (`38e4fc1`, timing only). So rung 0 is run again, as `unfixed` was, on the
 new servers (`unfixed-d96`), and every rung is compared with it; A5's noise floor
 (generator arithmetic) and `N_s` stand. `unfixed-d96` against A5's `unfixed` is reported
