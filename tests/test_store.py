@@ -233,6 +233,23 @@ def test_an_answer_record_round_trips_as_plain_data(pg: store.Connection) -> Non
     )  # fmt: skip
 
 
+def test_an_answer_s_given_passages_are_read_back_in_order(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    ids = [p.id for p in store.document_passages(pg, version, PASSAGES[1][0])]
+    answer_id = store.record_answer(
+        pg, "q", "answered", {}, [], list(reversed(ids)), version, "e", "p", 1.0
+    )
+
+    used, passages = store.given_passages(pg, answer_id)
+
+    assert used == version
+    assert [p.id for p in passages] == list(reversed(ids))
+    with pytest.raises(ValueError, match="no answer record"):
+        store.given_passages(pg, answer_id + 1000)
+
+
 def test_an_unknown_status_is_refused_by_the_database(pg: store.Connection) -> None:
     with pytest.raises(psycopg.errors.CheckViolation):
         store.record_answer(

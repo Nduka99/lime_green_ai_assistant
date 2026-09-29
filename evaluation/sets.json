@@ -9,6 +9,12 @@
     "plan.json": "cc72b38e89cf019d851007e532144566e01b50a33594ffa6259276b18074f703"
    }
   },
+  "exposure-v1": {
+   "description": "78 invented exposure questions and 76 look-alikes, from the dev repo's evaluation/exposure_questions.json (written 13 Sept, 20+20 held out before the separate emergency request existed); gates any change to the first model request",
+   "files": {
+    "questions.json": "f747a92ac8e245afd2e64c0070ead56d1053c977b7bd18e1703e65c53155224c"
+   }
+  },
   "frozen90": {
    "description": "Frozen evaluation (Phase 4): 18 cases x 5 wordings = 90 questions, key locked before the engine was built; retrieval runs of the four methods on the submitted index",
    "files": {

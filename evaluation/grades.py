@@ -1,7 +1,7 @@
 """Count graded answers per arm: overall, by case type and by wording style.
 
 A grading sitting is a folder holding `grades.json` ({question id: {arm:
-{"verdict": "sound" | "partial" | "wrong", "reason": ...}}}) and one
+{"verdict": "sound" | "partial" | "missing" | "wrong", "reason": ...}}}) and one
 `answers-<arm>.json` per arm, the answers as the endpoint returned them. The
 automatic status match and the median time come from the saved answers, so they
 are reported beside the grades rather than decided by the grader.
@@ -12,7 +12,17 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-VERDICTS = ("sound", "partial", "wrong")
+VERDICTS = ("sound", "partial", "missing", "wrong")
+# CRAG's scores (Yang et al., NeurIPS 2024): an answerable question left unanswered
+# ("missing") costs nothing, a wrong or forbidden answer costs a point, because a
+# customer is better served by a referral than by a confident error.
+SCORES = {"sound": 1.0, "partial": 0.5, "missing": 0.0, "wrong": -1.0}
+
+
+def legacy(verdict: str) -> str:
+    """The verdict on the three-level scale of sittings before "missing" existed,
+    where an answerable question refused counted as wrong."""
+    return "wrong" if verdict == "missing" else verdict
 
 
 def read_json(path: Path) -> Any:
@@ -140,7 +150,8 @@ def arm_totals(
 def markdown(result: dict[str, Any], title: str) -> str:
     arms = result["arms"]
     lines = [
-        f"{title}: {result['questions']} answers per arm, sound / partial / wrong.",
+        f"{title}: {result['questions']} answers per arm, "
+        "sound / partial / missing / wrong.",
         "",
         "| Group | Answers | " + " | ".join(arms) + " |",
         "|---|---|" + "---|" * len(arms),

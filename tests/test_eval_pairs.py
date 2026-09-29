@@ -62,15 +62,14 @@ def question_id(text: str) -> str:
 
 
 def test_only_answers_that_differ_are_compared() -> None:
-    first, second = runs().values()
     error = {"id": "x", "question": "q", "error": "503"}
 
-    found = pairs.differing(first, second, [row["id"] for row in QUESTIONS])
+    found = pairs.differing(runs(), [row["id"] for row in QUESTIONS])
 
     assert sorted(found) == sorted(
         [question_id("joints rushed?"), question_id("swallowed rushed?")]
     )
-    assert pairs.differing({"x": error}, {"x": dict(error)}, ["x"]) == []
+    assert pairs.differing({"a": {"x": error}, "b": {"x": dict(error)}}, ["x"]) == []
     assert pairs.shown(error) == {"error": "503"}
 
 
@@ -81,16 +80,37 @@ def test_blind_pairs_hide_the_runs_and_unblind_restores_them() -> None:
     again, _ = pairs.blind(ids, runs(), seed=28)
 
     assert blinded == again  # the same seed shuffles the same way
-    assert all(sorted(names) == ["pg", "v5"] for names in order.values())
+    assert all(sorted(sum(groups, [])) == ["pg", "v5"] for groups in order.values())
     assert "v5" not in json.dumps(blinded) and "pg" not in json.dumps(blinded)
     verdicts = {
         pair["id"]: {"A": {"verdict": "sound"}, "B": {"verdict": "wrong"}}
         for pair in blinded
     }
     graded = pairs.unblind(verdicts, order)
-    for qid, names in order.items():
-        assert graded[qid][names[0]] == {"verdict": "sound"}
-        assert graded[qid][names[1]] == {"verdict": "wrong"}
+    for qid, groups in order.items():  # runs that agree share the letter "A"
+        for verdict, group in zip(["sound", "wrong"], groups, strict=False):
+            assert all(graded[qid][name] == {"verdict": verdict} for name in group)
+
+
+def test_runs_showing_the_same_answer_share_one_letter() -> None:
+    three = {**runs(), "again": runs()["pg"]}
+    joints = question_id("joints rushed?")
+
+    blinded, order = pairs.blind([joints], three, seed=3)
+
+    assert sorted(sorted(group) for group in order[joints]) == [["again", "pg"], ["v5"]]
+    assert set(blinded[0]) == {"id", "question", "A", "B"}
+    verdicts = {joints: {"A": {"verdict": "sound"}, "B": {"verdict": "missing"}}}
+    graded = pairs.unblind(verdicts, order)
+    assert graded[joints]["pg"] == graded[joints]["again"]
+
+
+def test_an_order_written_before_multi_run_blinding_still_unblinds() -> None:
+    verdicts = {"q1": {"A": {"verdict": "sound"}, "B": {"verdict": "wrong"}}}
+
+    graded = pairs.unblind(verdicts, {"q1": ["pg", "v5"]})
+
+    assert graded == {"q1": {"pg": {"verdict": "sound"}, "v5": {"verdict": "wrong"}}}
 
 
 def test_differences_are_counted_per_case_with_status_and_referrals() -> None:
@@ -117,6 +137,24 @@ def test_differences_are_counted_per_case_with_status_and_referrals() -> None:
     assert "| Safety referral on emergency questions | 2/2 | 1/2 |" in table
     assert "Answers that differ: 2 of 4" in table
     assert "| sound | -2 |" in table
+    assert "| missing | +0 |" in table
+    assert result["score"]["difference"] == pytest.approx(
+        -1.0
+    )  # -2 per case over 2 wordings
+    assert "| score per case (CRAG) | -1.000 |" in table
+
+
+def test_a_refused_answerable_question_is_wrong_and_also_counted_missing() -> None:
+    joints = question_id("joints rushed?")
+    graded = {joints: {"v5": {"verdict": "sound"}, "pg": {"verdict": "missing"}}}
+    two = {"v5": runs()["v5"], "pg": runs()["pg"]}
+
+    result = pairs.compare(KEY, QUESTIONS, two, graded)
+
+    assert result["wrong"]["difference"] == 1
+    assert result["missing"]["difference"] == 1
+    assert result["sound"]["difference"] == -1
+    assert result["score"]["difference"] == pytest.approx(-0.25)  # -1 over 2, 2 cases
 
 
 def make_set(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[Path, Path]:
@@ -164,7 +202,7 @@ def test_the_command_line_writes_blind_pairs_then_compares_their_verdicts(
     assert code == 0 and "| sound | +0 |" in text
     code, text = run(capsys, tmp_path, "unblind", "demo", *files, "--dir", str(out),
                      "--json")  # fmt: skip
-    assert json.loads(text)["differing"] == 2
+    assert json.loads(text)[0]["differing"] == 2
 
 
 def test_two_runs_with_the_same_file_name_are_refused(
@@ -175,4 +213,30 @@ def test_two_runs_with_the_same_file_name_are_refused(
     code, text = run(capsys, tmp_path, "blind", "demo", str(first), str(first),
                      "--seed", "1", "--out", str(tmp_path / "x"))  # fmt: skip
 
-    assert code == 1 and "different file names" in text
+    assert code == 1 and "different file name" in text
+
+
+def test_three_runs_are_blinded_together_and_the_last_is_compared_with_each(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first, second = make_set(tmp_path, capsys)
+    third = tmp_path / "answers-copy.json"
+    third.write_text(second.read_text())
+    out = tmp_path / "blind"
+    files = [str(first), str(second), str(third)]
+
+    code, text = run(capsys, tmp_path, "blind", "demo", *files, "--seed", "5",
+                     "--out", str(out))  # fmt: skip
+    assert (code, text) == (0, f"2 of 4 answers differ; pairs in {out}\n")
+    blinded = json.loads((out / "pairs.json").read_text())
+    verdicts = {
+        pair["id"]: {"A": {"verdict": "sound"}, "B": {"verdict": "sound"}}
+        for pair in blinded
+    }
+    (out / "verdicts.json").write_text(json.dumps(verdicts))
+    code, text = run(capsys, tmp_path, "unblind", "demo", *files, "--dir", str(out),
+                     "--json")  # fmt: skip
+    results = json.loads(text)
+    assert code == 0
+    assert [r["runs"] for r in results] == [["v5", "copy"], ["pg", "copy"]]
+    assert [r["differing"] for r in results] == [2, 0]

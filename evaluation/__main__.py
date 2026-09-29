@@ -19,6 +19,7 @@
     uv run --env-file .env python -m evaluation quote-retrieval --version N --out FILE
     uv run python -m evaluation select-form table=FILE rows=FILE both=FILE page=FILE
     uv run --env-file .env python -m evaluation coverage conv-v1 --version N  # X36
+    uv run --env-file .env python -m evaluation reach SET RUN.json  # evidence given
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
@@ -53,6 +54,7 @@ from evaluation import (
     pages,
     pairs,
     parsing,
+    reach,
     retrieval,
     sets,
 )
@@ -184,6 +186,12 @@ def parser() -> argparse.ArgumentParser:
     )
     covered.add_argument("name")
     covered.add_argument("--version", type=int, required=True)
+    reached = commands.add_parser(
+        "reach", help="did the passages each answer's model was given hold the evidence"
+    )
+    reached.add_argument("name")
+    reached.add_argument("run", type=Path, help="an answers file from `ask` (v1 API)")
+    reached.add_argument("--out", type=Path, help="a JSON file with every part's row")
     selected = commands.add_parser(
         "select-form", help="compare X9's arms and apply its selection rule"
     )
@@ -208,16 +216,19 @@ def parser() -> argparse.ArgumentParser:
         help="/api/answer for the submitted v5 (default: the v1 API)",
     )
     asked.add_argument("--run", required=True, help="a name for this run's file")
-    hidden = commands.add_parser("blind", help="write two runs' different answers")
+    hidden = commands.add_parser("blind", help="write runs' different answers, blind")
     hidden.add_argument("name")
-    hidden.add_argument("first", type=Path, help="the baseline run's answers file")
-    hidden.add_argument("second", type=Path, help="the candidate run's answers file")
+    hidden.add_argument(
+        "runs",
+        type=Path,
+        nargs="+",
+        help="answers files, baselines first, candidate last",
+    )
     hidden.add_argument("--seed", type=int, required=True)
     hidden.add_argument("--out", type=Path, required=True)
-    shown = commands.add_parser("unblind", help="compare two runs from blind verdicts")
+    shown = commands.add_parser("unblind", help="compare runs from blind verdicts")
     shown.add_argument("name")
-    shown.add_argument("first", type=Path)
-    shown.add_argument("second", type=Path)
+    shown.add_argument("runs", type=Path, nargs="+", help="the files given to blind")
     shown.add_argument("--dir", type=Path, required=True)
     shown.add_argument("--json", action="store_true")
     return main
@@ -541,6 +552,31 @@ def run_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_reach(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    given: dict[str, list[Passage]] = {}
+    versions = set()
+    with assistant.connect() as conn:
+        for record in grades.read_json(args.run):
+            if "answer_id" in record:
+                version, passages = store.given_passages(conn, record["answer_id"])
+                versions.add(version)
+                given[record["id"]] = passages
+        if len(versions) != 1:
+            raise ValueError(
+                f"the run must use one index version, not {sorted(versions)}"
+            )
+        texts = store.searchable_texts(conn, versions.pop())
+    rows = reach.score(key, questions, given, texts)
+    found = reach.summary(rows)
+    if args.out:
+        write_json(args.out, {"summary": found, "rows": rows})
+    print(reach.text(found))
+    return 0
+
+
 def run_select_form(args: argparse.Namespace) -> int:
     arms = {}
     for run in args.runs:
@@ -586,23 +622,23 @@ def run_grades(args: argparse.Namespace) -> int:
     return 0
 
 
-def load_runs(first: Path, second: Path) -> dict[str, pairs.Records]:
-    """Two answers files by run name (the file name without "answers-")."""
+def load_runs(paths: list[Path]) -> dict[str, pairs.Records]:
+    """Answers files by run name (the file name without "answers-"), in the order
+    given: at least two, the candidate last."""
     runs = {}
-    for path in (first, second):
+    for path in paths:
         records = grades.read_json(path)
         runs[path.stem.removeprefix("answers-")] = {r["id"]: r for r in records}
-    if len(runs) != 2:
-        raise ValueError("the two runs need different file names")
+    if len(runs) < 2 or len(runs) != len(paths):
+        raise ValueError("give at least two runs, each with a different file name")
     return runs
 
 
 def run_blind(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")["questions"]
-    runs = load_runs(args.first, args.second)
-    first, second = runs.values()
-    ids = pairs.differing(first, second, [row["id"] for row in questions])
+    runs = load_runs(args.runs)
+    ids = pairs.differing(runs, [row["id"] for row in questions])
     blinded, order = pairs.blind(ids, runs, args.seed)
     ask.write_records(args.out / "pairs.json", blinded)
     (args.out / "order.json").write_text(json.dumps(order, indent=1), encoding="utf-8")
@@ -614,15 +650,25 @@ def run_unblind(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
     questions = grades.read_json(folder / "questions.json")["questions"]
-    runs = load_runs(args.first, args.second)
+    runs = load_runs(args.runs)
     order = grades.read_json(args.dir / "order.json")
     if not (args.dir / "verdicts.json").exists():
         raise ValueError(f"grade the pairs first: no verdicts.json in {args.dir}")
     verdicts = grades.read_json(args.dir / "verdicts.json")
     if set(verdicts) != set(order):
         raise ValueError("verdicts.json must grade every pair in pairs.json")
-    result = pairs.compare(key, questions, runs, pairs.unblind(verdicts, order))
-    print(json.dumps(result, indent=1) if args.json else pairs.markdown(result))
+    graded = pairs.unblind(verdicts, order)
+    *baselines, candidate = runs
+    results = [
+        pairs.compare(
+            key, questions, {name: runs[name], candidate: runs[candidate]}, graded
+        )
+        for name in baselines
+    ]
+    if args.json:
+        print(json.dumps(results, indent=1))
+    else:
+        print("\n".join(pairs.markdown(result) for result in results), end="")
     return 0
 
 
@@ -676,6 +722,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_select_form(args)
         if args.command == "coverage":
             return run_coverage(args)
+        if args.command == "reach":
+            return run_reach(args)
         if args.command == "page-candidates":
             return run_page_candidates(args)
         if args.command == "blind":

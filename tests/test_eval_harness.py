@@ -256,7 +256,7 @@ def test_command_line_registers_verifies_and_scores(
     code, text = run(capsys, tmp_path, "retrieval", "demo", "--json")
     assert json.loads(text)["parts"] == 1
     code, text = run(capsys, tmp_path, "grades", "demo", "sitting")
-    assert code == 0 and "| All | 4 | 4 / 0 / 0 |" in text
+    assert code == 0 and "| All | 4 | 4 / 0 / 0 / 0 |" in text
     code, text = run(capsys, tmp_path, "grades", "demo", "sitting", "--json")
     assert json.loads(text)["status_matched"] == {"v5": 4}
 

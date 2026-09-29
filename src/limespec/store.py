@@ -273,6 +273,17 @@ def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]
     return [by_id[passage_id] for passage_id in passage_ids]
 
 
+def given_passages(conn: Connection, answer_id: int) -> tuple[int, list[Passage]]:
+    """The index version an answer used and the passages its model was given, in the
+    order given (read from the answer's audit record)."""
+    row = conn.execute(
+        "SELECT index_version_id, passage_ids FROM answers WHERE id = %s", (answer_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no answer record {answer_id}")
+    return int(row[0]), load_passages(conn, row[1])
+
+
 def document_passages(conn: Connection, version_id: int, url: str) -> list[Passage]:
     """Every passage of one document in an index version, in stored order."""
     rows = conn.execute(

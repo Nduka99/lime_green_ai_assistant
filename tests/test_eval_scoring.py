@@ -190,11 +190,14 @@ def test_a_question_not_in_the_key_or_in_it_twice_is_refused() -> None:
 
 
 def test_counts_refuse_an_unknown_verdict() -> None:
-    assert grades.counts(["sound", "wrong", "sound"]) == {
+    assert grades.counts(["sound", "wrong", "sound", "missing"]) == {
         "sound": 2,
         "partial": 0,
+        "missing": 1,
         "wrong": 1,
     }
+    assert grades.legacy("missing") == "wrong"
+    assert grades.legacy("partial") == "partial"
     with pytest.raises(ValueError, match="unknown verdicts"):
         grades.counts(["good"])
 
@@ -232,7 +235,12 @@ def test_score_groups_by_case_type_and_wording_style() -> None:
         "Wording: rushed",
         "Wording: original",
     ]
-    assert by_name["All"]["counts"]["v5"] == {"sound": 2, "partial": 1, "wrong": 1}
+    assert by_name["All"]["counts"]["v5"] == {
+        "sound": 2,
+        "partial": 1,
+        "missing": 0,
+        "wrong": 1,
+    }
     assert by_name["Type: refusal"]["counts"]["v5"]["wrong"] == 1
     # t001 refused as expected; t002 answered; the error record has no status.
     assert result["status_matched"] == {"v5": 2, "v6": 2}
@@ -259,6 +267,8 @@ def test_grades_markdown_lists_counts_status_and_time() -> None:
 
     text = grades.markdown(grades.score(KEY, QUESTIONS, graded, answers), "demo")
 
-    assert text.startswith("demo: 4 answers per arm, sound / partial / wrong.")
-    assert "| All | 4 | 2 / 1 / 1 | 4 / 0 / 0 |" in text
+    assert text.startswith(
+        "demo: 4 answers per arm, sound / partial / missing / wrong."
+    )
+    assert "| All | 4 | 2 / 1 / 0 / 1 | 4 / 0 / 0 / 0 |" in text
     assert "| v5 | 2/4 | 1 | 15.0 |" in text
