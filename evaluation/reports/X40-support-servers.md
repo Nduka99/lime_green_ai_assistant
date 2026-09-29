@@ -110,6 +110,19 @@ plus `--cache-ram 0`, which must give R0q's scores exactly (it only stops saving
 slots); **R1p**, R1 plus `--cache-ram 0`, for its real latency. The embedder's quiet runs
 (E0q, E1p) are as amendment 1 set.
 
+## Amendment 3 (after the quiet runs, before R1h)
+
+Amendment 2's expectation failed: R0p's scores differ from R0q's (5 calls reordered, up to
+0.078), while R0q repeats R0 exactly. With several slots, a document's score depends on
+which documents share its micro-batch, and turning off idle-slot saving changes which slot
+takes which document; in production it therefore also depends on concurrent traffic. With
+one slot each document is scored alone. A pooled or ranked input longer than `-ub` is
+refused by the server (the answer would fail), and `S_r` = 1,024 leaves no margin over
+748 tokens as passages change (whole tables, compiled lists). **Added, reported only:**
+**R1h**, R1 with `-c 2048 -b 2048 -ub 2048 --cache-ram 0`, quiet: its GPU memory, times, and
+scores against R1 (a single document's micro-batch is the same at either `-ub`, so they
+should be identical).
+
 ## Results (29 September)
 
 **Sizing:** the longest embedding input is 1,102 tokens (`S_e` = 2,048); the longest
@@ -126,7 +139,16 @@ and 53 retries in its log; reranker 525 MiB and none; generator 3,141 MiB.
 
 **Kept: E1** (`--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048`). E0 fails item 1
 (it reproduces production's fault and its 3,309 MiB exactly); E1 and E2 are eligible and E1
-is lowest by 21%. Ingestion is 2.4× faster: no retries with halved batches.
+is lowest (E2 is 26% higher). The times above include `-v` logging (amendment 1); quietly,
+through the shared client:
+
+| Quiet run | Retries | Lowest cosine | GPU | Part (a) s | Query p50 / p95 s | (c) s | Peak private RAM |
+|---|---|---|---|---|---|---|---|
+| E0q (today) | 16 | 1.0 vs E0 | 3,309 MiB | 60.6 | 0.014 / 0.017 | 0.43 | 13.3 GB |
+| E1p (E1 + `--cache-ram 0`) | 0 | 0.99991 vs E0q; 1.0 vs E1 | 3,028 MiB | 55.9 | 0.013 / 0.015 | 0.57 | 4.4 GB |
+
+So ingestion is 8% faster, not 2.4× (that was logging), and each server repeats itself
+exactly.
 
 **Found while measuring (reported, not gated):**
 - **Today's embedder fills an 8 GiB host prompt cache with slot states it never reuses.**
@@ -145,4 +167,54 @@ is lowest by 21%. Ingestion is 2.4× faster: no retries with halved batches.
 - **A query costs 77 ms on the server but ~460 ms through `llm.embed`.** Each `httpx.post`
   builds a new client, which loads the certificate bundle: ~410 ms per call on this laptop
   even for plain HTTP (a reused client: 0.4 ms). The answer path pays it on every model
-  call. Fixed after the arms (a shared client), so the arms stay comparable.
+  call. Fixed after the arms (`38e4fc1`, a shared client), so the arms stay comparable:
+  a query embedding now takes 14 ms end to end, a 20-candidate rerank 0.26 s.
+
+### Reranker (100 dev questions × 20 BM25 candidates; one 100-candidate call)
+
+| Arm | Retries | Reordered calls vs R0 (max score diff) | GPU after load | Call p50 / p95 s | 100 candidates s | (c) s | Peak private RAM |
+|---|---|---|---|---|---|---|---|
+| R0 (today) | 0 | — | 486 MiB | 4.55 / 8.89 | 32.3 | 80.1 | 3.1 GB |
+| R1 `-np 1`, 1,024 | 0 | 55 (0.120) | **442 MiB** | 0.67 / 0.87 | 1.9 | 29.2 | 1.7 GB |
+| R2 `-np 4 --no-kv-unified` | 0 | 48 (0.121) | 457 MiB | 3.63 / 6.69 | 24.6 | 200.1 | 2.1 GB |
+| *quiet, shared client:* | | | | | | | |
+| R0q (today) | 0 | 0 (0.0) | 486 MiB | 0.259 / 0.602 | 1.43 | 24.9 | 2.8 GB |
+| R0p (R0 + `--cache-ram 0`) | 0 | 5 vs R0q (0.078) | 486 MiB | 0.255 / 0.571 | 1.35 | 24.7 | 3.0 GB |
+| R1p (R1 + `--cache-ram 0`) | 0 | 55 (0.120); 0 vs R1 | 442 MiB | 0.283 / 0.368 | 1.43 | 28.0 | 1.7 GB |
+| R1h (one slot, 2,048, `--cache-ram 0`) | 0 | 55 (0.120); 0 vs R1 | 472 MiB | 0.282 / 0.361 | 1.42 | 27.6 | 1.8 GB |
+
+**No arm passes item 2 as written** (amendment 2), so no reranker setting changes by rule.
+The evidence for the user's choice:
+
+- **One slot scores each document alone, so its scores are reproducible** (R1, R1p and R1h
+  identical); today's four slots score a document with whichever others share its
+  micro-batch, so its scores move with a flag that only changes slot assignment (R0p), and
+  in production with concurrent traffic.
+- The differences are near-ties: every swap is between candidates at most 0.11 apart on a
+  logit scale of −11 to +8, and the top-8 set production passes on is the same in 96 of
+  100 calls.
+- One slot at 2,048 costs 14 MiB less GPU, about 1 GB less RAM and a lower p95 (0.60 →
+  0.36 s) for 23 ms more at the median; 2,048 keeps a 2.7× margin over the longest input.
+
+## Conclusion (29 September 2026)
+
+**Proposed support-server lines** (the startup script lives outside this repo and changes
+only with the user's OK):
+
+    8081: -m models/Qwen3-Embedding-0.6B-f16.gguf --embedding --pooling last -np 1
+          -c 2048 -b 2048 -ub 2048 --cache-ram 0 -ngl all --fit off --cors-origins localhost
+    8082: -m models/bge-reranker-v2-m3-Q8_0.gguf --reranking -np 1 -c 2048 -b 2048
+          -ub 2048 --cache-ram 0 -ngl all --fit off --cors-origins localhost
+
+| | Today | Proposed |
+|---|---|---|
+| Embedder: KV-cache retries | 16 per workload (53 in production's log) | 0 |
+| Embedder: GPU / private RAM | 3,309 MiB / 13.3 GB | 3,028 MiB / 4.4 GB |
+| Reranker: GPU / private RAM | 486 MiB / 2.8–3.1 GB | 472 MiB / 1.8 GB |
+| Reranker: call p50 / p95 | 0.259 / 0.602 s | 0.282 / 0.361 s |
+| Scores and vectors | depend on batch company | one input at a time, reproducible |
+
+The embedder line passed the gate (E1, plus `--cache-ram 0`, which changed no vector); the
+reranker line is a recommendation after the gate failed as written. Together they free
+about 10 GB of RAM and 300 MiB of GPU. Not done here: the embedder's unread logits (~1.2 GB
+of GPU) wait for an upstream fix.
