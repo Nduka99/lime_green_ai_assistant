@@ -271,3 +271,24 @@ def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]
             passage_id, url, title, heading, text, captured, page, context
         )
     return [by_id[passage_id] for passage_id in passage_ids]
+
+
+def document_passages(conn: Connection, version_id: int, url: str) -> list[Passage]:
+    """Every passage of one document in an index version, in stored order."""
+    rows = conn.execute(
+        "SELECT passages.id FROM passages "
+        "JOIN documents ON documents.id = passages.document_id "
+        "WHERE passages.index_version_id = %s AND documents.url = %s "
+        "ORDER BY passages.id",
+        (version_id, url),
+    ).fetchall()
+    return load_passages(conn, [row[0] for row in rows])
+
+
+def passage_count(conn: Connection, version_id: int) -> int:
+    """How many passages an index version holds."""
+    row = conn.execute(
+        "SELECT count(*) FROM passages WHERE index_version_id = %s", (version_id,)
+    ).fetchone()
+    assert row is not None  # count(*) always yields a row
+    return int(row[0])

@@ -107,3 +107,30 @@ def paired_bootstrap(
         "high": resampled[int(0.975 * rounds)],
         "p_value": (extreme + 1) / (rounds + 1),
     }
+
+
+def paired_cluster_bootstrap(
+    better: Sequence[float],
+    baseline: Sequence[float],
+    clusters: Sequence[str],
+    rounds: int = 10000,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Difference of means on the same questions and its 95% interval, resampling
+    whole clusters: questions from one table (or one turn) are not independent."""
+    groups: dict[str, list[float]] = {}
+    for new, old, cluster in zip(better, baseline, clusters, strict=True):
+        groups.setdefault(cluster, []).append(new - old)
+    names = sorted(groups)
+    observed = mean([difference for name in names for difference in groups[name]])
+    rng = random.Random(seed)
+    means = []
+    for _ in range(rounds):
+        drawn = [groups[names[rng.randrange(len(names))]] for _ in names]
+        means.append(mean([difference for group in drawn for difference in group]))
+    means.sort()
+    return {
+        "difference": observed,
+        "low": means[int(0.025 * rounds)],
+        "high": means[int(0.975 * rounds)],
+    }

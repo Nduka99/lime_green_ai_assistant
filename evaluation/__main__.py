@@ -15,6 +15,9 @@
     uv run python -m evaluation check-conversations KEY.json ... --plan PLAN.json \
         [--out data/eval/SET/key.json]           # writes the whole key when clean
     uv run python -m evaluation blind SET FIRST.json SECOND.json --seed N --out DIR
+    uv run python -m evaluation table-questions --out data/eval/x9-tables/questions.json
+    uv run --env-file .env python -m evaluation quote-retrieval --version N --out FILE
+    uv run python -m evaluation select-form table=FILE rows=FILE both=FILE page=FILE
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
 
 Sets live in git-ignored data/eval/, and `ask` saves to git-ignored data/runs/.
@@ -45,15 +48,18 @@ from evaluation import (
     grades,
     guardrails,
     keys,
+    lookups,
     pages,
     pairs,
     parsing,
     retrieval,
     sets,
 )
-from limespec import acquire, pdf, tables
+from limespec import acquire, assistant, config, ingest, llm, pdf, store, tables
+from limespec.models import Passage
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
+X8_SETS = ("x8-pages", "x8-pages-r2", "x8-pages-r3")  # sealed truth with tables
 
 
 def page_reader(folder: Path) -> keys.ReadPage:
@@ -163,6 +169,19 @@ def parser() -> argparse.ArgumentParser:
         "--exclude-set", action="append", default=[], help="a page set already used"
     )
     listed_pages.add_argument("--out", type=Path, required=True, help="a JSON file")
+    questioned = commands.add_parser(
+        "table-questions", help="write X9's table lookups from the X8 truth grids"
+    )
+    questioned.add_argument("--out", type=Path, required=True, help="a JSON file")
+    searched = commands.add_parser(
+        "quote-retrieval", help="score an index version's search on X9's evidence"
+    )
+    searched.add_argument("--version", type=int, required=True)
+    searched.add_argument("--out", type=Path, required=True, help="a JSON file")
+    selected = commands.add_parser(
+        "select-form", help="compare X9's arms and apply its selection rule"
+    )
+    selected.add_argument("runs", nargs="+", help="ARM=FILE, the baseline arm table")
     rendered = commands.add_parser(
         "render-page", help="render one PDF page to a PNG (one page per process)"
     )
@@ -425,6 +444,97 @@ def run_page_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def write_json(path: Path, data: Any) -> None:
+    """Plain data as readable UTF-8 JSON, its folder made if needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, indent=1, ensure_ascii=False)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def run_table_questions(args: argparse.Namespace) -> int:
+    titles = ingest.pdf_titles(ingest.site_html())
+    items = []
+    for name in X8_SETS:
+        folder = sets.require(name, args.root, args.registry)
+        truth = grades.read_json(folder / "truth.json")["pages"]
+        items += lookups.table_questions(name, truth, titles)
+    write_json(args.out, {"questions": items})
+    for name, count in Counter(item["cluster"].split("/")[0] for item in items).items():
+        print(f"{count:5}  {name}")
+    print(f"{len(items)} table lookups in {args.out}")
+    return 0
+
+
+def reading_urls() -> dict[str, str]:
+    """Each saved PDF reading's file SHA-256 and the URL the index files it under."""
+    found = {}
+    for path in sorted(config.READINGS.glob("*.json")):
+        if path.name == "report.json":
+            continue
+        reading = json.loads(path.read_text(encoding="utf-8"))
+        found[str(reading["sha256"])] = str(reading["urls"][0])
+    return found
+
+
+def run_quote_retrieval(args: argparse.Namespace) -> int:
+    urls = reading_urls()
+    lookup_set = sets.require("x9-tables", args.root, args.registry)
+    conversation_set = sets.require("conv-v1", args.root, args.registry)
+    items = grades.read_json(lookup_set / "questions.json")["questions"]
+    items += lookups.quote_items(
+        grades.read_json(conversation_set / "key.json"),
+        grades.read_json(conversation_set / "plan.json"),
+        set(urls),
+    )
+    results = []
+    anywhere: dict[str, list[Passage]] = {}
+    with assistant.connect() as conn:
+        for item in items:
+            url = urls[item["sha256"]]
+            if url not in anywhere:
+                anywhere[url] = store.document_passages(conn, args.version, url)
+            ranked = store.search(
+                conn, args.version, item["question"], llm.embed, llm.rerank
+            )
+            results.append(lookups.score_item(item, ranked, anywhere[url], url))
+        passages = store.passage_count(conn, args.version)
+    found = lookups.summary(results)
+    record = {"version": args.version, "passages": passages, "summary": found}
+    write_json(args.out, {**record, "results": results})
+    for name, scores in found.items():
+        print(
+            f"{name}: {scores['count']:.0f} items, Success@{lookups.TOP} "
+            f"{scores['success']:.3f}, MRR {scores['mrr']:.3f}, "
+            f"ceiling {scores['ceiling']:.3f}"
+        )
+    print(f"{passages} passages in version {args.version}; results in {args.out}")
+    return 0
+
+
+def run_select_form(args: argparse.Namespace) -> int:
+    arms = {}
+    for run in args.runs:
+        name, _, path = run.partition("=")
+        arms[name] = grades.read_json(Path(path))
+    if lookups.BASELINE not in arms:
+        raise ValueError(f"no run for the baseline arm {lookups.BASELINE!r}")
+    baseline = arms[lookups.BASELINE]["results"]
+    print("| arm | passages | lookups S@8 (vs table) | conv-v1 S@8 (vs table) |")
+    print("|---|---|---|---|")
+    for name, arm in arms.items():
+        cells = []
+        for set_name in ("x9-tables", "conv-v1"):
+            score = arm["summary"][set_name]["success"]
+            change = lookups.compare(arm["results"], baseline, set_name)
+            cells.append(
+                f"{score:.3f} ({change['difference']:+.3f} "
+                f"[{change['low']:+.3f}, {change['high']:+.3f}])"
+            )
+        print(f"| {name} | {arm['passages']} | {cells[0]} | {cells[1]} |")
+    print(f"selected: {lookups.select(arms)}")
+    return 0
+
+
 def run_render_page(args: argparse.Namespace) -> int:
     image = pdf.page_image(args.source, args.page, args.scale)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -528,6 +638,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_transcription(args)
         if args.command == "render-page":
             return run_render_page(args)
+        if args.command == "table-questions":
+            return run_table_questions(args)
+        if args.command == "quote-retrieval":
+            return run_quote_retrieval(args)
+        if args.command == "select-form":
+            return run_select_form(args)
         if args.command == "page-candidates":
             return run_page_candidates(args)
         if args.command == "blind":

@@ -303,3 +303,15 @@ def test_loaded_passages_keep_the_given_order_and_utc_capture_time(
     assert faq.title == "FAQ"
     assert faq.fetched_at == "2026-09-12T10:30:00+00:00"  # 11:30 at +01:00
     assert faq.text.startswith("Delivery\n")
+
+
+def test_a_document_s_passages_and_a_version_s_size_are_read(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+
+    faq = store.document_passages(pg, version, "https://example.test/support/faq")
+
+    assert [p.heading for p in faq] == ["Delivery", "Samples"]
+    assert store.passage_count(pg, version) == 3
+    assert store.document_passages(pg, version, "https://example.test/none") == []
