@@ -45,6 +45,7 @@ from pypdf import PdfReader
 
 from evaluation import (
     ask,
+    cases,
     catalogue,
     conversations,
     grades,
@@ -124,6 +125,32 @@ def parser() -> argparse.ArgumentParser:
     written.add_argument(
         "--out", type=Path, help="write the whole key here if it has no problems"
     )
+    cased = commands.add_parser(
+        "plan-cases", help="plan a single-question key and write its bundle (v4)"
+    )
+    cased.add_argument("--catalogue", type=Path, required=True)
+    cased.add_argument("--brief", type=Path, required=True)
+    cased.add_argument(
+        "--agents", type=Path, required=True, help="the writer's AGENTS.md"
+    )
+    cased.add_argument("--out", type=Path, required=True)
+    cased.add_argument("--seed", type=int, required=True)
+    cased.add_argument("--per-part", type=int, default=16)
+    cased.add_argument("--limit", type=int, default=8000, help="characters per source")
+    checked = commands.add_parser(
+        "check-cases", help="check a single-question key against its bundle"
+    )
+    checked.add_argument("keys", nargs="+", type=Path, help="the key's JSON files")
+    checked.add_argument(
+        "--plan", type=Path, required=True, help="the bundle's plan.json"
+    )
+    checked.add_argument("--catalogue", type=Path, required=True)
+    checked.add_argument(
+        "--out-set",
+        type=Path,
+        help="when clean, write key.json and questions.json here",
+    )
+    checked.add_argument("--seed", type=int, help="shuffles the blind questions")
     guarded = commands.add_parser(
         "guardrails", help="check a run for shown prices and missed emergencies"
     )
@@ -327,6 +354,59 @@ def run_check_conversations(args: argparse.Namespace) -> int:
         text = json.dumps({"conversations": written}, indent=1, ensure_ascii=False)
         args.out.write_text(text + "\n", encoding="utf-8", newline="\n")
         print(f"key written: {args.out}")
+    return 0
+
+
+def run_plan_cases(args: argparse.Namespace) -> int:
+    entries = grades.read_json(args.catalogue)
+    texts = {
+        e["id"]: cases.source_text(e)
+        for e in entries
+        if e["format"] not in cases.UNINDEXED
+    }
+    planned = cases.plan(entries, texts, args.seed)
+    notes = {
+        "brief.md": args.brief.read_text(encoding="utf-8"),
+        "AGENTS.md": args.agents.read_text(encoding="utf-8"),
+    }
+    parts = cases.bundle(
+        planned, entries, texts, notes, args.out, args.per_part, args.limit, args.seed
+    )
+    by_id = {entry["id"]: entry for entry in entries}
+    formats = Counter(by_id[c["sources"][0]]["format"] for c in planned if c["sources"])
+    for label, count in sorted(formats.items()):
+        print(f"{count:5}  {label}")
+    sources = sum(len(c["sources"]) for c in planned)
+    print(f"{len(planned)} cases, {sources} sources, {len(parts)} parts in {args.out}")
+    return 0
+
+
+def run_check_cases(args: argparse.Namespace) -> int:
+    seen = grades.read_json(args.plan)
+    written = [c for path in args.keys for c in grades.read_json(path)["cases"]]
+    pdfs = {sid for sid, s in seen["sources"].items() if s["entry"].startswith("file:")}
+    corpus_files = sorted((args.plan.parent / "corpus").glob("*.txt"))
+    corpus = [keys.normalise(path.read_text(encoding="utf-8")) for path in corpus_files]
+    found = cases.key_problems({"cases": written}, seen, pdfs, corpus)
+    for problem in found:
+        print("PROBLEM", problem)
+    wordings = sum(len(c.get("wordings", [])) for c in written)
+    print(f"{len(written)} cases, {wordings} wordings, {len(found)} problems")
+    if found or not args.out_set:
+        return 1 if found else 0
+    key_file, blind_file = args.out_set / "key.json", args.out_set / "questions.json"
+    if key_file.exists() or blind_file.exists():
+        # A key written into a set is sealed by its hash, so it is never replaced.
+        print(f"key not written: {args.out_set} already holds a key")
+        return 1
+    if args.seed is None:
+        raise ValueError("--seed is needed to shuffle the blind questions")
+    entries = {e["id"]: e for e in grades.read_json(args.catalogue)}
+    key = cases.sealed({"cases": written}, seen, entries)
+    rows = keys.blind_questions(key, args.seed, "v4q")
+    write_json(key_file, key)
+    write_json(blind_file, {"questions": rows})
+    print(f"key and {len(rows)} blind questions written to {args.out_set}")
     return 0
 
 
@@ -702,6 +782,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_plan_conversations(args)
         if args.command == "check-conversations":
             return run_check_conversations(args)
+        if args.command == "plan-cases":
+            return run_plan_cases(args)
+        if args.command == "check-cases":
+            return run_check_cases(args)
         if args.command == "grades":
             return run_grades(args)
         if args.command == "guardrails":
