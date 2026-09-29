@@ -97,3 +97,21 @@ Reported beside the gate: per-request seconds two at a time (median, p95); how m
 the 40 replies differ from one-at-a-time replies (the server is not batch-invariant, so
 an answer may depend on what else runs), with their verified outcomes (status, claims
 kept and removed); KV, recurrent-state and compute buffers from the load log.
+
+## Results (29 September)
+
+**Steps 1–3, `-tb 16`** (R40 one at a time, `--cache-ram 0`; the embedder and reranker on
+their old lines throughout):
+
+| Pass | Prompt tok/s | Output tok/s | s per answer | GPU peak (all) | Min available |
+|---|---|---|---|---|---|
+| `K-A` | 524 | 30.1 | 13.12 | 6,477 MiB | 16.1 GB |
+| `tb16` | 522 | 30.5 | 13.01 | 6,477 MiB | 16.3 GB |
+| `K-B` | 524 | 30.8 | 12.91 | 6,477 MiB | 16.5 GB |
+
+`K-A` and `K-B` gave the same 40 replies, and so did `tb16`. `tb16` − `K-A` = −0.106 s
+[−0.212, −0.010], smaller than this session's noise |`K-B` − `K-A`| = 0.202 s (and X39's
+0.108 s). **Not kept:** prompt reading, the step batch threads serve, did not move (522
+against 524 tokens/s), since with 2,048-token micro-batches the CPU-held experts are
+copied to the GPU and multiplied there. `K'` = `K`. (`K-A` shared the CPU briefly with a
+12-second test run, which may be part of why it was the slowest pass.)
