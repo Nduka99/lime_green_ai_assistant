@@ -60,6 +60,14 @@ but at most 2 graded verdicts and 1 status per set; a rung's change within that 
 states nothing false but answers none of the parts is graded **missing** (it leaves the
 question unanswered, like a refusal); S2's scale counts it as wrong, as S2's sitting did.
 
+**Amendment (29 September, before any rung runs).** After A5 the support servers changed
+(D96: one slot and no prompt cache; the reranker's near-tied candidates can order
+differently, and the top-8 set differed in 4 of 100 calls) and every model call now shares
+one HTTP client (`38e4fc1`, timing only). So rung 0 is run again, as `unfixed` was, on the
+new servers (`unfixed-d96`), and every rung is compared with it; A5's noise floor
+(generator arithmetic) and `N_s` stand. `unfixed-d96` against A5's `unfixed` is reported
+(reach, status, guardrails, and graded differences if any status or reach moves).
+
 ## C. The ladder (dev sets only; one rung at a time)
 
 Each rung: code with tests at 100%, `scripts/check.py`, commit; then a dev-set run on the
