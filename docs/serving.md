@@ -15,8 +15,8 @@ the user's OK.
 | Port | Model | Role | Command line (after `-m`) |
 |---|---|---|---|
 | 8080 | Qwen3.6-35B-A3B UD-Q4_K_XL (22.4 GB) | understanding and answering | `-c 16384 -np 1 -ngl all --n-cpu-moe 40 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048` |
-| 8081 | Qwen3-Embedding-0.6B f16 (1.2 GB) | query and passage vectors | `--embedding --pooling last -c 2048 -b 2048 -ub 2048` (slots on auto: see X40) |
-| 8082 | bge-reranker-v2-m3 Q8_0 (0.6 GB) | reranking search candidates | `--reranking -c 8192 -b 2048 -ub 2048` (slots on auto: see X40) |
+| 8081 | Qwen3-Embedding-0.6B f16 (1.2 GB) | query and passage vectors | `--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
+| 8082 | bge-reranker-v2-m3 Q8_0 (0.6 GB) | reranking search candidates | `--reranking -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
 
 All three add `-ngl all --fit off --cors-origins localhost` and read their API key from
 `LLAMA_API_KEY` (never on a command line).
@@ -35,6 +35,16 @@ All three add `-ngl all --fit off --cors-origins localhost` and read their API k
 - `-np 1`: one request at a time (X41 measures two).
 - Flash attention is on by default (`auto`). Speculative decoding is off: MTP needs another
   model file and was not exact under a JSON grammar; n-gram drafting was slower.
+
+**Why each support-server flag (X40):**
+- `-np 1`: automatic slots gave four slots on one shared buffer, which overflowed and
+  retried (the embedder logged 53 retries). One slot also scores each input alone, so a
+  vector or a rerank score never depends on what shared its batch (with four slots, 55 of
+  101 rerank calls reordered near-tied candidates).
+- `-c 2048 -b 2048 -ub 2048`: a pooled or ranked input must fit one micro-batch or the
+  server refuses it; the longest inputs are 1,102 (embedding) and 748 tokens (rerank).
+- `--cache-ram 0`: these servers never reuse prompts; with several slots the 8 GiB default
+  filled with idle slot states (13.3 GB of RAM for the embedder).
 
 ## Memory: what takes it
 
