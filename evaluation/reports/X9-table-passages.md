@@ -164,3 +164,43 @@ quotes the page's own characters. Superscript spacing cannot be matched safely (
 to be measured on the X8 pages before any re-reading. Each fix is pre-registered with its
 gate before code. X9's selection stands as run; re-scoring after these fixes is reported
 as a check, not a new selection.
+
+**Measured after the diagnosis:** Docling's spacing before superscripts is common: 199 places on
+40 pages of 29 documents where pdfium's text layer has no space, almost all units ("N/mm 2",
+"kg/m 3", "m 2") and a few footnote markers. Docling's `enforce_same_font=False` changes none
+of them (tested on the Coloured Cement DoP and the Ashlar Mortar sheet): the raised glyph is
+its own word, not a font split. The misses with no spelling of the evidence on the page (9)
+are GLM-OCR structure: a multi-line cell split into rows (Silic8 SDS), dropped cells or rows
+(EPD ozone unit, AMAGEL exposure table), and one "N/mm²" written by the truth as "N/mm2".
+
+## Follow-up: quote matching (pre-registered before code)
+
+Written on 29 September 2026. `verify.find_quote` decides whether a claim's quote is in its
+passage, so this changes answering as well as scoring.
+
+**Rule.** A quote matches a passage when, after folding both, its characters appear in the
+same order with:
+
+1. case ignored (as now);
+2. typographic forms folded: ‘ ’ ‚ ′ as ', “ ” „ ″ as ", – — − ‐ ‑ as -; and Unicode
+   compatibility forms folded (NFKC: ² as 2, ﬁ as fi, a no-break space as a space);
+3. whitespace between two letters, or between two digits, required exactly where the quote
+   has it (so "therapist" never matches "the rapist", nor "36" "3 6"); a number with a
+   decimal point or comma is one unit ("1.5" never matches "1. 5");
+4. whitespace optional where a digit meets a non-digit or at punctuation, the places where
+   Docling adds spaces around superscripts ("N/mm2" matches "N/mm 2");
+5. the table cell mark " | " read as whitespace (as now);
+6. start and end at word edges (as now).
+
+The passage's own wording is what is cited (as now). Checks 3–5 (numbers, regulations,
+prices) are unchanged.
+
+**Gate:**
+
+1. Tests: every positive case above, and these never match: "36"/"3 6", "1.5"/"1. 5",
+   "3 to 6"/"3 to 60 mm", "therapist"/"the rapist", "oints"/"joints".
+2. Re-scoring the four X9 arms (same index versions, no rebuild): the lookup ceiling rises
+   to ≥ 0.95 in every arm, the conv-v1 ceiling is not lower in any arm, and success never
+   falls for an item. Reported as a check of X9, not a new selection.
+3. `scripts/check.py` passes. The effect on answers is judged by the S2 candidate's own
+   gate (keyed sets no worse, guardrails 100%), written before its run.
