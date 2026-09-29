@@ -213,3 +213,26 @@ is unchanged.
 - Output layout: 4–5 of 40 replies are indented JSON rather than compact; on a prompt
   answered both ways with the same content, indented took 320 output tokens against 239.
   Recorded for a later change (a compact-only grammar), not changed here.
+
+## Amendment 2 (29 September, after step 4, before any later step)
+
+**Diagnosed.** Step 4 (no memory map) gave the same 40 replies as step 1 and was faster
+(−0.93 s per answer [−1.07, −0.82]; prompt 306 tokens/s), but still left only 4.2 GB
+available: the server's private memory reached 31.7 GB. The memory is the host prompt
+cache (`--cache-ram`, default 8 GiB), not the map: the server saves every finished
+request's state there even when the request does not reuse prompts (the logs evict
+287–361 MiB entries once 8 GiB is full, in every pass), and after a single request the
+server's private memory was 4.2 GB. Amendment 1's diagnosis (the mapped copy) was wrong.
+
+**Changed, before the runs it affects.**
+- The remaining M2 steps run with `--cache-ram 0`. Their requests never reuse prompts
+  (`cache_prompt` false), so the cache cannot change their timings or replies; the first
+  such run (`nommap-c0`, step 4 again) checks this against step 4: identical replies are
+  required.
+- Steps 2 and 3 run again on top of the kept configuration, as amendment 1 set.
+- The prompt cache's size becomes a setting of its own, chosen by M4: M4's interleaved
+  arm with a 4-turn window runs at `--cache-ram` 8192 (the default), 2048 and 0 MiB; the
+  chosen size is the smallest whose reused share of understanding-request tokens is
+  within 0.02 of the default's. The final configuration, with that size, must pass gate
+  item 2 in M1's replay.
+- Pass B repeats pass A's configuration exactly (default cache), as registered.
