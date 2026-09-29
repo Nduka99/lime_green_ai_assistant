@@ -73,22 +73,36 @@ input must also fit in one micro-batch (`-ub` ≥ its tokens).
   static text first (instructions), then data, then the question; never put timestamps or
   ids early.
 - With one slot, the slot keeps its last prompt; the host cache (`--cache-ram`) keeps
-  earlier ones. For this hybrid model each cached entry holds the KV cache and fp32
-  recurrent-state checkpoints (≈63 MiB each): 290–370 MiB per entry.
-- **Checkpoint restore is broken upstream for hybrid models**
-  ([#22384](https://github.com/ggml-org/llama.cpp/issues/22384), open at b10298): a later
-  turn reuses only the system prompt, and the conversation history is processed again every
-  turn (X39 M4: ≈1 s for a 250-token understanding request). So history goes only into the
-  short understanding request, never into the long answer request.
+  earlier ones (`--cache-idle-slots`, on by default).
+- **A hybrid model resumes only from a saved state (checkpoint).** Its Gated DeltaNet
+  layers cannot be rolled back, so a new prompt resumes from the latest checkpoint at or
+  before its first differing token. b10298 (`tools/server/server-context.cpp`) saves them
+  only at the start of the last user message, at user-message starts at least
+  `--checkpoint-min-step` (8,192) tokens apart, and `4 + n_ubatch` and 4 tokens before the
+  prompt's end ([PR #20288](https://github.com/ggml-org/llama.cpp/pull/20288)). Our
+  requests make 2–3, far below `--ctx-checkpoints` (32).
+- **Entry size** ≈ (checkpoints + 1) × 62.8 MiB of fp32 recurrent state + 20 KiB per
+  token: ≈222 MiB for an understanding request, ≈300 MiB for an answer request (X39 logs).
+  A 2 GiB cache holds about seven.
+- **So text inside one message is never partly reused.** X39 M4's stand-in held the
+  history inside the last user message: each later turn reused only the system prompt and
+  processed the history again (≈1 s for 250 tokens). Previous turns sent as their own
+  messages, with a window that does not slide, would leave a checkpoint near the end of the
+  last prompt to resume from (X36's design question). History never goes into the long
+  answer request.
+- **With `--kv-unified`, an idle slot is cleared** from the GPU when another task starts
+  (after being saved to the host cache); with `--no-kv-unified` it stays.
 
 ## Known upstream issues (checked against b10298)
 
 | Issue | Effect here |
 |---|---|
-| [#22384](https://github.com/ggml-org/llama.cpp/issues/22384) checkpoint restore, hybrid models | history reprocessed every turn |
+| [#22384](https://github.com/ggml-org/llama.cpp/issues/22384) checkpoint restore, hybrid models | b10298 restores the latest checkpoint before the first differing token (a workaround in the server); X39 M4 saw it work at the last user message |
 | [#23635](https://github.com/ggml-org/llama.cpp/issues/23635) CUDA pool never shrinks | GPU floor ratchets up after large batches |
 | [#27442](https://github.com/ggml-org/llama.cpp/issues/27442) empty completions above ~16–19k tokens (Metal) | not seen on CUDA up to 18.7k (X39 M3) |
 | MTP with `--mmproj` unsupported | MTP excluded while images are planned (S4) |
+| Pooled embeddings run the LM head on every token ([draft PR #28949](https://github.com/ggml-org/llama.cpp/pull/28949), Qwen3.5 only) | the embedder's compute buffer is ≈0.59 MiB per `-ub` token of unread logits: 1.2 GB at 2,048 (X40) |
+| `--cache-ram` defaults to 8 GiB on every server, embedding and reranking included | with several slots, idle slot states fill it unused: 13.4 GB of RAM for the embedder (X40); set `--cache-ram 0` on support servers |
 
 ## Before any serving change or measurement
 
