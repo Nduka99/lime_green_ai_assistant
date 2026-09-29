@@ -122,9 +122,10 @@ class Child:
             reading = {"sha256": sha256, "seconds": 2.5, "tables": {"tables": 1},
                        "validation": {"pages": [
                            {"page": 1, "words": 20, "kept": 20, "hidden": 0,
-                            "recovered": 0, "grade": "good", "flags": []},
+                            "recovered": 0, "removed": 0, "grade": "good",
+                            "flags": []},
                            {"page": 2, "words": 20, "kept": 10, "hidden": 5,
-                            "recovered": 3, "grade": "fair",
+                            "recovered": 3, "removed": 2, "grade": "fair",
                             "flags": ["low coverage"]}],
                            "flagged": 1},
                        "elements": []}  # fmt: skip
@@ -168,7 +169,8 @@ def test_a_run_reads_each_document_once_retries_and_reports(
     )
     totals = report["summary"]["totals"]
     assert totals == {"documents": 4, "seconds": 8.5, "tables": 3, "pages": 6,
-                      "recovered lines": 9, "words not shown": 15}  # fmt: skip
+                      "recovered lines": 9, "words not shown": 15,
+                      "hidden words removed": 6}  # fmt: skip
     assert [page["url"] for page in report["summary"]["flagged"]] == [
         "u/new.pdf",
         "u/r.pdf",

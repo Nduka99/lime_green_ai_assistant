@@ -79,3 +79,14 @@ Commands: `uv run --group ingest python -m limespec read-pdfs [--vlm URL]`. Each
   readings without reading any PDF again.
 - The report is the list of what to look at. Flagged pages are named with their cause, and
   none is dropped from the index: recovered lines keep every word.
+
+## Update (29 September 2026)
+
+The page check no longer uses pypdf's text layer. Each page is read by pdfium, and every
+word is marked with whether a reader sees it (the page drawn with and without its text; see
+the X8 report, "index only what the page shows"). Words Docling reads where no reader sees
+them are removed from its elements. Visible words its reading lacks are recovered and placed
+where they stand. Each page records the visible words, how many of them Docling's reading
+holds, the words not shown, the hidden words removed and the lines recovered. The Kiwa BDA
+Agrément is checked like any other document, because pdfium opens it. The reader's
+fingerprint also covers `recovery.py` and `visibility.py`.

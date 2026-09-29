@@ -33,7 +33,14 @@ LOW_COVERAGE = 0.95  # D84: a page whose own text holds less of its layer is fla
 MIN_WORDS = 10  # a page with fewer text-layer words has no text to check
 PACKAGES = ("docling-slim", "docling-core", "docling-parse", "docling-ibm-models",
             "pypdfium2", "torch", "pylatexenc", "pypdf")  # fmt: skip
-READER = ("elements.py", "pdf.py", "recovery.py", "rendering.py", "tables.py")
+READER = (
+    "elements.py",
+    "pdf.py",
+    "recovery.py",
+    "rendering.py",
+    "tables.py",
+    "visibility.py",
+)
 
 Run = Any  # subprocess.run, or a stand-in in tests
 
@@ -178,6 +185,7 @@ def summary(files: dict[str, list[str]], out: Path) -> dict[str, Any]:
             totals["pages"] += 1
             totals["recovered lines"] += page["recovered"]
             totals["words not shown"] += page["hidden"]
+            totals["hidden words removed"] += page["removed"]
             if page["flags"]:
                 flagged.append({
                     "url": urls[0],

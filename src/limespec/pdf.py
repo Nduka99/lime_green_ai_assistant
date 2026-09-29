@@ -4,8 +4,9 @@ Docling's standard pipeline takes each page's own characters from the PDF, finds
 the layout (headings, text, lists, tables, pictures) and rebuilds each table's
 rows and columns from those characters, so quoted text stays the document's own.
 OCR is off: pages without a text layer are handled separately, as transcription.
-Any line the page shows but Docling's reading lacks is recovered from pdfium and
-placed where it stands (limespec.recovery), so no visible text is lost.
+Only what the page shows is kept (limespec.visibility): words Docling reads where no
+reader sees them are removed, and visible words its reading lacks are recovered from
+pdfium and placed where they stand (limespec.recovery).
 
 Docling and its models are imported only when a PDF is read, so the API never
 needs the `ingest` dependency group.
@@ -16,7 +17,7 @@ from __future__ import annotations
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterable
-from functools import cache
+from functools import cache, partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -47,6 +48,14 @@ EDGES = ".,;:!?()[]{}'-"
 IMAGES_SCALE = 200 / 72
 # Reads a table again: (table item, its number, its section) → rows, or None.
 Reread = Callable[[Any, int, tuple[str, ...]], "list[Element] | None"]
+Box = tuple[float, float, float, float]
+# An item's text without the words its page hides: (page, item's box, text) -> text.
+Keep = Callable[[int, Box | None, str], str]
+
+
+def keep_all(page: int, bbox: Box | None, text: str) -> str:
+    """Every word of the text (when nothing is known to be hidden)."""
+    return text
 
 
 @cache
@@ -97,9 +106,14 @@ def read_pdf(
     is read again from its image, and `stats` counts the tables and cells it read.
     `grades` receives each page's lowest Docling confidence grade (poor, fair, good,
     excellent) and `checks` each page's check against pdfium's text."""
+    from limespec import recovery, visibility
+
     result = converter(IMAGES_SCALE if vlm else 0.0).convert(
         path, page_range=(first, last)
     )
+    pages = visibility.read_pages(path, first, last)
+    removed = Counter[int]()
+    keep = partial(visibility.keep_visible, pages, removed)
     if grades is not None:
         for number, scores in result.confidence.pages.items():
             grades[number] = scores.low_grade.value
@@ -113,12 +127,11 @@ def read_pdf(
         counts = Counter[str]() if stats is None else stats
 
         def reread(item: Any, number: int, section: tuple[str, ...]) -> Any:
-            return vlm_table(item, number, section, result.document, words, vlm, counts)
+            document = result.document
+            return vlm_table(item, number, section, document, words, vlm, counts, keep)
 
-    found = elements(result.document, reread)
-    from limespec.recovery import recover
-
-    return recover(path, found, first, last, checks)
+    found = elements(result.document, reread, keep)
+    return recovery.recover(found, pages, removed, checks)
 
 
 def page_image(path: Path, page: int, scale: float) -> Image:
@@ -144,30 +157,37 @@ def box(item: Any, document: DoclingDocument) -> tuple[float, float, float, floa
 
 
 def table_rows(
-    item: Any, number: int, section: tuple[str, ...], document: DoclingDocument
+    item: Any,
+    number: int,
+    section: tuple[str, ...],
+    document: DoclingDocument,
+    keep: Keep = keep_all,
 ) -> list[Element]:
-    """The table as Docling reads it. A header of several levels keeps its parts, top
-    first, joined by " › " ("Performance › Class i")."""
+    """The table as Docling reads it, each cell without the words its page hides. A
+    header of several levels keeps its parts, top first, joined by " › "
+    ("Performance › Class i")."""
     grid = item.data.grid
     if not grid:
         return []
+    page = item.prov[0].page_no
+    bbox = box(item, document)
+    # Docling's grid repeats a spanning cell in each position it covers.
+    whole = [[keep(page, bbox, cell.text) for cell in row] for row in grid]
     headers = []
     for column in range(len(grid[0])):
         texts: list[str] = []
-        for row in grid:
-            cell = row[column]
-            if cell.column_header and cell.text and cell.text not in texts:
-                texts.append(cell.text)
+        for row, row_texts in zip(grid, whole, strict=True):
+            text = row_texts[column]
+            if row[column].column_header and text and text not in texts:
+                texts.append(text)
         headers.append(" › ".join(texts))
     # A header row can hold empty, unflagged cells (a blank corner above the row
     # labels), but a data row never holds a column header.
     rows = [
-        (index, [cell.text for cell in row])
+        (index, whole[index])
         for index, row in enumerate(grid)
         if not any(cell.column_header for cell in row)
     ]
-    # Docling's grid repeats a spanning cell in each position it covers.
-    whole = [[cell.text for cell in row] for row in grid]
     return table_elements(whole, headers, rows, item, number, section, document)
 
 
@@ -260,10 +280,11 @@ def vlm_table(
     words: dict[int, list[Any]],
     url: str,
     stats: Counter[str],
+    keep: Keep = keep_all,
 ) -> list[Element] | None:
     """The table as a vision-language model reads its image, each cell spelt by the
-    PDF's own words inside the table's box; None, so Docling's reading stands, when
-    the answer is not a table."""
+    PDF's own words inside the table's box that the page shows; None, so Docling's
+    reading stands, when the answer is not a table."""
     from limespec import tables
 
     image = item.get_image(document)
@@ -276,7 +297,12 @@ def vlm_table(
         return None
     page = item.prov[0].page_no
     height = document.pages[page].size.height
-    inside = words_inside(box(item, document), words.get(page, []), height)
+    bbox = box(item, document)
+    inside = [
+        word
+        for word in words_inside(bbox, words.get(page, []), height)
+        if keep(page, bbox, word)
+    ]
     read = tables.structure(cells, inside, header_words(item))
     stats["cells"] += len(cells)
     stats["dropped"] += read.dropped
@@ -291,10 +317,14 @@ def vlm_table(
     return found
 
 
-def elements(document: DoclingDocument, reread: Reread | None = None) -> list[Element]:
+def elements(
+    document: DoclingDocument, reread: Reread | None = None, keep: Keep = keep_all
+) -> list[Element]:
     """A Docling document's elements in reading order, text inside pictures (such as
     a drawing's callouts) included, each with the headings above it. `reread` reads
-    a table again (from its image); where it gives None, Docling's reading stands."""
+    a table again (from its image); where it gives None, Docling's reading stands.
+    `keep` takes out of each item's text the words its page hides; an item left with
+    no letter or digit is dropped (a figure stays)."""
     from docling_core.types.doc.common.content_layer import ContentLayer
 
     layers = {ContentLayer(name) for name in CONTENT_LAYERS}
@@ -316,7 +346,9 @@ def elements(document: DoclingDocument, reread: Reread | None = None) -> list[El
         if hasattr(item, "data"):
             tables += 1
             rows = reread(item, tables, path) if reread else None
-            found += table_rows(item, tables, path, document) if rows is None else rows
+            if rows is None:
+                rows = table_rows(item, tables, path, document, keep)
+            found += rows
             continue
         if label in FIGURES:
             text = item.caption_text(document)
@@ -326,19 +358,18 @@ def elements(document: DoclingDocument, reread: Reread | None = None) -> list[El
             text = item.orig or item.text
         else:
             text = " ".join(cell.text for cell in item.graph.cells)
+        page = item.prov[0].page_no
+        bbox = box(item, document)
+        shown = keep(page, bbox, text)
+        hidden = shown != text and not any(char.isalnum() for char in shown)
+        if hidden and label not in FIGURES:
+            continue  # everything it held lies where no reader sees it
+        text = shown
         if label in HEADINGS:
             level = 0 if label == "title" else item.level
             section = [(lvl, h) for lvl, h in section if lvl < level] + [(level, text)]
         kind = "heading" if label in HEADINGS else KINDS.get(label, "paragraph")
         if label in FIGURES:
             kind = "figure"
-        found.append(
-            Element(
-                page=item.prov[0].page_no,
-                kind=kind,
-                text=text,
-                section=path,
-                bbox=box(item, document),
-            )
-        )
+        found.append(Element(page=page, kind=kind, text=text, section=path, bbox=bbox))
     return found

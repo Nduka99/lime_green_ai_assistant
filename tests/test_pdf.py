@@ -18,7 +18,7 @@ from docling_core.types.doc.items.table.table_data import TableCell, TableData
 from docling_core.types.doc.labels import DocItemLabel, GraphCellLabel
 from docling_core.types.doc.page import BoundingRectangle, TextCell
 
-from limespec import pdf, recovery, tables
+from limespec import pdf, recovery, tables, visibility
 from limespec.elements import Element, row_text
 
 
@@ -161,14 +161,23 @@ def test_a_pdf_is_read_through_the_converter(
             return type("Result", (), {"document": datasheet()})
 
     recovered = []
+    # "Detail" is shown on page 2; a hidden word lies in the footer's box.
+    seen = [[("Detail", (50.0, 100.0, 80.0, 120.0), True),
+             ("VP-001", (100.0, 765.0, 120.0, 775.0), False)]]  # fmt: skip
+    pages = {2: ((600.0, 800.0), seen)}
+
+    def read_pages(path: Path, first: int, last: int) -> Any:
+        assert (path, first, last) == (Path("sheet.pdf"), 2, 2)
+        return pages
 
     def recover(
-        path: Path, found: list[Element], first: int, last: int, checks: Any
+        found: list[Element], read: Any, removed: Counter[int], checks: Any
     ) -> list[Element]:
-        recovered.append((path, len(found), first, last, checks))
-        return found + [Element(first, "recovered", "A line the reading lost")]
+        recovered.append((len(found), read, dict(removed), checks))
+        return found + [Element(2, "recovered", "A line the reading lost")]
 
     monkeypatch.setattr(pdf, "converter", Converter)
+    monkeypatch.setattr(visibility, "read_pages", read_pages)
     monkeypatch.setattr(recovery, "recover", recover)
     checks: dict[int, dict[str, int]] = {}
 
@@ -178,7 +187,31 @@ def test_a_pdf_is_read_through_the_converter(
     assert all(isinstance(element, Element) for element in found)
     assert found[-1] == Element(2, "recovered", "A line the reading lost")
     elements = len(pdf.elements(datasheet()))
-    assert recovered == [(Path("sheet.pdf"), elements, 2, 2, checks)]
+    assert recovered == [(elements, pages, {}, checks)]
+
+
+HIDDEN = {"Mixing", "Mesh", "here", "M5"}
+
+
+def keep_shown(page: int, bbox: Any, text: str) -> str:
+    """Takes the words in HIDDEN out of any text, as if its page hid them."""
+    words = text.split()
+    kept = [word for word in words if word not in HIDDEN]
+    return text if len(kept) == len(words) else " ".join(kept)
+
+
+def test_words_a_page_hides_are_taken_out_of_every_item() -> None:
+    found = pdf.elements(datasheet(), keep=keep_shown)
+
+    texts = [(e.kind, e.text) for e in found]
+    assert ("heading", "Mixing") not in texts  # wholly hidden: dropped
+    assert ("paragraph", "Mesh here") not in texts
+    assert ("figure", "") in texts  # a figure stays
+    assert ("table_header", "Property | Grade") in texts  # "M5" hidden
+    assert ("table_row", "Table 1 › Strength — Grade: 5 N/mm2") in texts
+    assert ("table_row", "1") in texts  # the contents table without "Mixing"
+    water = next(e for e in found if e.text == "Add 4 litres of water.")
+    assert water.section == ("Mortex Mortar",)  # a hidden heading is no section
 
 
 def test_the_converter_reads_text_cells_without_ocr() -> None:
@@ -273,6 +306,9 @@ def test_a_table_is_read_again_from_its_image(
     ]
     assert unread is None
     assert stats == Counter(tables=2, cells=6, unread=1)
+    answers[:] = [ANSWER]
+    hidden = pdf.vlm_table(table, 1, (), doc, words, "http://vlm", stats, keep_shown)
+    assert not any("M5" in e.text or "Mixing" in e.text for e in hidden or [])
     monkeypatch.setattr(TableItem, "get_image", lambda self, document: None)
     assert pdf.vlm_table(table, 1, (), doc, words, "http://vlm", stats) is None
 
@@ -293,7 +329,8 @@ def test_a_pdf_read_with_a_vision_model_keeps_its_other_elements(
 
     answers = [ANSWER, "", ""]
     monkeypatch.setattr(pdf, "converter", Converter)
-    monkeypatch.setattr(recovery, "recover", lambda path, found, *rest: found)
+    monkeypatch.setattr(recovery, "recover", lambda found, *rest: found)
+    monkeypatch.setattr(visibility, "read_pages", lambda path, first, last: {})
     monkeypatch.setattr(TableItem, "get_image", lambda self, document: "image")
     monkeypatch.setattr(tables, "recognise", lambda image, url: answers.pop(0))
     stats: Counter[str] = Counter()
@@ -323,7 +360,8 @@ def test_page_grades_come_from_docling_s_confidence_report(
             return SimpleNamespace(document=datasheet(), confidence=report)
 
     monkeypatch.setattr(pdf, "converter", Converter)
-    monkeypatch.setattr(recovery, "recover", lambda path, found, *rest: found)
+    monkeypatch.setattr(recovery, "recover", lambda found, *rest: found)
+    monkeypatch.setattr(visibility, "read_pages", lambda path, first, last: {})
     grades: dict[int, str] = {}
 
     found = pdf.read_pdf(Path("sheet.pdf"), grades=grades)
