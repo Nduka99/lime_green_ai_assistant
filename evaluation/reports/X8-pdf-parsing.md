@@ -941,3 +941,13 @@ the truth images: the IWI drawing's title block (`x8-pages` p15, 153 words), the
 carbon-footprint reports' clipped product descriptions (their visible sentences are still
 found), "© Christian Brailey Architects" (roof guide p2), "Page 1 of 4" (care guide cover)
 and One Click LCA field codes (EPD p7).
+
+Item 5, measured with GLM-OCR on 8083 (Qwen stopped): grid 0.9837, lowest table 0.800,
+cells 0.891, pairs 0.621, numbers 1.000 and sentences 0.988, each equal to round 3. **As
+written it fails on text kept**, 0.9962 → 0.9956 against pypdf, by 4 words: three hidden
+One Click LCA field codes on the Solo EPD's page 7 (`VP-020`, `VP-050-C`, `VP-026-C`,
+removed by design) and one pypdf join (`14808-60-7quartz`). Item 5 should have reported
+text kept against pypdf as item 4 does, since pypdf includes hidden text.
+
+**Decision** (user, on this evidence): the filter is adopted, and the production reading
+runs with GLM-OCR.
