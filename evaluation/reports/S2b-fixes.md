@@ -40,6 +40,26 @@ that differ in nothing a fix touches, and the number of status changes (`N_s`). 
 does not involve the generator, so reach does not move between them (checked). `unfixed`
 is also rung 0 of the ladder.
 
+**Result (29 September).** `unfixed` ran all 225 questions on 8095 (0 errors). Answers
+identical to S2's `candidate`: 53/90, 35/60, 50/75; the rest were graded blind (seed 45;
+evidence `sitting-s2b-noise` in each set).
+
+| Set | Status as the key expects | Graded changes, `unfixed` − `candidate` | CRAG per case (95% interval) | `N_s` |
+|---|---|---|---|---|
+| frozen90 | 86 → 87 | 4 of 37 differ: sound +1, wrong −1 | +0.022 (−0.011, +0.072) | 1 |
+| held-out v2 | 50 → 49 | 0 of 25 differ | 0.000 | 1 |
+| held-out v3 | 69 → 69 | 2 of 25 differ: sound +2, partial −1, wrong −1 | +0.033 (0.000, +0.093) | 1 (0 measured) |
+
+Reach is identical in both arms (frozen90 0.808, v2 0.400, v3 0.667 of parts in the
+top 8). Guardrails on `unfixed`: no price; every emergency referred; expected refusals
+8/10, 5/10, 15/15. Median seconds per answer 17.1 → 11.8, 17.6 → 13.3, 16.6 → 13.0 (X39's
+settings). So the generator's arithmetic alone moves about a third of the answers' wording
+but at most 2 graded verdicts and 1 status per set; a rung's change within that is noise.
+
+**Grading note, fixed before any rung runs:** an answer with the expected status that
+states nothing false but answers none of the parts is graded **missing** (it leaves the
+question unanswered, like a refusal); S2's scale counts it as wrong, as S2's sitting did.
+
 ## C. The ladder (dev sets only; one rung at a time)
 
 Each rung: code with tests at 100%, `scripts/check.py`, commit; then a dev-set run on the
