@@ -966,7 +966,7 @@ def run_generator_diagnose(args: argparse.Namespace) -> int:
     for reply in step:
         if reply["content"] != kept[reply["id"]]["content"]:
             found[reply["id"]] = generator.diagnose(
-                args.url.rstrip("/"),
+                args.url.rstrip("/") + "/v1/chat/completions",
                 requests[reply["id"]],
                 kept[reply["id"]]["content"],
                 reply["content"],

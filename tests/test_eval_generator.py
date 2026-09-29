@@ -626,69 +626,77 @@ def test_prompt_reuse_is_printed_from_a_pass(
 # The near-tie diagnosis.
 
 
-def test_the_first_difference_is_a_position_or_the_shorter_length() -> None:
-    assert generator.first_difference([1, 2, 3], [1, 5, 3]) == 1
-    assert generator.first_difference([1, 2], [1, 2, 3]) == 2
+def position(piece: str, logprob: float, *others: tuple[str, float]) -> dict[str, Any]:
+    """One regenerated position: its token and the candidates read there."""
+    candidates = [(piece, logprob), *others]
+    return {"bytes": list(piece.encode()), "logprob": logprob,
+            "top_logprobs": [{"bytes": list(text.encode()), "logprob": value}
+                             for text, value in candidates]}  # fmt: skip
 
 
-def test_the_lead_is_read_from_the_kept_configuration_s_candidates() -> None:
-    position = {"top_logprobs": [{"id": 7, "logprob": -0.2},
-                                 {"id": 9, "logprob": -0.5}]}  # fmt: skip
+def test_the_parting_is_read_where_the_step_s_text_leaves_the_kept_reply() -> None:
+    generated = [
+        position('{"', -0.1),
+        position("a", -0.2),
+        position("x", -0.4, ("bc", -0.6), ("b", -2.0)),
+    ]
 
-    assert generator.lead(position, 7, 9) == pytest.approx(0.3)
-    assert generator.lead(position, 7, 4) is None
+    found = generator.parting(generated, '{"ax', '{"abc')
+    far = generator.parting(generated, '{"ax', '{"ab')
+    lost = generator.parting(generated, '{"ax', '{"az')
+
+    assert found == {"index": 2, "lead": pytest.approx(0.2), "numeric": True,
+                     "reproduced": True, "logprobs": [-0.1, -0.2, -0.4]}  # fmt: skip
+    assert far["lead"] == pytest.approx(1.6) and far["numeric"] is False
+    assert (lost["index"], lost["lead"], lost["numeric"]) == (2, None, False)
 
 
-def fake_server(
-    tokens: dict[str, list[int]], logprobs: list[dict[str, Any]]
-) -> tuple[list[tuple[str, dict[str, Any]]], Any]:
-    calls: list[tuple[str, dict[str, Any]]] = []
+NEWLINE = chr(10)
+
+
+def test_a_longer_token_before_the_parting_is_read_too() -> None:
+    generated = [
+        position("{", -0.3, ('{"', -0.5), ("[", -4.0)),
+        position(NEWLINE, -0.01, ('"', -12.0)),
+    ]
+
+    found = generator.parting(generated, "{" + NEWLINE, '{"claims"')
+
+    assert found["index"] == 0 and found["lead"] == pytest.approx(0.2)
+    assert found["numeric"] is True
+    # A shorter token there would not reach the parting byte, so it is not read.
+    short = [position("ab", -0.1, ("a", -0.2)), position("c", -0.3, ("d", -0.9))]
+    assert generator.parting(short, "abc", "abd")["lead"] == pytest.approx(0.6)
+
+
+def test_a_reading_that_does_not_reproduce_the_kept_reply_does_not_stand() -> None:
+    generated = [position("a", -0.1, ("b", -0.3))]
+
+    found = generator.parting(generated, "c", "b")
+    same = generator.parting(generated, "a", "a and more")
+
+    assert found["lead"] == pytest.approx(0.2) and found["numeric"] is False
+    assert found["reproduced"] is False
+    assert (same["index"], same["lead"], same["numeric"]) == (1, None, False)
+
+
+def test_the_kept_reply_is_read_from_the_chat_endpoint_the_pass_used() -> None:
+    sent: list[dict[str, Any]] = []
+    generated = [position("a", -0.2, ("b", -0.3))]
 
     def post(url: str, **kwargs: Any) -> httpx.Response:
-        path = url.removeprefix("http://127.0.0.1:8083")
-        body = kwargs["json"]
-        calls.append((path, body))
-        if path == "/tokenize":
-            found: Any = {"tokens": tokens[body["content"]]}
-        elif path == "/apply-template":
-            found = {"prompt": "TEMPLATE"}
-        else:
-            found = {"completion_probabilities": [{"top_logprobs": logprobs}]}
-        return httpx.Response(200, json=found, request=httpx.Request("POST", url))
+        sent.append({"url": url, **kwargs["json"]})
+        body = {"choices": [{"logprobs": {"content": generated}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
 
-    return calls, post
+    request = {"system": "s", "user": "u", "schema": {"type": "object"}}
+    found = generator.diagnose(URL, request, "a", "b", post)
 
-
-def test_a_difference_at_a_near_tie_is_numeric() -> None:
-    tokens = {"kept": [1, 2, 3], "step": [1, 2, 4], "TEMPLATE": [100, 101]}
-    near = [{"id": 3, "logprob": -0.6}, {"id": 4, "logprob": -0.8}]
-    far = [{"id": 3, "logprob": -0.1}, {"id": 4, "logprob": -3.0}]
-    request = {"system": "s", "user": "u", "schema": {}}
-
-    calls, post = fake_server(tokens, near)
-    found = generator.diagnose("http://127.0.0.1:8083", request, "kept", "step", post)
-    _, distant = fake_server(tokens, far)
-    defect = generator.diagnose(
-        "http://127.0.0.1:8083", request, "kept", "step", distant
-    )
-
-    assert found == {"index": 2, "lead": pytest.approx(0.2), "numeric": True}
-    assert calls[-1][1]["prompt"] == [100, 101, 1, 2]
-    assert calls[-2][1]["parse_special"] is True
-    assert defect["numeric"] is False
-
-
-def test_a_reply_that_stops_early_is_left_for_reading() -> None:
-    tokens = {"kept": [1, 2], "step": [1, 2, 3]}
-    calls, post = fake_server(tokens, [])
-
-    found = generator.diagnose(
-        "http://127.0.0.1:8083", {"system": "s", "user": "u", "schema": {}},
-        "kept", "step", post,
-    )  # fmt: skip
-
-    assert found == {"index": 2, "lead": None, "numeric": False}
-    assert [path for path, _ in calls] == ["/tokenize", "/tokenize"]
+    assert found["numeric"] is True
+    assert sent[0]["url"] == URL and sent[0]["cache_prompt"] is False
+    assert sent[0]["logprobs"] is True
+    assert sent[0]["top_logprobs"] == generator.CANDIDATES
+    assert sent[0]["temperature"] == config.TEMPERATURE
 
 
 def test_the_command_line_diagnoses_only_differing_replies(
@@ -714,5 +722,5 @@ def test_the_command_line_diagnoses_only_differing_replies(
                  str(kept), str(step)]  # fmt: skip
     assert cli.main(arguments) == 0
 
-    assert seen == ["http://127.0.0.1:8083 b y z"]
+    assert seen == [f"{URL} b y z"]
     assert "1 replies differ; not numeric: ['b']" in capsys.readouterr().out

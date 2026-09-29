@@ -236,3 +236,22 @@ server's private memory was 4.2 GB. Amendment 1's diagnosis (the mapped copy) wa
   within 0.02 of the default's. The final configuration, with that size, must pass gate
   item 2 in M1's replay.
 - Pass B repeats pass A's configuration exactly (default cache), as registered.
+
+## Amendment 3 (29 September, the diagnosis's method; the rule is unchanged)
+
+The first diagnosis rebuilt the parting context by tokenising the replies' text, which
+need not give the token ids the model generated, and it accepted any negative lead,
+while the rule says the two tokens must be *within* 0.5 nats of each other. A reading of
+−2.36 nats on MTP (the step's token far ahead of the kept configuration's own greedy
+choice) showed the context was not the run's. The diagnosis now sends the kept
+configuration the same chat request again, asking for each position's log-probabilities
+(`logprobs`, 200 candidates), requires the reply to reproduce the kept reply exactly,
+finds the token holding the first byte where the step's reply differs (and, when that
+token starts exactly there, the token before it, which the step may have replaced with
+a longer one), and compares the kept token with the most likely candidate consistent
+with the step's text; numeric means |lead| < 0.5. Each reading keeps every position's
+log-probability, so the same pair read on the step's configuration shows how far the
+two configurations' arithmetic moves the model on the tokens both replies share.
+(A regeneration through the completion endpoint, with the same prompt tokens and schema,
+reproduced only 6 of 23 kept replies: the two endpoints do not generate identically, so
+it was not used.) Every diagnosis is run again this way before the gate is read.

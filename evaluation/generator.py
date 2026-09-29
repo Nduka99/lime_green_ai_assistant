@@ -32,9 +32,9 @@ MIB = 1024 * 1024
 # Two replies that part where the kept configuration's top two tokens were this close
 # differ by arithmetic (llama.cpp is not batch-invariant), not by a defect (X39 gate).
 NEAR_TIE_NATS = 0.5
-# Candidates read at the parting position: the schema's grammar can force tokens the
-# model ranks far down (valid JSON's first token ranks 25-40 at position 0).
-CANDIDATES = 1000
+# Candidates read at each position of the reply: the schema's grammar can force tokens
+# the model ranks far down (valid JSON's first token ranks 25-40 at position 0).
+CANDIDATES = 200
 
 SIZES = (8, 16, 32, 64)  # passages per answer request (M3)
 POSITIONS = ("first", "middle", "last")  # where the evidence sits among them
@@ -233,59 +233,81 @@ def noise(first: Sequence[Reply], second: Sequence[Reply]) -> float:
     return abs(metrics.mean([seconds(r) - seconds(by_id[r["id"]]) for r in second]))
 
 
-def first_difference(first: Sequence[int], second: Sequence[int]) -> int:
-    """The position of the first token that differs; the shorter length when one
-    sequence starts the other."""
-    for index, (a, b) in enumerate(zip(first, second, strict=False)):
-        if a != b:
-            return index
-    return min(len(first), len(second))
-
-
-def lead(position: Mapping[str, Any], kept_id: int, step_id: int) -> float | None:
-    """How far, in nats, the kept configuration's token led the step's token at one
-    position (its log-probabilities before sampling); None when either token is not
-    among the candidates read."""
-    logprobs = {c["id"]: c["logprob"] for c in position["top_logprobs"]}
-    if kept_id not in logprobs or step_id not in logprobs:
-        return None
-    return float(logprobs[kept_id] - logprobs[step_id])
+def parting(
+    generated: Sequence[Mapping[str, Any]], kept_content: str, step_content: str
+) -> dict[str, Any]:
+    """Read the kept configuration's reply (each position's token bytes,
+    log-probability and candidates) where the step's reply parts from it: how far
+    the kept token led the most likely token consistent with the step's text, in
+    nats. The parting is read at the token holding the first differing byte and,
+    when that token starts exactly there, also at the token before it, which the
+    step may have replaced with a longer one. `reproduced` says whether the reading
+    is the kept reply; only then does it stand. `logprobs` are each position's own,
+    to compare two configurations' arithmetic on the tokens they share."""
+    made = b"".join(bytes(p["bytes"]) for p in generated)
+    found: dict[str, Any] = {
+        "index": len(generated), "lead": None, "numeric": False,
+        "reproduced": made == kept_content.encode(),
+        "logprobs": [round(float(p["logprob"]), 4) for p in generated],
+    }  # fmt: skip
+    step = step_content.encode()
+    differ = next(
+        (i for i, (a, b) in enumerate(zip(made, step, strict=False)) if a != b),
+        min(len(made), len(step)),
+    )
+    starts = []
+    offset = 0
+    for position in generated:
+        starts.append(offset)
+        offset += len(bytes(position["bytes"]))
+    holding = [
+        i for i, s in enumerate(starts)
+        if s <= differ < s + len(bytes(generated[i]["bytes"]))
+    ]  # fmt: skip
+    if not holding:
+        return found
+    here = holding[0]
+    readings = []
+    for index in ([here - 1] if here and starts[here] == differ else []) + [here]:
+        position = generated[index]
+        rest = step[starts[index] :]
+        for candidate in position["top_logprobs"]:
+            token = bytes(candidate["bytes"])
+            if not token or token == bytes(position["bytes"]):
+                continue
+            if not rest.startswith(token):
+                continue
+            if index < here and starts[index] + len(token) <= differ:
+                continue  # the token before the parting must reach past it
+            readings.append((candidate["logprob"], index, position["logprob"]))
+    found["index"] = here
+    if readings:
+        logprob, index, kept = max(readings)
+        found["index"] = index
+        found["lead"] = float(kept - logprob)
+        found["numeric"] = found["reproduced"] and abs(found["lead"]) < NEAR_TIE_NATS
+    return found
 
 
 def diagnose(
-    base_url: str,
+    url: str,
     request: Request,
     kept_content: str,
     step_content: str,
     post: Post = httpx.post,
 ) -> dict[str, Any]:
-    """Where two replies to one request part, and by how much the kept configuration
-    (serving at `base_url`) preferred its own token there. A lead under
-    `NEAR_TIE_NATS` is a numeric difference, not a defect (the gate's rule)."""
-
-    def call(path: str, body: dict[str, Any]) -> Any:
-        response = post(
-            base_url + path, json=body, headers=llm.auth(), timeout=TIMEOUT_SECONDS
-        )
-        response.raise_for_status()
-        return response.json()
-
-    kept = call("/tokenize", {"content": kept_content})["tokens"]
-    step = call("/tokenize", {"content": step_content})["tokens"]
-    index = first_difference(kept, step)
-    if index >= min(len(kept), len(step)):
-        return {"index": index, "lead": None, "numeric": False}
+    """Where a step's reply parts from the kept reply, and by how much the kept
+    configuration (its chat endpoint at `url`) preferred its own token there. The
+    request is sent again exactly as the pass sent it, asking for each position's
+    log-probabilities, so the reading comes from the run's own generation (the
+    completion endpoint does not generate identically). A lead under
+    `NEAR_TIE_NATS` either way is a numeric difference, not a defect (the gate)."""
     payload = llm.chat_payload(request["system"], request["user"], request["schema"])
-    template = {k: payload[k] for k in ("messages", "chat_template_kwargs")}
-    prompt = call("/apply-template", template)["prompt"]
-    tokens = call("/tokenize", {"content": prompt, "add_special": True,
-                                "parse_special": True})["tokens"]  # fmt: skip
-    found = call("/completion", {"prompt": tokens + kept[:index], "n_predict": 1,
-                                 "n_probs": CANDIDATES, "temperature": 0,
-                                 "cache_prompt": False})  # fmt: skip
-    ahead = lead(found["completion_probabilities"][0], kept[index], step[index])
-    numeric = ahead is not None and ahead < NEAR_TIE_NATS
-    return {"index": index, "lead": ahead, "numeric": numeric}
+    payload.update(cache_prompt=False, logprobs=True, top_logprobs=CANDIDATES)
+    response = post(url, json=payload, headers=llm.auth(), timeout=TIMEOUT_SECONDS)
+    response.raise_for_status()
+    generated = response.json()["choices"][0]["logprobs"]["content"]
+    return parting(generated, kept_content, step_content)
 
 
 # M3: where the answers degrade.
