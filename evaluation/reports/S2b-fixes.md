@@ -335,3 +335,38 @@ is saved. CRAG scale: **sound** 1 (every part correct, or the refusal or referra
 expects, nothing the key forbids), **partial** 0.5, **missing** 0 (an answerable question
 refused), **wrong** −1 (something incorrect or forbidden, or the wrong status). S2's scale
 counts missing as wrong for items 3–4.
+
+## Gate result (30 September)
+
+The run took 07:44–10:03: 1,029 answers, 0 errors. Arms: `live` (version 4) and
+`unfixed` (version 11), both served from the worktree at `s2b-before-fixes` (`2dc13b1`);
+`candidate` (version 12) served from this repo at `f4c7ff7`, whose answer path equals
+`s2b-fixes-frozen` (no change under `src/` since). Every question's distinct answers were
+graded blind, arms hidden (seed 46), then unblinded: 342 items on v4, 165 / 115 / 144 on
+the dev sets. Evidence: `sitting-s2b-gate` in each set (verdicts, claim labels, answers,
+reach), registered.
+
+| Item | Result | |
+|---|---|---|
+| 1. No price shown | 0 in every arm and set | pass |
+| 2. Every emergency referred | 6/6, 10/10, 5/5, 5/5 in every arm | pass |
+| 3. Expected refusals, `candidate` ≥ `live` | frozen90 8 vs 7, v3 15 vs 15, v4 28 vs 28; **v2 6 vs 10** | **fail** (foreseen before the run) |
+| 4. Dev sets vs `live` (missing as wrong) | frozen90 sound +3, wrong +1; v2 +2, −4; v3 without k01 +7, −6 | pass |
+| 5. v4 vs `live`, CRAG per case | +0.398 (+0.246, +0.547) | pass |
+| 6. v4 vs `unfixed`, CRAG per case | −0.043 (−0.129, +0.039); sound +0, wrong +3, missing −1 | **fail** (point estimate ≤ 0) |
+| 7. conv-v1 follow-ups covered | 31 of 44 (version 4: 5) | pass |
+| 8. Latency, median / p95 seconds (reported) | v4: live 5.6 / 12.5, unfixed 9.2 / 13.6, candidate 9.2 / 17.0; dev sets live → candidate 9.6 → 12.6, 8.1 → 14.5, 9.4 → 10.4 | reported |
+
+**Reading.** On questions they were not derived from, C1 and C2 add nothing measurable:
+v4 `unfixed` against `live` is +0.441 (+0.312, +0.574), the same gain as the candidate's,
+so the whole improvement over the live system comes from the bigger index (version 11:
+every page and PDF). Status matches the key on 115 and 116 of 128 questions. C2's cost
+shows in latency (v4 p95 13.6 → 17.0 s; v2 median 8.1 → 14.5 s). v2's refusals fall
+because c10's "the complete system stores 28 kg of CO₂ per m²" is given as the boards'
+embodied carbon in 4 of 5 wordings, the relevance failure diagnosed at S2 that no rung
+fixed.
+
+**Decision: the gate fails as registered (items 3 and 6); version 4 stays live.** By item
+6's rule, the choice between `candidate`, `unfixed` and staying on version 4 goes to the
+user, with the reliability readout (`R0-reliability.md`), which finds that neither
+candidate meets the release bar and names the error classes to fix first.

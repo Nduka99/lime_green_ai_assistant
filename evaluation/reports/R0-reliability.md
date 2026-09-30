@@ -74,6 +74,93 @@ certification needs held-out v5 (≥ 160 answerable cases), written and sealed l
   is taken.
 - Held-out v4 is spent by this readout: from now on it is development material.
 
-## Readout
+## Readout (30 September; provisional until the third grader)
 
-*(to follow)*
+**Status.** Every number below is from the primary grader's blind verdicts (sitting
+`sitting-s2b-gate` in each set). Gemma 4 has graded the sample twice; the outside grader
+has the sample but has not returned it, so the majority of three is not yet settled. Four
+contested items that bear on risk are named where they matter.
+
+**What was graded.** The S2b gate run (1,029 answers, 0 errors): held-out v4 for `live`
+(version 4), `unfixed` (version 11) and `candidate` (version 12, C1 + C2); the dev sets
+for `live` and `candidate`. Every question's distinct answers were graded blind (766
+items), and every shown claim was labelled (the claim audit, E2, done for all sets).
+
+### The graders
+
+- **Round 1** (guide as committed in `e505187`): Gemma against the primary, κ = 0.40 on
+  179 items. Disagreements read: 61 of 73 were answerable questions refused (Gemma: sound
+  41, wrong 20; the guide: missing), 8 were related facts that answer no part (Gemma:
+  partial), 4 were list members or substituted answers (Gemma: partial or sound).
+- **Guide sharpened before re-grading** (`b7e4bba`): an ordered decision (status first,
+  then parts, then errors), an operational test for a claim standing in the asked
+  thing's place and for list members, and the reason written before the verdict (the
+  C3 diagnosis: a label forced first follows the model's first-token lean). The primary
+  verdicts were not re-graded: they stay blind, and the majority settles differences.
+- **Round 2**: κ = 0.897 on 179 items (168 agree), 0.735 on the 76 items that show
+  claims. Remaining disagreements: 7 related facts that answer no part (Gemma: partial,
+  though its reasons say no part is answered) and 4 where Gemma is lenient on a wrong
+  list member or a substituted answer: v4q039/A and v4q110/C (candidate), v4q065/C
+  (live), v4q069/A (unfixed).
+
+### Where live and the candidate stand (held-out v4; the bar's set)
+
+| | `live` (v4) | `unfixed` (v11) | `candidate` (v12) |
+|---|---|---|---|
+| **Risk**: cases answered wrong ÷ cases answered (Wilson 95% upper) | 3/22, 13.6% (33.3%) | 2/44, 4.5% (15.1%) | 4/43, 9.3% (21.6%) |
+| Risk if the contested items are not wrong | 2/22 (27.8%) | 1/44 (11.8%) | 2/43 (15.5%) |
+| Coverage: answerable cases, every wording sound or partial | 10/47, 21% | 35/47, 74% | 36/47, 77% |
+| Coverage against `live` (cases resampled) | | +0.53 (+0.36, +0.68) | +0.55 (+0.38, +0.72) |
+| Refusal correctness (absent, price, out of domain) | 14/14 | 14/14 | 14/14 |
+| Safety: prices shown; emergencies referred; `exposure-v1` | 0; 3/3; 77/78 | 0; 3/3; not run | 0; 3/3; 77/78 |
+| Claim precision (claim audit) | 28/51, 0.55 | 125/136, 0.92 | 99/108, 0.92 |
+| Consistency across wordings | 59/64 | 54/64 | 57/64 |
+| Median / p95 seconds | 5.6 / 12.5 | 9.2 / 13.6 | 9.2 / 17.0 |
+
+Dev sets (the fixes were derived from them), risk and coverage, `live` → `candidate`:
+frozen90 1/15 → 2/15 and 13/14 → 12/14; v2 3/8 → 2/10 and 4/9 → 5/9 (refusals 2/2 →
+1/2: c10's carbon figure); v3 3/10 → 3/10 and 5/11 → 6/11 (all of v3's candidate wrongs
+come from key rules: k01's scope and k06/k15's "do not omit" rules, which turn an
+incomplete answer into a wrong one; v3 is development material and those rules should
+become parts).
+
+**Gap to R1.** Safety and refusals are met on v4; coverage is far above live; Gemma's κ
+meets the bar overall but not on answered items; stability is not yet measured (it needs
+a repeat run). **Risk is the gap**: the candidate's upper bound is 21.6% against 5%, and
+its point estimate of 9.3% (4.7% without the contested items) is itself about the bar.
+To certify on held-out v5 with about 150 answered cases, at most 2 may be wrong
+(1.3%): a four- to sevenfold fall. v4 could not certify even with no error (43 answered
+cases give an upper bound of 8.2%).
+
+**Correction to the power note above:** the upper bound reaches 5% at 73 answered cases
+with no wrong answer, 110 with one, 142 with two and 173 with three (computed with the
+harness's `wilson`), not "about 100 with one and about 160 with two".
+
+### Error classes, ranked by attribution
+
+Every answerable wording graded partial, missing or wrong was attributed (the rules and
+the per-question result are in each sitting's `attribution.json`): a wrong answer by its
+error class, read from the verdicts; a short answer whose correct claim verification
+removed, `verification` (read from `evaluation removed`); image alt-text cases, `index
+gap`; then `retrieval` when some part's evidence never reached the model (from `evaluation
+reach`), otherwise `generation`. Cases with at least one wording so attributed:
+
+| Class | What happens | `candidate`, v4 | `candidate`, all sets | `live`, all sets |
+|---|---|---|---|---|
+| **Substitution** (wrong) | A true claim of the same kind as the asked thing but about another product, source or situation stands in its place: a mixing instruction as the incompatible materials, safety data sheets' PPE as an article's list, a system's stored carbon as boards' embodied carbon, products' lead time as samples' delivery. In 9 of these 10 cases (both arms) the asked part's evidence never reached the model; in the tenth (v2 c10) the asked figure exists nowhere | 2 | 5 | 5 |
+| **List member** (wrong) | A list answer names an item the asked list does not hold (a later list's item on the same page; a paint the source gives for another product) | 2 | 2 | 1 |
+| **Verification** (short) | A correct claim removed: the number check reads digits in names ("Silic8", "MPL1", "ISO 9001", "NHL5") that sit in the passage's title or heading, not in the quote; the regulation check fires on "approved" ("approved backgrounds"); quotes joining fragments with "…" are not found | 6 | 12 | 7 |
+| **Retrieval** (short) | A part's evidence never reached the model | 5 | 17 | 45 |
+| Generation (short) | The evidence reached the model; it refused or left a part out | 1 | 4 | 9 |
+| Refusal expected, answered (wrong) | A compliance verdict question answered with regulation context | 0 | 1 | 1 |
+| Key rules (wrong) | v3 k01's scope; k06/k15's "do not omit" rules | 0 | 3 | 2 |
+| Index gap: images (short) | The answer is in image alt text, not indexed | 0 | 2 | 2 |
+
+For the risk bar, **substitution and list members are the classes to fix**: they make every
+wrong answer the candidate gives on v4. For coverage, **verification's false removals now
+outnumber retrieval misses on v4** (6 cases against 5): the checks built to stop invented
+numbers and regulations remove correct claims whose product names contain digits. The live
+system's shortfalls are almost all retrieval (version 4 holds no PDFs), which the bigger
+index already fixes.
+
+**Held-out v4 is spent by this readout**: from now on it is development material.
