@@ -349,5 +349,86 @@
   "sha256": "6b812abad65a88f85d211877306e139c6ce643768b3138a7d490b46f010ceab8",
   "licence": "CC-BY-4.0",
   "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
+  "source": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+  "revision": "f2d3fe3694501008786e81e5f20360cbf715496a",
+  "bytes": 25505724480,
+  "sha256": "112bf957489a497c18f60bf8bd44ee1dfa05e87368b8ed7f68998a4e38f275c9",
+  "licence": "OpenMDW-1.1",
+  "use": "E8 generator candidate (MoE)"
+ },
+ {
+  "file": "gemma-4-12b-it-UD-Q4_K_XL.gguf",
+  "source": "unsloth/gemma-4-12b-it-GGUF",
+  "revision": "d997c805aafe035a8024f961c6e1afd6b30d79a5",
+  "bytes": 7366421920,
+  "sha256": "ee33ab5be8e07aca1c269fc645eaed5f3298e089d52db29415839d8f29957020",
+  "licence": "Apache-2.0",
+  "use": "E8 generator candidate (dense)"
+ },
+ {
+  "file": "Qwen3-8B-Q4_K_M.gguf",
+  "source": "Qwen/Qwen3-8B-GGUF",
+  "revision": "7c41481f57cb95916b40956ab2f0b139b296d974",
+  "bytes": 5027783488,
+  "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
+  "licence": "Apache-2.0",
+  "use": "E8 generator candidate (dense; published abstention figures)"
+ },
+ {
+  "file": "gemma-4-E4B-it-Q4_K_M.gguf",
+  "source": "unsloth/gemma-4-E4B-it-GGUF",
+  "revision": "ce152932ac27bc40bc9c727386760424d50bb456",
+  "bytes": 4977169088,
+  "sha256": "dff0ffba4c90b4082d70214d53ce9504a28d4d8d998276dcb3b8881a656c742a",
+  "licence": "Apache-2.0",
+  "use": "E8 generator candidate (dense)"
+ },
+ {
+  "file": "NVIDIA-Nemotron-3-Nano-4B-Q8_0.gguf",
+  "source": "unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF",
+  "revision": "8e81be55c5aa3d63bb82b6ceec62d50805d9e1bb",
+  "bytes": 4233679008,
+  "sha256": "81d4c5931c42f34789267445139dbdb196073760b99e11fbc7067fa2d2d7d629",
+  "licence": "NVIDIA Open Model License",
+  "use": "E8 generator candidate (dense)"
+ },
+ {
+  "file": "Qwen3.5-4B-Q4_K_M.gguf",
+  "source": "unsloth/Qwen3.5-4B-GGUF",
+  "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+  "bytes": 2740937888,
+  "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+  "licence": "Apache-2.0",
+  "use": "E8 generator candidate (dense)"
+ },
+ {
+  "file": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+  "source": "unsloth/Qwen3.8-27B-GGUF",
+  "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+  "bytes": 17559178144,
+  "sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
+  "licence": "Apache-2.0",
+  "use": "E8 reference (dense 27B, not served)"
+ },
+ {
+  "file": "gpt-oss-20b-MXFP4.gguf",
+  "source": "ggml-org/gpt-oss-20b-GGUF",
+  "revision": "ef9b12f2ff56c69cf32153a02784e7a3c88bf524",
+  "bytes": 12109566624,
+  "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901",
+  "licence": "Apache-2.0",
+  "use": "E8 generator candidate (MoE; only if its JSON output works)"
+ },
+ {
+  "file": "OCC-RAG-1.7B-Q8_0.gguf",
+  "source": "occ-ai/OCC-RAG-1.7B-GGUF",
+  "revision": "57938bfad9737724b4e5a0b7942bea4dd4c942fb",
+  "bytes": 1834423424,
+  "sha256": "7f3e60bf51287948716575d7b05b98e39a1f7714a7fab06092104a78948c8ff3",
+  "licence": "MIT",
+  "use": "E8 specialist arm: per-part answerability gate"
  }
 ]
