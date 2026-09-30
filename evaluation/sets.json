@@ -190,6 +190,13 @@
     "items.json": "cb9183fcb42a142fc2ba41b61630d21c5e58fdef1a8bc5d977f556da521fc400"
    }
   },
+  "nearmiss-readmitted": {
+   "description": "E8 G1 fix: the 139 questions nearmiss-dev's check removed, read blind with their passages by the primary grader (readings.json: 120 answerable, 8 near-miss, 11 unclear); added.json = seeded draw (seed 72) at the G1 sample's own rate per label (44 answerable, 3 near-miss), labelled by the reading",
+   "files": {
+    "added.json": "b0fa44219647aeaa93954664eeba66f2f7ed3427acff7bf698ab0ab8b357a38d",
+    "readings.json": "fd263a538b67b37bdda848ff4fd12699003d356d686836af04b5b62ddcf23e36"
+   }
+  },
   "relevance-dev": {
    "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
    "files": {

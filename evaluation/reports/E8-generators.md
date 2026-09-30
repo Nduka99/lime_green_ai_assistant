@@ -144,6 +144,52 @@ request, the answer request and the repeat. G1 on the 400-question sample:
 A finalist must therefore substitute on fewer than 30.1% of near-miss questions with its
 upper bound below that, and answer at least 97.5% of the answerable ones.
 
+**G0 and G1, Gemma 4 26B-A4B (20:09–20:41).** GPU 7,675 MiB, RAM 15.1 GB; G0 5 of 5.
+
+| Model | Substitution | Answer rate | Drafts removed | s / question |
+|---|---|---|---|---|
+| Gemma 4 26B-A4B | 47/200 = 0.235 [0.182, 0.298] | 199/200 = 0.995 [0.972, 0.999] | 1.2% | 4.4 |
+
+By the rule as written, Gemma is a finalist: its upper bound (0.298) is just below
+Qwen3.6's lower bound (0.301).
+
+**E7 S4b, the agreement gate (its rule written in E7 before S4): fails.** Gemma also
+answers 44 of Qwen3.6's 73 substitutions (0.603; the rule allows at most half) and 198
+of its 199 answerable answers. The two models' substitutions are mostly shared: 44 of
+Gemma's 47 are Qwen's too.
+
+**A confound found in G1, and its fix (written before the fix runs).** `nearmiss-dev`
+was built by Qwen3.6 writing the questions and Gemma 4 26B checking them; a question was
+kept only when Gemma agreed with its label (E7 S3). The check removed 92 of 592 near-miss
+questions (15.5%), which Gemma judged answered by their passage, and 47 of 590
+answerable ones. G1's near-miss questions are therefore all ones Gemma had already
+judged unanswered, which favours Gemma. It does not favour any other candidate over
+Qwen3.6, since neither built the set. **Fix:**
+1. The 139 removed questions are read with their passages by the primary grader (not a
+   candidate) before any model answers them, and labelled near-miss, answerable or
+   unclear. Unclear ones are left out.
+2. From each label's re-admitted questions, a seeded draw (seed 72) at the sample's own
+   rate is added to the G1 sample: 200 of 500 kept near-miss, 200 of 543 kept
+   answerable. The joined sample is then a random draw of the questions as written,
+   with only the unclear ones removed.
+3. Every model answers the added questions, and the finalist rule is applied again on
+   the joined sample. Gemma stays a finalist only if it holds there.
+4. G3 decides in any case: it is graded on keys written by an outside model, independent
+   of both models.
+
+**The reading (blind to the writer's label and the check; before any model answered).**
+Of the 92 removed near-miss questions, 82 are answered by their passage (writer
+mislabels, rightly removed), 3 are near-misses and 7 unclear. Of the 47 removed
+answerable questions, 38 are answerable, 5 are near-misses and 4 unclear. The check
+therefore cost G1 almost no genuine near-misses (3), so Gemma's substitution advantage
+does not come from the check. It did remove 38 answerable questions that Gemma judged
+unanswered, which may flatter Gemma's answer rate: that is what the addition tests. The
+writer mislabels too: at least 82 of its 592 near-miss questions (14%) are answerable,
+so the kept set's labels rest on both models agreeing. Re-admitted: 120 answerable and
+8 near-miss. Drawn at the sample's rate: 44 answerable (36.83%) and 3 near-miss (40%),
+34 of them against the writer's label. Registered as `nearmiss-readmitted` (readings and
+the draw) before use; the joined sample has 447 questions.
+
 **Specialist arm, the reading of OCC-RAG's status.** A probe (two invented questions on
 the CPU) showed that llama-server writes special tokens as empty text, so a stop at
 `<|status_end|>` never fires and the status cannot be found by its text. It is found by
