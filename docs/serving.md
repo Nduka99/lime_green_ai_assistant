@@ -15,11 +15,18 @@ the user's OK.
 | Port | Model | Role | Command line (after `-m`) |
 |---|---|---|---|
 | 8080 | Qwen3.6-35B-A3B UD-Q4_K_XL (22.4 GB) | understanding and answering | `-c 32768 -np 2 --no-kv-unified -ngl all --n-cpu-moe 40 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 2048` |
-| 8081 | Qwen3-Embedding-0.6B f16 (1.2 GB) | query and passage vectors | `--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
+| 8081 | Qwen3-Embedding-0.6B f16 (1.2 GB) | vectors for index versions built with it (the 8090 page, version 4) | `--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
 | 8082 | bge-reranker-v2-m3 Q8_0 (0.6 GB) | reranking search candidates | `--reranking -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0` |
+| 8084 | Qwen3-Embedding-4B Q8_0 (4.3 GB) | the platform's query and passage vectors, cut to 1,024 values (E5) | `--embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0 --device none` |
 
-All three add `-ngl all --fit off --cors-origins localhost` and read their API key from
-`LLAMA_API_KEY` (never on a command line).
+8080–8082 add `-ngl all --fit off`; all add `--cors-origins localhost` and read their API
+key from `LLAMA_API_KEY` (never on a command line). 8084 runs on the CPU alone
+(`--device none`): with `-ngl 0` llama.cpp still keeps 1.7 GB of compute buffers on the
+GPU. Measured (E5): 4.7 GB of RAM, no GPU, about 0.77 s per search against 0.40 s with the
+0.6B model on the GPU, and more evidence reached on every development set (held-out v4
+116 → 119 of 130 parts with the scoped search). A version built with the 0.6B model is
+served with `LIMESPEC_EMBEDDING_URL` and `LIMESPEC_EMBEDDING_MODEL` set to it
+(`.env.example`).
 
 **Why each generator flag (X39):**
 - `--n-cpu-moe 40`: every layer's experts (≈20 GB) stay in main memory; attention, the

@@ -1,7 +1,6 @@
 # 0028. The answer path after E5: whole lists, a scoped second search, fairer checks, no gate
 
-- Status: Accepted, except the embedding model (proposed, awaiting approval of its
-  server line)
+- Status: Accepted (the embedding model approved 30 September, served on its own port)
 - Date: 2026-09-30
 - Origin: E5 (`evaluation/reports/E5-fixes.md`), after the S2b gate and the R0
   reliability readout
@@ -45,8 +44,9 @@ is the held-out v5 gate.
 - **Models.** The reranker stays (bge-reranker-v2-m3): the Qwen3 rerankers, 0.6B and
   4B, reached less evidence on this corpus. Qwen3-Embedding-4B (vectors cut to the
   index's 1,024 values) reached more on every set; served on the CPU alone it needs
-  4.7 GB of RAM and no GPU, and adds about 0.4 s per search. Adopting it changes the
-  embedding server's startup line and is awaiting approval.
+  4.7 GB of RAM and no GPU, and adds about 0.4 s per search. It runs on port 8084
+  beside the 0.6B model on 8081, which the page on 8090 and the versions built with it
+  still need; the candidate is index version 17.
 
 ## Consequences
 

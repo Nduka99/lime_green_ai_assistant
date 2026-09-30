@@ -30,8 +30,15 @@ REQUEST_DELAY_SECONDS = 1.0
 REQUEST_TIMEOUT_SECONDS = 30.0
 REQUEST_RETRIES = 2
 
-EMBEDDING_URL = "http://127.0.0.1:8081/v1/embeddings"
-EMBEDDING_MODEL = "Qwen3-Embedding-0.6B-f16.gguf"
+# Qwen3-Embedding-4B on the CPU, its vectors cut to the index's size (E5, D104). An
+# index version built with another embedder is served with that one: set both variables
+# (the 0.6B model: http://127.0.0.1:8081/v1/embeddings, Qwen3-Embedding-0.6B-f16.gguf).
+EMBEDDING_URL = os.environ.get(
+    "LIMESPEC_EMBEDDING_URL", "http://127.0.0.1:8084/v1/embeddings"
+)
+EMBEDDING_MODEL = os.environ.get(
+    "LIMESPEC_EMBEDDING_MODEL", "Qwen3-Embedding-4B-Q8_0.gguf (first 1024)"
+)
 EMBEDDING_BATCH_SIZE = 16
 # The index column's size. A model trained for shorter vectors (Qwen3-Embedding's
 # Matryoshka training) gives longer ones that are cut to this size and normalised.
