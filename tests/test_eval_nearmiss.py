@@ -94,12 +94,14 @@ def test_claims_shown_from_the_passage_alone_are_counted() -> None:
     found = nearmiss.written(SOLO, lambda s, u, schema: written_reply())
     quote = {"source_id": "S1", "quote": "Solo dries in 2 days."}
     claim = {"part": 1, "text": "Solo dries in 2 days.", "evidence": [quote]}
+    invented = {"source_id": "S1", "quote": "Solo is waterproof."}
+    removed = {"part": 1, "text": "Solo is waterproof.", "evidence": [invented]}
 
     shown = nearmiss.shown_claims(
-        found[:1], {"p7": SOLO}, lambda body: reply_with({"claims": [claim]})
+        found[:1], {"p7": SOLO}, lambda body: reply_with({"claims": [claim, removed]})
     )
 
-    assert shown == {"p7/a1": 1}
+    assert shown == {"p7/a1": {"shown": 1, "removed": 1}}
 
 
 def test_the_command_line_writes_checks_and_answers(
@@ -133,4 +135,7 @@ def test_the_command_line_writes_checks_and_answers(
 
     out = capsys.readouterr().out
     assert "3 questions from 1 passages" in out and "1 of 3 questions kept" in out
-    assert json.loads(shown.read_text()) == {"p7/a1": 0, "p7/n1": 0, "p7/n2": 0}
+    none = {"shown": 0, "removed": 0}
+    assert json.loads(shown.read_text()) == dict.fromkeys(
+        ["p7/a1", "p7/n1", "p7/n2"], none
+    )

@@ -171,6 +171,12 @@
     "sitting-s2b-gate/verdicts.json": "9bf9b239ee2aea21cbc523be9d5b9233637f5b32a4cd99c64050351d8c5c137b"
    }
   },
+  "nearmiss-dev": {
+   "description": "E7 S3: near-miss questions written by the generator from 300 passages of index version 17 (seed 71), answerable and near-miss, each with its quote; kept only where Gemma 4 26B, reading the passage alone, agreed with the label. Evaluation only; never training",
+   "files": {
+    "items.json": "cb9183fcb42a142fc2ba41b61630d21c5e58fdef1a8bc5d977f556da521fc400"
+   }
+  },
   "relevance-dev": {
    "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
    "files": {

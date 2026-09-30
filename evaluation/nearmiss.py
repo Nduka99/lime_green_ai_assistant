@@ -146,10 +146,10 @@ def checked(
 
 def shown_claims(
     found: Sequence[Item], passages: dict[str, Passage], send: Send
-) -> dict[str, int]:
-    """S4: the claims the answer request, given only the item's passage, would show
-    for its question after verification (a near-miss question's claims are
-    substitutions)."""
+) -> dict[str, dict[str, int]]:
+    """S4 and E8 G1: the claims the answer request, given only the item's passage,
+    would show for its question after verification (a near-miss question's claims are
+    substitutions), and how many drafted claims verification removed."""
     shown = {}
     for item in found:
         sources = {"S1": passages[item["case"]]}
@@ -160,6 +160,6 @@ def shown_claims(
         )
         reply = send(body)
         output = json.loads(reply["choices"][0]["message"]["content"])
-        claims, _ = verify.verify(answer.read_output(output, ["S1"], 1), sources)
-        shown[item["id"]] = len(claims)
+        claims, removed = verify.verify(answer.read_output(output, ["S1"], 1), sources)
+        shown[item["id"]] = {"shown": len(claims), "removed": len(removed)}
     return shown

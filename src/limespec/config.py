@@ -66,7 +66,11 @@ RRF_K = 60  # the standard reciprocal-rank-fusion constant
 RERANK_CANDIDATES = 20
 TOP_K = 8
 
-CHAT_URL = "http://127.0.0.1:8080/v1/chat/completions"
+# The generator. A candidate generator served elsewhere is evaluated by pointing the
+# whole answer path at it (E8).
+CHAT_URL = os.environ.get(
+    "LIMESPEC_CHAT_URL", "http://127.0.0.1:8080/v1/chat/completions"
+)
 # Qwen keeps its expert layers in system RAM, so an answer can take a while.
 CHAT_TIMEOUT_SECONDS = 300.0
 # Deterministic sampling, so the same question gets a repeatable answer.
