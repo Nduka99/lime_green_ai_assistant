@@ -73,6 +73,13 @@ ingest = [
     "torchvision>=0.29.0",
     "pylatexenc>=2.11",
 ]
+# Offline benchmarks of small CPU models (E5): a support checker and a sentence
+# pruner. The pruner's own model code imports nltk; its sentences are given split.
+bench = [
+    "nltk>=3.10.3",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+]
 
 # CPU builds of PyTorch on every platform: ingestion runs on the CPU, and the default
 # Linux wheels would add gigabytes of CUDA libraries.

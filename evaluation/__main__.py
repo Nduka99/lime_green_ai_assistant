@@ -58,6 +58,7 @@ from evaluation import (
     catalogue,
     claims,
     conversations,
+    detectors,
     drafts,
     generator,
     graders,
@@ -284,6 +285,24 @@ def parser() -> argparse.ArgumentParser:
     reranked.add_argument("items", type=Path)
     reranked.add_argument("--url", default="", help="another reranking server")
     reranked.add_argument("--out", type=Path, required=True)
+    supported = commands.add_parser(
+        "claim-support", help="each claim scored against its quotes on the CPU (E5)"
+    )
+    supported.add_argument("items", type=Path)
+    supported.add_argument("--model", type=Path, required=True, help="model folder")
+    supported.add_argument("--out", type=Path, required=True)
+    termed = commands.add_parser(
+        "claim-terms",
+        help="each claim scored by its quotes' share of a part's words (E5)",
+    )
+    termed.add_argument("items", type=Path)
+    termed.add_argument("--version", type=int, required=True, help="index version")
+    termed.add_argument("--out", type=Path, required=True)
+    joined = commands.add_parser(
+        "claim-combine", help="the mean percentile rank of several detectors (E5)"
+    )
+    joined.add_argument("scores", type=Path, nargs="+", help="scores files")
+    joined.add_argument("--out", type=Path, required=True)
     gated = commands.add_parser(
         "claim-score", help="a detector's scores against the labelled claims (E5)"
     )
@@ -1000,6 +1019,31 @@ def run_claim_rerank(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_claim_support(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    scores = detectors.by_support(found, detectors.support_model(args.model))
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
+def run_claim_terms(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    with assistant.connect() as conn:
+        weights = detectors.rarity(store.searchable_texts(conn, args.version))
+    scores = detectors.by_terms(found, weights)
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
+def run_claim_combine(args: argparse.Namespace) -> int:
+    scores = detectors.combined([grades.read_json(path) for path in args.scores])
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
 def run_claim_score(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     scores = grades.read_json(args.scores)
@@ -1608,6 +1652,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_claim_items(args)
         if args.command == "claim-rerank":
             return run_claim_rerank(args)
+        if args.command == "claim-support":
+            return run_claim_support(args)
+        if args.command == "claim-terms":
+            return run_claim_terms(args)
+        if args.command == "claim-combine":
+            return run_claim_combine(args)
         if args.command == "claim-score":
             return run_claim_score(args)
         if args.command == "verify-score":

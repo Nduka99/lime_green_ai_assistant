@@ -191,6 +191,17 @@ the reference. `parts-dev` is built when a candidate that reads passages before
 generation is scored (the second tier); the first tier's three candidates all score
 claims.
 
+*Added after (a) and (c) were scored and before (d) and (e) were:* (d) term coverage:
+a claim's score is, for its best part, the share of that part's word weight found in
+its quotes, each word (lower-case letters and digits) weighted by its inverse document
+frequency over index version 12's searchable passages. (e) the combination: the mean of
+the candidates' percentile ranks over all 856 items (ranks need no labels), for every
+pair and the triple of (a) with the current reranker, (c) and (d). Candidate (b) could
+not run: OpenProvence's own model code calls tokenizer methods that transformers 5
+removed (`build_inputs_with_special_tokens`, `create_token_type_ids_from_sequences`), in
+three places that build its inputs; patching them would change what it reads, so it
+waits for a decision on running it under the transformers 4.57 it was written for.
+
 ### E. The notice
 
 The notice names the parts with no shown claim. Code only; no prompt rule is relied on
@@ -240,6 +251,33 @@ v3 by 3. It changes the passages given on almost every question (the same set on
 264) without reaching more evidence, and questions with every part reached fall on all
 four sets. GPU memory 912 MiB against 477 MiB. Its published lead (65.8 against 57.0)
 does not carry to this corpus.
+
+**C, first tier: no candidate qualifies, so no gate is added.** Scored on `claims-dev`
+(seed 5; test half 370 correct, 30 not correct), and on seeds 1 to 20:
+
+| Candidate | AUC | Correct withheld | Not correct caught | Qualifies (seeds 1–20) |
+|---|---|---|---|---|
+| (a) bge-reranker-v2-m3, claim against its best part | 0.717 | 26 of 370 | 9 of 30 | no (0) |
+| (a) Qwen3-Reranker-0.6B, the same | 0.698 | 21 of 370 | 10 of 30 | no (0) |
+| (c) FactCG, claim against its own quotes | 0.505 | 26 of 370 | 4 of 30 | no (0) |
+| (d) term coverage of the best part | 0.664 | 20 of 370 | 0 of 30 | no (0) |
+| (e) (a, bge) + (c) | 0.667 | 12 of 370 | 4 of 30 | no (0) |
+| (e) (a, bge) + (d) | 0.724 | 15 of 370 | 4 of 30 | no (0) |
+| (e) (c) + (d) | 0.606 | 14 of 370 | 2 of 30 | no (0) |
+| (e) all three | 0.694 | 12 of 370 | 3 of 30 | no (0) |
+
+The rule needed at least 15 of 30 caught. Against each kind of wrong claim (AUC, all
+856 items): the current reranker reads **off-question** claims at 0.790 and the
+incorrect ones at 0.217; FactCG the reverse, 0.494 and 0.819 (8 incorrect claims);
+forbidden claims (v3 key rules) 0.36–0.55 for all. So the two kinds need different
+readers: relevance cannot see a false claim, support cannot see a true claim about the
+wrong thing, and 82 of the 101 not-correct claims are off-question. This is what the
+research predicted (relevance signals fall to 0.57 on near-misses): an off-question
+claim is on the same product and the same kind of fact as the part, only not the fact
+asked. Next, by the standing rule: the second tier's reader with a "no answer" option
+(trained on SQuAD 2.0, whose unanswerable questions were written to have plausible
+near-miss passages), which asks the part itself of the quotes rather than scoring
+their topic, and a further search of the literature on this stage.
 
 **A, code (before the index is built).** As built, with two changes from the design,
 both recorded here before any index is measured:
