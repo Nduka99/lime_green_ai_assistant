@@ -12,14 +12,7 @@ from typing import Any
 import psycopg
 
 from limespec import config, llm, store, telemetry
-from limespec.answer import (
-    PROMPT_SHA256,
-    RELEVANCE_PROMPT,
-    UNDERSTAND_SCHEMA,
-    Chat,
-    Retrieve,
-    answer,
-)
+from limespec.answer import PROMPT_SHA256, UNDERSTAND_SCHEMA, Chat, Retrieve, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
 from limespec.view import view
@@ -59,10 +52,6 @@ def with_stages(
         if schema is UNDERSTAND_SCHEMA:
             on_stage("understanding")
             with telemetry.span("understanding"):
-                return chat(system, user, schema)
-        if system is RELEVANCE_PROMPT:
-            # Reported as "checking", which the answer request already announced.
-            with telemetry.span("checking"):
                 return chat(system, user, schema)
         on_stage("answering")
         with telemetry.span("answering"):

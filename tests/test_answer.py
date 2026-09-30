@@ -8,9 +8,7 @@ from limespec import store
 from limespec.answer import (
     ANSWER_PROMPT,
     INSUFFICIENT,
-    IRRELEVANT,
     PARTIAL,
-    RELEVANCE_PROMPT,
     SAFETY_REFERRAL,
     UNDERSTAND_PROMPT,
     UNDERSTAND_SCHEMA,
@@ -19,15 +17,12 @@ from limespec.answer import (
     closest_pages,
     interleave,
     read_output,
-    read_relevance,
     read_understanding,
-    relevance_prompt,
-    relevance_schema,
     user_prompt,
 )
 from limespec.ingest import prepare_index
 from limespec.llm import ModelServerError
-from limespec.models import Claim, Evidence, Passage
+from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
 
 MORTAR = Passage(
@@ -61,21 +56,15 @@ class FakeModel:
     """Stands in for llama-server and records each request.
 
     It answers the first request with `exposure` and `parts` (by default the
-    question itself, as one part), the answer request with the canned `reply`, and
-    the relevance check with `stated` (by default part 1 for every claim).
+    question itself, as one part) and the answer request with the canned `reply`.
     """
 
     def __init__(
-        self,
-        reply: object,
-        exposure: bool = False,
-        parts: list[str] | None = None,
-        stated: list[int] | None = None,
+        self, reply: object, exposure: bool = False, parts: list[str] | None = None
     ) -> None:
         self.reply = reply
         self.exposure = exposure
         self.parts = parts
-        self.stated = stated
         self.requests: list[tuple[str, str, dict[str, Any]]] = []
 
     def __call__(self, system: str, user: str, schema: dict[str, Any]) -> object:
@@ -86,10 +75,6 @@ class FakeModel:
                 "describes_exposure": self.exposure,
                 "search_questions": self.parts or [asked],
             }
-        if system is RELEVANCE_PROMPT:
-            claims = schema["properties"]["claims"]["minItems"]
-            stated = self.stated or [1] * claims
-            return {"claims": [{"answers": "a part", "part": n} for n in stated]}
         return self.reply
 
 
@@ -198,7 +183,7 @@ def test_a_question_the_model_reads_as_ordinary_is_answered_from_the_pages() -> 
     )
 
     assert result.status == "answered"
-    assert len(model.requests) == 3  # understanding, answer, relevance
+    assert len(model.requests) == 2
 
 
 @pytest.mark.parametrize("value", [True, False])
@@ -389,7 +374,7 @@ def test_a_question_with_several_parts_is_searched_whole_and_by_part() -> None:
         reply(("Duro is whole 1.", [("S1", "whole 1")]), part=1)["claims"]
         + reply(("Solo is part 21.", [("S2", "part 21")]), part=2)["claims"]
     )
-    model = FakeModel({"claims": both}, parts=parts, stated=[1, 2])
+    model = FakeModel({"claims": both}, parts=parts)
 
     result = answer("is duro breathable + what solo cost", retrieve_each, model)
 
@@ -405,78 +390,6 @@ def test_a_one_part_question_gets_the_top_eight_of_its_search() -> None:
     result = answer("q", lambda query: ranked, FakeModel(reply()))
 
     assert result.passages == tuple(ranked[:8])
-
-
-def test_a_claim_that_states_no_part_is_removed_and_parts_come_from_the_check() -> None:
-    on_topic = ("Mortex suits 3 to 6 mm joints.", [("S1", "joints of 3 to 6 mm")])
-    off_topic = ("Mortex is a low-carbon mix.", [("S1", "It is a low-carbon mix.")])
-    model = FakeModel(reply(on_topic, off_topic), parts=["Joints?"], stated=[1, 0])
-
-    result = answer("What joints does Mortex suit?", retrieve, model)
-
-    assert [c.text for c in result.claims] == ["Mortex suits 3 to 6 mm joints."]
-    assert [(r.text, r.reason) for r in result.rejected] == [
-        ("Mortex is a low-carbon mix.", IRRELEVANT)
-    ]
-    # Every part is still answered, so removing an off-topic claim adds no caution.
-    assert result.status == "answered" and result.notice == ""
-    system, user, schema = model.requests[2]
-    assert system is RELEVANCE_PROMPT and "<passage" not in user
-    assert schema == relevance_schema(2, 1)
-
-
-def test_an_answer_whose_claims_all_answer_nothing_asked_is_refused() -> None:
-    model = FakeModel(reply(SUPPORTED), stated=[0])
-
-    result = answer("What colour is Mortex?", retrieve, model)
-
-    assert result.status == "insufficient_evidence"
-    assert result.notice == INSUFFICIENT and result.claims == ()
-
-
-def test_the_check_reads_the_parts_and_each_claim_with_its_quotes() -> None:
-    quote = Evidence(11, MORTAR.url, "Mortex Mortar", "", "joints of 3 to 6 mm", "", "")
-    claims = [Claim("Joints of 3 to 6 mm.", (quote, quote))]
-
-    assert relevance_prompt(["Joints?", "Cost?"], claims) == (
-        "Parts of the question:\n1. Joints?\n2. Cost?\n\nClaims:\n"
-        "Claim A: Joints of 3 to 6 mm.\n"
-        '   Quotes: "joints of 3 to 6 mm"; "joints of 3 to 6 mm"'
-    )
-
-
-CHECK = {"answers": "Joints?", "part": 1}
-
-
-def test_a_relevance_reply_is_read_as_one_part_number_per_claim() -> None:
-    output = {"claims": [CHECK, {"answers": "none", "part": 0}]}
-
-    assert read_relevance(output, claims=2, parts=2) == [1, 0]
-    check = relevance_schema(2, 2)["properties"]["claims"]["items"]
-    assert list(check["properties"]) == ["answers", "part"]  # words before the number
-
-
-@pytest.mark.parametrize(
-    "output",
-    [
-        None,
-        {},
-        {"claims": [CHECK]},  # one check for two claims
-        {"claims": [CHECK, CHECK | {"part": 3}]},
-        {"claims": [CHECK, CHECK | {"part": -1}]},
-        {"claims": [CHECK, CHECK | {"part": "2"}]},
-        {"claims": [CHECK, CHECK | {"part": True}]},
-        {"claims": [CHECK, CHECK | {"answers": " "}]},
-        {"claims": [CHECK, {"part": 1}]},
-        {"claims": [CHECK, CHECK | {"x": 0}]},
-        {"claims": [CHECK, CHECK], "x": 0},
-    ],
-)
-def test_a_relevance_reply_that_breaks_its_schema_is_an_operational_error(
-    output: object,
-) -> None:
-    with pytest.raises(ModelServerError, match="does not match the relevance schema"):
-        read_relevance(output, claims=2, parts=2)
 
 
 def test_closest_pages_lists_each_page_once_best_first() -> None:
@@ -497,7 +410,7 @@ def test_a_fixture_page_is_answered_and_cited_end_to_end(
 
     class CiteTheFaq(FakeModel):
         def __call__(self, system: str, user: str, schema: dict[str, Any]) -> object:
-            if schema is not UNDERSTAND_SCHEMA and system is not RELEVANCE_PROMPT:
+            if schema is not UNDERSTAND_SCHEMA:
                 # Cite whichever source id the retrieved FAQ answer was given.
                 blocks = user.split('<passage id="')[1:]
                 source_id = next(

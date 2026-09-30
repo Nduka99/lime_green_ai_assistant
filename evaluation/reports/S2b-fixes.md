@@ -225,6 +225,26 @@ if, against C2, the ladder rule holds (guardrails perfect, reach not lower, stat
 one in five of its removals is read as wrongly removed (every removal read as for C3).
 Otherwise the relevance check is dropped and the ladder ends at C2.
 
+**C3′ — fails; the relevance check is dropped** (`e51c294`; `s2b-c3p`, 30 Sept, 0 errors).
+Against C2: reach unchanged; guardrails perfect; expected refusals 8 → 9, **6 → 10**, 15 →
+15 (the target reached in full); status 88 → 89, 52 → 53, **68 → 64** (v3 falls by 4 > `N_s`).
+Removals read (`removed-s2b-c3p.json`): **68 removed, 20 rightly, 48 wrongly** (frozen90
+6/18, v2 13/19, v3 1/11) — worse than C3; it even removed C1's compiled list from the
+lime-mortar answer. The model itself leans to "none" before any format constraint (v3q056:
+"none" 0.39 as its first free token; at the start of `answers` "none" 0.29 against "0" 0.18
+and "1" 0.17), so a change of output format does not fix its reading. Code restored to C2's
+(`answer.py`, `assistant.py` and their tests as at `c2f5a5e`); the ladder ends at C2 by the
+rule above.
+
+**Before freezing (goes to the user):** the live system refuses 7/10, **10/10** and 15/15 of
+the expected refusals on the dev sets, C1 + C2 refuse 8/10, **6/10** and 15/15, so gate
+item 3 (candidate ≥ live on every set) will fail on held-out v2 if the gate runs now, and
+held-out v4 would be spent on a candidate known to lack a relevance fix. A relevance check
+that works (for example the model reasoning before it labels, with thinking on for this one
+short request, or the cross-encoder the system already runs scoring each claim against its
+part) would be a new rung with this same rule, researched first, and v4 kept unused until
+the fixes are frozen.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at

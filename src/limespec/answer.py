@@ -2,7 +2,7 @@
 
 question → understanding ─ emergency → fixed safety text
                           └ search questions → search each → answer request
-                                → verify → relevance check → parts checklist → Answer
+                                → verify → parts checklist → Answer
 
 Understanding the question, including whether it describes an emergency and
 which separate things it asks, is left to the model: people can ask in countless
@@ -13,29 +13,18 @@ one search question per thing asked. A question with several parts is searched
 whole and part by part, because one search for unrelated things finds some and
 misses the rest (S2b C2). What the reader sees is still decided by the
 application: an emergency gets fixed text, any other answer shows only claims that
-pass `verify` and a last request's check that it states a part of the question
-(a true quote about a different quantity or product is removed), and the caution
-appears whenever a part has no such claim.
+pass `verify`, and the caution appears whenever a part has no verified claim.
 Retrieval and the model are passed in as functions, so this module does no I/O
 and the tests can replace both.
 """
 
 import hashlib
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
-from string import ascii_uppercase
 from typing import Any
 
 from limespec import config
 from limespec.llm import ModelServerError
-from limespec.models import (
-    Answer,
-    Claim,
-    DraftClaim,
-    DraftEvidence,
-    Passage,
-    Rejection,
-)
+from limespec.models import Answer, DraftClaim, DraftEvidence, Passage
 from limespec.verify import verify
 
 Retrieve = Callable[[str], list[Passage]]
@@ -145,27 +134,9 @@ reader as "you", do not say whether the reader's work meets regulations, and do 
 not diagnose problems with the reader's building.
 7. If the passages do not answer the question, return an empty claims list."""
 
-# The last request reads only the parts and the verified claims with their quotes,
-# never the passages, and says which part each claim states (S2b C3). The definition
-# is general: no example comes from any keyed question.
-RELEVANCE_PROMPT = """\
-You check the claims written to answer a question about Lime Green building \
-products. You see the question's numbered parts, then each claim, lettered, with the \
-quotes it rests on. For each claim, in order, first write the part it answers in \
-that part's own words, or "none", then give that part's number, or 0 for none.
-
-A claim answers a part when it gives what that part asks, or says it is absent or \
-not the case. A statement about something the part does not ask (another quantity, \
-unit, property or product) answers no part, even when it is true and about the \
-same subject."""
-# Why a claim that failed the relevance check was removed (recorded, never shown).
-IRRELEVANT = "does not answer the question"
-
 # Which prompts produced an answer: recorded with every answer, so a change to either
 # prompt shows up in the audit records and can be tied to its evaluation run.
-PROMPT_SHA256 = hashlib.sha256(
-    (UNDERSTAND_PROMPT + ANSWER_PROMPT + RELEVANCE_PROMPT).encode()
-).hexdigest()
+PROMPT_SHA256 = hashlib.sha256((UNDERSTAND_PROMPT + ANSWER_PROMPT).encode()).hexdigest()
 
 
 def user_prompt(parts: Sequence[str], sources: Mapping[str, Passage]) -> str:
@@ -292,92 +263,6 @@ def read_output(
     )
 
 
-def relevance_schema(claims: int, parts: int) -> dict[str, Any]:
-    """The relevance check's JSON: per claim, in order, the part it answers in that
-    part's words (or "none"), then its number (0 for none). The words come first so
-    the model reads the claim before it labels it (C3')."""
-    check = {
-        "type": "object",
-        "properties": {
-            "answers": {"type": "string", "minLength": 1},
-            "part": {"type": "integer", "minimum": 0, "maximum": parts},
-        },
-        "required": ["answers", "part"],
-        "additionalProperties": False,
-    }
-    return {
-        "type": "object",
-        "properties": {
-            "claims": {
-                "type": "array",
-                "minItems": claims,
-                "maxItems": claims,
-                "items": check,
-            }
-        },
-        "required": ["claims"],
-        "additionalProperties": False,
-    }
-
-
-def relevance_prompt(parts: Sequence[str], claims: Sequence[Claim]) -> str:
-    """The numbered parts, then each claim, lettered so it cannot be read as a part
-    number, with its verified quotes."""
-    numbered = "\n".join(f"{number}. {part}" for number, part in enumerate(parts, 1))
-    lines = []
-    for letter, claim in zip(ascii_uppercase, claims, strict=False):
-        quotes = "; ".join(f'"{evidence.quote}"' for evidence in claim.evidence)
-        lines.append(f"Claim {letter}: {claim.text}\n   Quotes: {quotes}")
-    return f"Parts of the question:\n{numbered}\n\nClaims:\n" + "\n".join(lines)
-
-
-def read_relevance(output: object, claims: int, parts: int) -> list[int]:
-    """The relevance check's reply, checked against its schema again."""
-    if not (
-        isinstance(output, dict)
-        and set(output) == {"claims"}
-        and isinstance(output["claims"], list)
-        and len(output["claims"]) == claims
-        and all(is_check(check, parts) for check in output["claims"])
-    ):
-        raise ModelServerError("the model's reply does not match the relevance schema")
-    return [check["part"] for check in output["claims"]]
-
-
-def is_check(check: object, parts: int) -> bool:
-    return (
-        isinstance(check, dict)
-        and set(check) == {"answers", "part"}
-        and is_text(check["answers"])
-        and type(check["part"]) is int
-        and 0 <= check["part"] <= parts
-    )
-
-
-def check_relevance(
-    parts: Sequence[str], claims: Sequence[Claim], chat: Chat
-) -> tuple[tuple[Claim, ...], tuple[Rejection, ...]]:
-    """The claims that state a part, each with the part the check found, and the
-    others as removed."""
-    output = chat(
-        RELEVANCE_PROMPT,
-        relevance_prompt(parts, claims),
-        relevance_schema(len(claims), len(parts)),
-    )
-    stated = read_relevance(output, len(claims), len(parts))
-    kept = tuple(
-        replace(claim, part=part)
-        for claim, part in zip(claims, stated, strict=True)
-        if part
-    )
-    removed = tuple(
-        Rejection(claim.text, IRRELEVANT)
-        for claim, part in zip(claims, stated, strict=True)
-        if not part
-    )
-    return kept, removed
-
-
 def understand(question: str, chat: Chat) -> tuple[bool, list[str]]:
     """The first request: whether the question describes an exposure emergency, and
     the questions to search."""
@@ -428,20 +313,15 @@ def answer(question: str, retrieve: Retrieve, chat: Chat) -> Answer:
         answer_schema(list(sources), len(parts)),
     )
     drafts = read_output(output, list(sources), len(parts))
-    claims, unverified = verify(drafts, sources)
-    irrelevant: tuple[Rejection, ...] = ()
-    if claims:
-        claims, irrelevant = check_relevance(parts, claims, chat)
-    rejected = unverified + irrelevant
+    claims, rejected = verify(drafts, sources)
     if not claims:
         return Answer(
             question, "insufficient_evidence", INSUFFICIENT, (), passages, rejected
         )
-    # The parts checklist, from the relevance check's part numbers: the caution is
-    # decided by code, not by the model's own account of how much it answered. A
-    # claim removed only for answering nothing asked leaves no part uncovered.
+    # The parts checklist: the caution is decided by code, not by the model's own
+    # account of how much it answered.
     every_part = {claim.part for claim in claims} == set(range(1, len(parts) + 1))
-    notice = "" if every_part and not unverified else PARTIAL
+    notice = "" if every_part and not rejected else PARTIAL
     return Answer(question, "answered", notice, claims, passages, rejected)
 
 

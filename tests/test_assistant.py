@@ -6,7 +6,7 @@ import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from limespec import assistant, config, llm, store
-from limespec.answer import PROMPT_SHA256, RELEVANCE_PROMPT, answer
+from limespec.answer import PROMPT_SHA256, answer
 from limespec.ingest import IngestError, prepare_index
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
@@ -17,9 +17,6 @@ def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
     if "describes_exposure" in schema["properties"]:
         asked = user.removeprefix("Question: ")
         return {"describes_exposure": False, "search_questions": [asked]}
-    if system is RELEVANCE_PROMPT:  # the relevance check: part 1 for each claim
-        claims = schema["properties"]["claims"]["minItems"]
-        return {"claims": [{"answers": "part 1", "part": 1}] * claims}
     blocks = user.split('<passage id="')[1:]
     source = next(b.split('"')[0] for b in blocks if "About two days" in b)
     claim = {
@@ -72,7 +69,7 @@ def test_ask_answers_from_the_live_index_with_both_model_requests(
 
     result = assistant.ask("How long does Mortex take to set?")
 
-    assert len(requests) == 3  # understanding, answering, the relevance check
+    assert len(requests) == 2  # the emergency request, then the answer request
     assert reranked == ["How long does Mortex take to set?"]
     assert result.status == "answered"
     assert result.claims[0].evidence[0].url == "https://example.test/support/faq"
