@@ -359,6 +359,11 @@ def parser() -> argparse.ArgumentParser:
     reliable.add_argument(
         "--baseline", default="", help="the arm coverage is compared to"
     )
+    reliable.add_argument(
+        "--verdicts",
+        default="verdicts.json",
+        help="the sitting's verdicts file, e.g. the settled majority's",
+    )
     reliable.add_argument("--out", type=Path)
     bundled = commands.add_parser(
         "grading-bundle", help="blind items for second graders"
@@ -381,6 +386,15 @@ def parser() -> argparse.ArgumentParser:
     agreed = commands.add_parser("agreement", help="Cohen's kappa between two graders")
     agreed.add_argument("first", type=Path)
     agreed.add_argument("second", type=Path)
+    settled = commands.add_parser(
+        "settle", help="the majority of three graders' verdicts, for the readout"
+    )
+    settled.add_argument("dir", type=Path, help="a graded blind sitting")
+    settled.add_argument("others", type=Path, nargs="+", help="second graders' files")
+    settled.add_argument(
+        "--settled", type=Path, help="{item: grade} for items with no majority"
+    )
+    settled.add_argument("--out", type=Path, required=True)
     exposed = commands.add_parser(
         "exposure", help="the first request on an exposure set (C2's safety bar)"
     )
@@ -924,7 +938,8 @@ def run_blind(args: argparse.Namespace) -> int:
     blinded, order = pairs.blind(ids, runs, args.seed)
     ask.write_records(args.out / "pairs.json", blinded)
     (args.out / "order.json").write_text(json.dumps(order, indent=1), encoding="utf-8")
-    print(f"{len(ids)} of {len(questions)} answers differ; pairs in {args.out}")
+    written = "every question" if args.all else "answers that differ"
+    print(f"{len(ids)} of {len(questions)} questions ({written}); pairs in {args.out}")
     return 0
 
 
@@ -1207,10 +1222,8 @@ def run_reliability(args: argparse.Namespace) -> int:
     key = grades.read_json(folder / "key.json")
     questions = grades.read_json(folder / "questions.json")["questions"]
     runs = load_runs(args.runs)
-    graded = pairs.unblind(
-        grades.read_json(args.dir / "verdicts.json"),
-        grades.read_json(args.dir / "order.json"),
-    )
+    order = grades.read_json(args.dir / "order.json")
+    graded = pairs.unblind(grades.read_json(args.dir / args.verdicts), order)
     rows = reliability.case_rows(key, questions, graded, runs)
     reached = {
         path.stem.removeprefix("reach-"): reliability.reached_parts(
@@ -1227,6 +1240,13 @@ def run_reliability(args: argparse.Namespace) -> int:
             arm: reliability.coverage_difference(rows, arm, args.baseline)
             for arm in runs
             if arm != args.baseline
+        }
+    if (args.dir / "claims.json").exists():
+        labels = reliability.claims_by_arm(
+            grades.read_json(args.dir / "claims.json"), order
+        )
+        result["claims"] = {
+            arm: reliability.claim_precision(labels[arm]) for arm in labels
         }
     if args.out:
         write_json(args.out, result)
@@ -1265,6 +1285,23 @@ def run_agreement(args: argparse.Namespace) -> int:
         graders.flat(grades.read_json(args.second)),
     )
     print(json.dumps(result, indent=1))
+    return 0
+
+
+def run_settle(args: argparse.Namespace) -> int:
+    settled = grades.read_json(args.settled) if args.settled else {}
+    final, unsettled = graders.settle(
+        grades.read_json(args.dir / "verdicts.json"),
+        [graders.flat(grades.read_json(path)) for path in args.others],
+        settled,
+    )
+    if unsettled:
+        raise ValueError(f"settle these items with a reason: {', '.join(unsettled)}")
+    write_json(args.out, final)
+    changed = graders.agreement(
+        graders.flat(grades.read_json(args.dir / "verdicts.json")), graders.flat(final)
+    )
+    print(f"{changed['items'] - changed['agreed']} verdicts changed; in {args.out}")
     return 0
 
 
@@ -1417,6 +1454,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_grade_with_model(args)
         if args.command == "agreement":
             return run_agreement(args)
+        if args.command == "settle":
+            return run_settle(args)
         if args.command == "exposure":
             return run_exposure(args)
         if args.command == "generator-outcomes":

@@ -161,3 +161,16 @@ def claim_precision(labels: dict[str, list[str]]) -> dict[str, Any]:
     total = sum(counts.values())
     return {"labels": dict(sorted(counts.items())),
             "precision": share(counts["correct"], total)}  # fmt: skip
+
+
+def claims_by_arm(
+    labels: dict[str, list[str]], order: dict[str, list[list[str]]]
+) -> dict[str, dict[str, list[str]]]:
+    """Claim labels by blind item ("<question id>/<letter>") as {arm: {question id:
+    labels}}, through the sitting's order (the runs that showed each letter)."""
+    found: dict[str, dict[str, list[str]]] = {}
+    for item, claims in labels.items():
+        qid, slot = item.split("/")
+        for arm in order[qid][ord(slot) - ord("A")]:
+            found.setdefault(arm, {})[qid] = claims
+    return found

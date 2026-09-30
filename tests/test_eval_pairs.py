@@ -184,7 +184,10 @@ def test_the_command_line_writes_blind_pairs_then_compares_their_verdicts(
 
     code, text = run(capsys, tmp_path, "blind", "demo", *files, "--seed", "28",
                      "--out", str(out))  # fmt: skip
-    assert (code, text) == (0, f"2 of 4 answers differ; pairs in {out}\n")
+    assert (code, text) == (
+        0,
+        f"2 of 4 questions (answers that differ); pairs in {out}\n",
+    )
     blinded = json.loads((out / "pairs.json").read_text())
     code, text = run(capsys, tmp_path, "unblind", "demo", *files, "--dir", str(out))
     assert code == 1 and "verdicts.json" in text  # nothing graded yet
@@ -227,7 +230,10 @@ def test_three_runs_are_blinded_together_and_the_last_is_compared_with_each(
 
     code, text = run(capsys, tmp_path, "blind", "demo", *files, "--seed", "5",
                      "--out", str(out))  # fmt: skip
-    assert (code, text) == (0, f"2 of 4 answers differ; pairs in {out}\n")
+    assert (code, text) == (
+        0,
+        f"2 of 4 questions (answers that differ); pairs in {out}\n",
+    )
     blinded = json.loads((out / "pairs.json").read_text())
     verdicts = {
         pair["id"]: {"A": {"verdict": "sound"}, "B": {"verdict": "sound"}}

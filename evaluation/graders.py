@@ -11,6 +11,7 @@ calls; an outside grader gets the items and guide as files.
 import json
 import math
 import random
+from collections import Counter
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -147,6 +148,40 @@ def grade(found: Sequence[Item], guide: str, send: Send) -> dict[str, dict[str, 
             "reason": verdict["reason"],
         }
     return verdicts
+
+
+def majority(verdicts: Sequence[str]) -> str | None:
+    """The verdict more than half the graders gave, or None."""
+    top, count = Counter(verdicts).most_common(1)[0]
+    return top if 2 * count > len(verdicts) else None
+
+
+def settle(
+    primary: dict[str, dict[str, Any]],
+    others: Sequence[dict[str, str]],
+    settled: dict[str, dict[str, str]],
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """A blind sitting's verdicts ({question: {letter: grade}}) with every item all
+    graders judged given the majority verdict, or, where there is none, the verdict
+    settled with a written reason in `settled` ({item: grade}); and the items with no
+    majority still to settle."""
+    final: dict[str, dict[str, Any]] = {}
+    unsettled = []
+    for qid, letters in primary.items():
+        final[qid] = dict(letters)
+        for slot, grade in letters.items():
+            item = f"{qid}/{slot}"
+            if not all(item in other for other in others):
+                continue
+            votes = [grade["verdict"], *(other[item] for other in others)]
+            found = majority(votes)
+            if found is None and item in settled:
+                final[qid][slot] = settled[item]
+            elif found is None:
+                unsettled.append(item)
+            elif found != grade["verdict"]:
+                final[qid][slot] = {"verdict": found, "reason": f"majority of {votes}"}
+    return final, unsettled
 
 
 def agreement(first: dict[str, str], second: dict[str, str]) -> dict[str, Any]:

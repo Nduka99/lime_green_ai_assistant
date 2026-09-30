@@ -128,6 +128,17 @@ def test_claim_precision_counts_correct_claims() -> None:
     assert found["precision"]["count"] == 2 and found["precision"]["of"] == 3
 
 
+def test_claim_labels_by_item_are_read_per_arm_through_the_order() -> None:
+    order = {"q1": [["cand"], ["live", "old"]]}
+
+    found = reliability.claims_by_arm(
+        {"q1/A": ["incorrect"], "q1/B": ["correct"]}, order
+    )
+
+    assert found == {"cand": {"q1": ["incorrect"]}, "live": {"q1": ["correct"]},
+                     "old": {"q1": ["correct"]}}  # fmt: skip
+
+
 def blinded() -> list[dict[str, Any]]:
     return [
         {"id": "q1", "question": "Mortex joints?", "A": RUNS["cand"]["q1"]["view"],
@@ -210,6 +221,26 @@ def test_agreement_is_kappa_over_the_items_both_graded() -> None:
     assert graders.agreement({}, {})["kappa"] == 0.0
 
 
+def test_the_majority_of_three_settles_the_items_all_three_graded() -> None:
+    primary = {"q1": {"A": {"verdict": "sound", "reason": "r"},
+                      "B": {"verdict": "wrong", "reason": "r"}},
+               "q2": {"A": {"verdict": "partial", "reason": "r"}},
+               "q3": {"A": {"verdict": "sound", "reason": "r"}}}  # fmt: skip
+    second = {"q1/A": "sound", "q1/B": "partial", "q2/A": "wrong"}
+    third = {"q1/A": "wrong", "q1/B": "partial", "q2/A": "sound"}
+
+    final, unsettled = graders.settle(primary, [second, third], {})
+
+    assert final["q1"]["A"] == primary["q1"]["A"]  # the primary is in the majority
+    assert final["q1"]["B"]["verdict"] == "partial"
+    assert final["q3"] == primary["q3"]  # not in the second graders' sample
+    assert unsettled == ["q2/A"]
+    written = {"q2/A": {"verdict": "partial", "reason": "read: one part right"}}
+    final, unsettled = graders.settle(primary, [second, third], written)
+    assert final["q2"]["A"] == written["q2/A"] and unsettled == []
+    assert graders.majority(["sound", "wrong"]) is None
+
+
 # The command line.
 
 
@@ -236,7 +267,7 @@ def test_the_command_line_blinds_every_question_then_reads_reliability(
 
     assert cli.main([*base, "blind", "demo", *runs, "--seed", "3", "--all",
                      "--out", str(sitting)]) == 0  # fmt: skip
-    assert "3 of 4 answers differ" not in capsys.readouterr().out
+    assert "4 of 4 questions (every question)" in capsys.readouterr().out
     pairs_written = json.loads((sitting / "pairs.json").read_text(encoding="utf-8"))
     assert len(pairs_written) == 4  # q4's one shared answer is graded too
     verdicts = {p["id"]: {s: {"verdict": "sound", "reason": "r"}
@@ -275,3 +306,27 @@ def test_the_command_line_blinds_every_question_then_reads_reliability(
     assert "6 items graded" in capsys.readouterr().out
     assert cli.main(["agreement", str(sitting / "verdicts.json"), str(second)]) == 0
     assert json.loads(capsys.readouterr().out)["agreed"] == 6
+
+    names = [item["item"] for item in items]
+    split = {names[0]: "partial", names[1]: "wrong"}  # no majority; a majority of wrong
+    (tmp_path / "third.json").write_text(json.dumps(
+        {name: {"verdict": "wrong", "reason": "r"} for name in names}))  # fmt: skip
+    (tmp_path / "fourth.json").write_text(json.dumps(
+        {name: {"verdict": split.get(name, "sound"), "reason": "r"}
+         for name in names}))  # fmt: skip
+    final = tmp_path / "final.json"
+    arguments = ["settle", str(sitting), str(tmp_path / "third.json"),
+                 str(tmp_path / "fourth.json"), "--out", str(final)]  # fmt: skip
+    assert cli.main(arguments) == 1
+    assert names[0] in capsys.readouterr().err
+    settled = tmp_path / "settled.json"
+    settled.write_text(json.dumps({names[0]: {"verdict": "wrong", "reason": "r"}}))
+    assert cli.main([*arguments, "--settled", str(settled)]) == 0
+    assert "2 verdicts changed" in capsys.readouterr().out
+
+    claims = {f"{p['id']}/A": ["correct"] for p in pairs_written}
+    (sitting / "claims.json").write_text(json.dumps(claims), encoding="utf-8")
+    assert cli.main([*base, "reliability", "demo", *runs, "--dir", str(sitting),
+                     "--verdicts", str(final), "--out", str(out)]) == 0  # fmt: skip
+    saved = json.loads(out.read_text(encoding="utf-8"))
+    assert sum(arm["precision"]["of"] for arm in saved["claims"].values()) >= 4
