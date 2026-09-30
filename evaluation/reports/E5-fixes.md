@@ -329,6 +329,26 @@ before these were:* (e) with the reader: the current reranker with (d1); with (d
 and the current reranker, (c) and (d1) together (the reader over quotes reads the
 incorrect claims at 0.786, the reranker the off-question ones at 0.790).
 
+**C, second tier: the reader does not qualify either; no gate.**
+
+| Candidate | AUC | Correct withheld | Not correct caught | Qualifies (seeds 1–20) |
+|---|---|---|---|---|
+| (d1) reader, part asked of the quotes | 0.701 | 29 of 370 | 6 of 30 | no (0); median caught 28% |
+| (d2) reader, part asked of the claim | 0.709 | 48 of 370 | 8 of 30 | no (0); median caught 31% |
+| (e) reranker + (d1) | 0.755 | 20 of 370 | 6 of 30 | no (0); median caught 35% |
+| (e) reranker + (d2) | 0.740 | 27 of 370 | 11 of 30 | no (0); median caught 40% |
+| (e) reranker + (c) + (d1) | 0.720 | 19 of 370 | 5 of 30 | no (0); median caught 30% |
+
+Eleven detectors from four families (cross-encoder relevance, entailment, extractive
+reading with a no-answer option, word coverage) and their combinations all sit between
+0.66 and 0.76 AUC on this benchmark. The best catches about 40% of the claims that are
+not correct at the allowed cost, against the 50% required. The off-question claim, a
+true statement about the right product that answers a neighbouring question, is not
+separable by any of these signals at the needed rate; this agrees with the published
+ceiling on near-miss evidence (0.68 for the best combined detector). No gate is added.
+The standing rule now calls for a further literature search on this stage before
+another attempt; the other stages (A, B's remaining arms) go ahead meanwhile.
+
 **A, code (before the index is built).** As built, with two changes from the design,
 both recorded here before any index is measured:
 - A bold line (a paragraph wholly in bold, at most 200 characters, not ending in a
