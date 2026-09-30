@@ -113,6 +113,18 @@ Qwen only if its substitution rate is lower with intervals not overlapping, and 
 answer rate is at most 2 points lower; a candidate then goes to the dev sets' replayed
 requests before any startup-line change, which is the user's decision.
 
+**S4b, an agreement gate, written before S4's answers exist.** If the two generators'
+substitutions are partly independent, showing a question's claims only when both
+answer it from the same evidence would cut substitutions. Read from the same S4 sample:
+among near-miss questions Qwen answers (its substitutions), the share Gemma also
+answers; among answerable questions Qwen answers, the share Gemma also answers. **Rule
+(the claim gate's, restated):** the agreement gate is a candidate if Gemma also answers
+at most half of Qwen's substitutions and at least 90% of Qwen's answerable answers. A
+candidate then needs the real questions: Gemma drafts answers from the gate run's own
+audit records (`evaluation drafts` with Gemma serving) and the same shares are read on
+`claims-dev`'s labelled claims at the level of the question part, before any serving
+change (two generators resident is a memory and latency cost for the user to weigh).
+
 ## Results
 
 **S1 extraction** (`78e0d29`; 30 September, 2,046 s on the generator alone): 379
@@ -162,6 +174,17 @@ stay as close for the judge as they were in whole texts. RefChecker's triplets k
 object; a relevance check that keeps the object is a claim against a question again,
 which is where E5's detectors stopped. Batching was checked separately: the same eight
 pairs judged alone and as a list moved in both directions but did not separate.
+
+**Further search on this point (the standing rule).** The model's own confidence was
+never used as a continuous score here. Measured elsewhere, it does not rescue this:
+P(True) self-evaluation reaches AUROC 0.51–0.61 across three models, near random, and a
+second self-evaluation pass can destroy the signal a verbalised confidence had (arXiv
+2509.01476 and the surveys it cites). LLM judges of answer relevance reach 99% precision
+but 66% recall on multi-hop QA (Snowflake's RAG-triad benchmark): they catch clear
+off-topic answers, not near-misses. Claim-level verification plus post-hoc calibration
+(CLAIM-CAL) needs several verification probes per claim, each of the kinds measured
+here. Nothing found reaches the rate the rule asks for on near-miss claims without
+training.
 
 What follows, by the plan: S3 and S4 run (the generator comparison needs no gate), and
 the near-miss set gives every detector a second, larger test with labels by
