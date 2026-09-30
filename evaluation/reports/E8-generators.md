@@ -203,6 +203,33 @@ near-misses. Gemma's upper bound (0.310) clears Qwen's lower bound (0.311) by 0.
 the rule holds, but at the margin, and G3 decides. Later candidates answer the joined
 447.
 
+**G0, Nemotron 3.5 Lightning (unsloth UD-Q4_K_XL, revision `f2d3fe3`, 13 Aug): fails
+to load.** llama.cpp b10298 reports "wrong number of tensors; expected 417, got 408". The
+cause is in the file, not the loader: the converter matched only the layer names
+`mamba` and `attention`, while newer Transformers write `linear_attention` and
+`full_attention`. It therefore left the attention layers out of the per-layer metadata,
+and the loader read them as recurrent layers and asked for tensors that do not exist.
+The fix is llama.cpp PR #27729 (merged 26 Aug) in the converter, so files made before
+it must be regenerated. unsloth's repository has not changed since 13 Aug, whereas
+ggml-org's conversion was uploaded on 26 Aug, 6 Sept and 13 Sept. **User's decision:**
+download ggml-org's Q4_0 (revision `8a08a1c`, 18.9 GB; this architecture's expert
+tensors cannot take K-quants, so Q4_0 gives up little against the others' 4-bit files)
+and retry G0 on b10298; if it still fails, Nemotron is out and a llama.cpp update comes
+back to the user.
+
+**G0, gpt-oss-20b (MXFP4): passes** (5 of 5 on each check; GPU 5,710 MiB, RAM 10.9
+GB). Its Harmony output works with llama.cpp's JSON-schema grammar on b10298, which the
+earlier reports had put in doubt. **Amendment to its G1 (before any G1 result was
+read).** gpt-oss cannot switch reasoning off, and our payload's `enable_thinking: false`
+is a name its template does not read. It reasoned at its default effort ("medium"),
+about 320 tokens per reply at 21 tokens/s, about 18 s per question, and would have run
+past its step limit with nothing saved. It was stopped after 40 minutes. The payload now
+also sends `reasoning_effort: "low"`, the model's own lowest setting and its equivalent
+of thinking off, which the plan allows (a per-model chat option when G0 shows one is
+needed). Qwen3.6's, Gemma's, GLM-4.7-Flash's and Nemotron's templates read
+`enable_thinking` and not `reasoning_effort`, so their prompts are byte-identical and
+their results stand. gpt-oss runs G0 and G1 again from the start.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and

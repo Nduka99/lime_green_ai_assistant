@@ -143,8 +143,10 @@ def chat_payload(system: str, user: str, schema: dict[str, Any]) -> dict[str, An
             "json_schema": {"name": "answer", "schema": schema},
         },
         # Reasoning is discarded, so it is switched off at the chat template:
-        # a reasoning budget alone does not stop Qwen3.x from thinking.
-        "chat_template_kwargs": {"enable_thinking": False},
+        # a reasoning budget alone does not stop Qwen3.x from thinking. gpt-oss
+        # cannot switch it off and reads only `reasoning_effort` (default medium);
+        # no other template reads that name.
+        "chat_template_kwargs": {"enable_thinking": False, "reasoning_effort": "low"},
     }
 
 

@@ -55,7 +55,7 @@ def test_each_model_candidate_sends_its_own_request() -> None:
     think = relevance.payload("think128", ITEM)
 
     assert c3["messages"][0]["content"] == relevance.C3_PROMPT
-    assert c3["chat_template_kwargs"] == {"enable_thinking": False}
+    assert c3["chat_template_kwargs"]["enable_thinking"] is False
     assert c3["cache_prompt"] is False
     c3_items = c3["response_format"]["json_schema"]["schema"]["properties"]["parts"]
     assert c3_items["minItems"] == 2 and c3_items["items"]["maximum"] == 1

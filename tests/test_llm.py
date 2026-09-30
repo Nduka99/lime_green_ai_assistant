@@ -37,7 +37,10 @@ def test_chat_sends_the_fixed_request_and_returns_parsed_json(
         {"role": "user", "content": "user text"},
     ]
     assert payload["response_format"]["json_schema"]["schema"] == SCHEMA
-    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["chat_template_kwargs"] == {
+        "enable_thinking": False,
+        "reasoning_effort": "low",
+    }
     assert (payload["temperature"], payload["seed"]) == (0.0, 42)
     assert payload["max_tokens"] == config.MAX_ANSWER_TOKENS
     assert "model" not in payload
