@@ -357,7 +357,16 @@
   "bytes": 25505724480,
   "sha256": "112bf957489a497c18f60bf8bd44ee1dfa05e87368b8ed7f68998a4e38f275c9",
   "licence": "OpenMDW-1.1",
-  "use": "E8 generator candidate (MoE)"
+  "use": "E8 generator candidate (MoE); fails to load (converted before llama.cpp PR #27729)"
+ },
+ {
+  "file": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-Q4_0.gguf",
+  "source": "ggml-org/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+  "revision": "8a08a1c81dadcc75d35dbb96016cfd344b632e67",
+  "bytes": 18898091584,
+  "sha256": "61f87e75974e4b535dcdf9aad056541a9514f1dfa4538b463b081d19b7a00e3c",
+  "licence": "OpenMDW-1.1",
+  "use": "E8 generator candidate (MoE), converted after llama.cpp PR #27729"
  },
  {
   "file": "gemma-4-12b-it-UD-Q4_K_XL.gguf",

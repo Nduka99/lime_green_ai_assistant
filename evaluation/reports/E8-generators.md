@@ -230,6 +230,17 @@ needed). Qwen3.6's, Gemma's, GLM-4.7-Flash's and Nemotron's templates read
 `enable_thinking` and not `reasoning_effort`, so their prompts are byte-identical and
 their results stand. gpt-oss runs G0 and G1 again from the start.
 
+**G0 and G1, gpt-oss-20b at low reasoning effort (23:16–23:51): not a finalist.** G0
+passes again (5 of 5). GPU 5,694 MiB, RAM 10.9 GB, about 108 generated tokens per
+reply (320 at medium).
+
+| 447 questions | Substitution | Answer rate | Drafts removed | s / question |
+|---|---|---|---|---|
+| gpt-oss-20b | 58/203 = 0.286 [0.228, 0.351] | 239/244 = 0.980 [0.953, 0.991] | 2.3% | 4.5 |
+
+Its substitution rate is lower than Qwen3.6's (0.374), but the intervals overlap, so the
+rule does not make it a finalist. Its answer rate is within the 2 points allowed.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
