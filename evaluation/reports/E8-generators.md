@@ -190,6 +190,52 @@ so the kept set's labels rest on both models agreeing. Re-admitted: 120 answerab
 34 of them against the writer's label. Registered as `nearmiss-readmitted` (readings and
 the draw) before use; the joined sample has 447 questions.
 
+**G1 on the joined sample (the fix's rule): Gemma stays a finalist.**
+
+| 447 questions | Substitution | Answer rate | Drafts removed |
+|---|---|---|---|
+| Qwen3.6-35B-A3B | 76/203 = 0.374 [0.311, 0.443] | 241/244 = 0.988 [0.964, 0.996] | 2.4% |
+| Gemma 4 26B-A4B | 50/203 = 0.246 [0.192, 0.310] | 243/244 = 0.996 [0.977, 0.999] | 1.0% |
+
+On the 47 added questions Gemma answered all 44 answerable ones, including those its own
+check had judged unanswered, and Qwen answered 42. Both substituted on all three genuine
+near-misses. Gemma's upper bound (0.310) clears Qwen's lower bound (0.311) by 0.001:
+the rule holds, but at the margin, and G3 decides. Later candidates answer the joined
+447.
+
+**Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
+at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
+370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
+no seed of 1–20 qualifies (median catch 0.155). Its own verdicts (a score above or below
+0.5) show why no threshold works:
+
+| Label | ANSWERABLE | UNANSWERABLE | No status |
+|---|---|---|---|
+| correct (755) | 493 | 260 | 2 |
+| off-question (82) | 23 | 58 | 1 |
+| incorrect (8) | 2 | 6 | 0 |
+| forbidden (11) | 7 | 4 | 0 |
+
+It catches two thirds of the claims that are not correct (68 of 101), but calls a third
+of the correct ones unanswerable. Its scores are nearly binary, so no threshold keeps
+90% of the correct claims without dropping most of what it catches. It sits within the
+range of E5's detectors (0.66–0.76). This benchmark gives it each claim's cited quotes
+with their title and heading, as those detectors had. Whether whole passages change
+this is read from `nearmiss-dev`, next.
+
+*Diagnosis.* Two wrongly rejected correct claims were re-asked on the CPU so the model's
+own analysis could be read. It rejects "What are Lime Green's opening hours?" beside
+"Contact us: Office Hours: Mon - Fri 9:00am - 5:00pm" because "the source does not
+explicitly name the entity as Lime Green". A model trained on multi-source retrieval
+treats a named entity the source does not name as unanswerable, and our sources are
+Lime Green's own pages, whose titles rarely say so. The second claim came back
+ANSWERABLE on the CPU, a near tie that the GPU run decided the other way. Among correct
+claims whose question names Lime Green, it rejects 60% when no cited source names it
+(80 of 133) and 31% when one does (28 of 89); where the question does not name Lime
+Green, it rejects 29%. Giving every source its publisher (a general change) would
+therefore bring correct rejections from 34% to about 29% at best, far from the 10% the
+rule allows. It was not run, and the arm stays failed on `claims-dev`.
+
 **Specialist arm, the reading of OCC-RAG's status.** A probe (two invented questions on
 the CPU) showed that llama-server writes special tokens as empty text, so a stop at
 `<|status_end|>` never fires and the status cannot be found by its text. It is found by
