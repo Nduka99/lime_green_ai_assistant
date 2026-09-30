@@ -6,7 +6,7 @@ import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from limespec import assistant, config, llm, store
-from limespec.answer import PROMPT_SHA256, answer
+from limespec.answer import PROMPT_SHA256, RELEVANCE_PROMPT, answer
 from limespec.ingest import IngestError, prepare_index
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
@@ -17,8 +17,9 @@ def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
     if "describes_exposure" in schema["properties"]:
         asked = user.removeprefix("Question: ")
         return {"describes_exposure": False, "search_questions": [asked]}
-    if "parts" in schema["properties"]:  # the relevance check: part 1 for each claim
-        return {"parts": [1] * schema["properties"]["parts"]["minItems"]}
+    if system is RELEVANCE_PROMPT:  # the relevance check: part 1 for each claim
+        claims = schema["properties"]["claims"]["minItems"]
+        return {"claims": [{"answers": "part 1", "part": 1}] * claims}
     blocks = user.split('<passage id="')[1:]
     source = next(b.split('"')[0] for b in blocks if "About two days" in b)
     claim = {

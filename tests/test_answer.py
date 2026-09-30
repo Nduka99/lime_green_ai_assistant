@@ -87,8 +87,9 @@ class FakeModel:
                 "search_questions": self.parts or [asked],
             }
         if system is RELEVANCE_PROMPT:
-            claims = schema["properties"]["parts"]["minItems"]
-            return {"parts": self.stated or [1] * claims}
+            claims = schema["properties"]["claims"]["minItems"]
+            stated = self.stated or [1] * claims
+            return {"claims": [{"answers": "a part", "part": n} for n in stated]}
         return self.reply
 
 
@@ -439,16 +440,38 @@ def test_the_check_reads_the_parts_and_each_claim_with_its_quotes() -> None:
 
     assert relevance_prompt(["Joints?", "Cost?"], claims) == (
         "Parts of the question:\n1. Joints?\n2. Cost?\n\nClaims:\n"
-        "1. Joints of 3 to 6 mm.\n"
+        "Claim A: Joints of 3 to 6 mm.\n"
         '   Quotes: "joints of 3 to 6 mm"; "joints of 3 to 6 mm"'
     )
 
 
+CHECK = {"answers": "Joints?", "part": 1}
+
+
+def test_a_relevance_reply_is_read_as_one_part_number_per_claim() -> None:
+    output = {"claims": [CHECK, {"answers": "none", "part": 0}]}
+
+    assert read_relevance(output, claims=2, parts=2) == [1, 0]
+    check = relevance_schema(2, 2)["properties"]["claims"]["items"]
+    assert list(check["properties"]) == ["answers", "part"]  # words before the number
+
+
 @pytest.mark.parametrize(
     "output",
-    [None, {}, {"parts": [1]}, {"parts": [1, 3]}, {"parts": [1, -1]},
-     {"parts": [1, "2"]}, {"parts": [1, True]}, {"parts": [1, 1], "x": 0}],
-)  # fmt: skip
+    [
+        None,
+        {},
+        {"claims": [CHECK]},  # one check for two claims
+        {"claims": [CHECK, CHECK | {"part": 3}]},
+        {"claims": [CHECK, CHECK | {"part": -1}]},
+        {"claims": [CHECK, CHECK | {"part": "2"}]},
+        {"claims": [CHECK, CHECK | {"part": True}]},
+        {"claims": [CHECK, CHECK | {"answers": " "}]},
+        {"claims": [CHECK, {"part": 1}]},
+        {"claims": [CHECK, CHECK | {"x": 0}]},
+        {"claims": [CHECK, CHECK], "x": 0},
+    ],
+)
 def test_a_relevance_reply_that_breaks_its_schema_is_an_operational_error(
     output: object,
 ) -> None:

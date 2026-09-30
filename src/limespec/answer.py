@@ -23,6 +23,7 @@ and the tests can replace both.
 import hashlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from string import ascii_uppercase
 from typing import Any
 
 from limespec import config
@@ -149,14 +150,14 @@ not diagnose problems with the reader's building.
 # is general: no example comes from any keyed question.
 RELEVANCE_PROMPT = """\
 You check the claims written to answer a question about Lime Green building \
-products. You see the question's numbered parts, then each claim with the quotes it \
-rests on. For each claim, in order, return the number of the part it states, or 0 \
-if it states none.
+products. You see the question's numbered parts, then each claim, lettered, with the \
+quotes it rests on. For each claim, in order, first write the part it answers in \
+that part's own words, or "none", then give that part's number, or 0 for none.
 
-A claim states a part when it gives what that part asks about the same product: \
-the same property, quantity or unit. A related but different property, quantity or \
-unit, or a different product, does not state it. A claim saying that the asked \
-thing is absent or is not the case does state it."""
+A claim answers a part when it gives what that part asks, or says it is absent or \
+not the case. A statement about something the part does not ask (another quantity, \
+unit, property or product) answers no part, even when it is true and about the \
+same subject."""
 # Why a claim that failed the relevance check was removed (recorded, never shown).
 IRRELEVANT = "does not answer the question"
 
@@ -292,29 +293,41 @@ def read_output(
 
 
 def relevance_schema(claims: int, parts: int) -> dict[str, Any]:
-    """The relevance check's JSON: one part number (0 for none) per claim, in order."""
+    """The relevance check's JSON: per claim, in order, the part it answers in that
+    part's words (or "none"), then its number (0 for none). The words come first so
+    the model reads the claim before it labels it (C3')."""
+    check = {
+        "type": "object",
+        "properties": {
+            "answers": {"type": "string", "minLength": 1},
+            "part": {"type": "integer", "minimum": 0, "maximum": parts},
+        },
+        "required": ["answers", "part"],
+        "additionalProperties": False,
+    }
     return {
         "type": "object",
         "properties": {
-            "parts": {
+            "claims": {
                 "type": "array",
                 "minItems": claims,
                 "maxItems": claims,
-                "items": {"type": "integer", "minimum": 0, "maximum": parts},
+                "items": check,
             }
         },
-        "required": ["parts"],
+        "required": ["claims"],
         "additionalProperties": False,
     }
 
 
 def relevance_prompt(parts: Sequence[str], claims: Sequence[Claim]) -> str:
-    """The numbered parts, then each claim with its verified quotes."""
+    """The numbered parts, then each claim, lettered so it cannot be read as a part
+    number, with its verified quotes."""
     numbered = "\n".join(f"{number}. {part}" for number, part in enumerate(parts, 1))
     lines = []
-    for number, claim in enumerate(claims, 1):
+    for letter, claim in zip(ascii_uppercase, claims, strict=False):
         quotes = "; ".join(f'"{evidence.quote}"' for evidence in claim.evidence)
-        lines.append(f"{number}. {claim.text}\n   Quotes: {quotes}")
+        lines.append(f"Claim {letter}: {claim.text}\n   Quotes: {quotes}")
     return f"Parts of the question:\n{numbered}\n\nClaims:\n" + "\n".join(lines)
 
 
@@ -322,13 +335,23 @@ def read_relevance(output: object, claims: int, parts: int) -> list[int]:
     """The relevance check's reply, checked against its schema again."""
     if not (
         isinstance(output, dict)
-        and set(output) == {"parts"}
-        and isinstance(output["parts"], list)
-        and len(output["parts"]) == claims
-        and all(type(n) is int and 0 <= n <= parts for n in output["parts"])
+        and set(output) == {"claims"}
+        and isinstance(output["claims"], list)
+        and len(output["claims"]) == claims
+        and all(is_check(check, parts) for check in output["claims"])
     ):
         raise ModelServerError("the model's reply does not match the relevance schema")
-    return output["parts"]
+    return [check["part"] for check in output["claims"]]
+
+
+def is_check(check: object, parts: int) -> bool:
+    return (
+        isinstance(check, dict)
+        and set(check) == {"answers", "part"}
+        and is_text(check["answers"])
+        and type(check["part"]) is int
+        and 0 <= check["part"] <= parts
+    )
 
 
 def check_relevance(
