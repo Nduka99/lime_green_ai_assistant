@@ -245,6 +245,24 @@ short request, or the cross-encoder the system already runs scoring each claim a
 part) would be a new rung with this same rule, researched first, and v4 kept unused until
 the fixes are frozen.
 
+**User's decision (30 Sept): research a relevance check first; v4 stays unused.**
+
+**Choosing C3″ offline, rule written before the benchmark is built** (`779015f`). Research:
+the server accepts `enable_thinking` and a per-request `reasoning_budget_tokens` (b10298
+`server-common.cpp`), and composes the JSON schema after the thinking block; on v3q056's
+reproduced check, thinking at a 256-token budget gave the right part in 13 s (1,024: 37
+s). Benchmark `relevance-dev`: every verified claim of the C2 run on the three dev sets,
+with the quotes it cites and the question's parts from the first request run again
+(`evaluation relevance-items`); each claim labelled by reading, with the part it answers or
+0, before any candidate is scored; the items and labels are registered as a set. Candidates
+(`evaluation relevance-check`): `c3`, `c3p`, `think128`, `think256`, and `rerank` (the
+cross-encoder's best score over the parts, AUC only). **Rule:** a model candidate
+qualifies if it removes at most 1 in 20 of the claims labelled as answering a part; among
+qualifiers the one removing the most claims labelled 0 is chosen, ties within 2 claims
+going to fewer median seconds. `rerank` is reported; it would need its own threshold rule
+before it could be chosen. The chosen candidate runs as rung C3″ under C3′'s rule; if none
+qualifies, the relevance check stays dropped and the decision returns to the user.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
