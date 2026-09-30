@@ -74,12 +74,13 @@ certification needs held-out v5 (≥ 160 answerable cases), written and sealed l
   is taken.
 - Held-out v4 is spent by this readout: from now on it is development material.
 
-## Readout (30 September; provisional until the third grader)
+## Readout (30 September)
 
-**Status.** Every number below is from the primary grader's blind verdicts (sitting
-`sitting-s2b-gate` in each set). Gemma 4 has graded the sample twice; the outside grader
-has the sample but has not returned it, so the majority of three is not yet settled. Four
-contested items that bear on risk are named where they matter.
+**Status.** Held-out v4's numbers use the majority of three graders
+(`verdicts-settled.json` in its sitting): the primary grader's blind verdicts, with every
+sampled item all three graded given the majority verdict, and the two items with no
+majority settled with a written reason (`settled.json`). The dev sets' numbers are the
+primary grader's blind verdicts (the second graders' sample was drawn from v4 only).
 
 **What was graded.** The S2b gate run (1,029 answers, 0 errors): held-out v4 for `live`
 (version 4), `unfixed` (version 11) and `candidate` (version 12, C1 + C2); the dev sets
@@ -102,13 +103,27 @@ items), and every shown claim was labelled (the claim audit, E2, done for all se
   though its reasons say no part is answered) and 4 where Gemma is lenient on a wrong
   list member or a substituted answer: v4q039/A and v4q110/C (candidate), v4q065/C
   (live), v4q069/A (unfixed).
+- **Outside grader** (a fresh session of another model family, blind to the system, on
+  the sharpened guide; guide and items checked unchanged by comparing the files): κ =
+  0.953 against the primary on 179 items (174 agree), 0.881 on the 76 answered items;
+  0.871 against Gemma. Where it differs from the primary it is stricter (it calls
+  wrong 4 items the primary called missing or partial, all by the same-kind test) and
+  once more lenient (v4q065/C: missing).
+- **Majority of three:** 14 items differ among the graders; the majority settles 12
+  (three of the four contested wrongs above stay wrong), and 2 have no majority,
+  settled by the guide's steps: v4q055/B wrong (a reason of the same kind for
+  another situation stands in the asked reason's place) and v4q065/C missing (it states
+  what the adhesive does, not a fixing requirement, and nothing false). Both are live's;
+  they move live's wrong cases from c39 to c46 and change no count and no gate item.
+- **R1 item 5 met on v4:** both second graders agree with the primary at κ ≥ 0.8 on the
+  shared sample (0.897 and 0.953). On answered items alone Gemma is at 0.735, so a local
+  model is not yet enough as the only second grader for monitoring (E7).
 
 ### Where live and the candidate stand (held-out v4; the bar's set)
 
 | | `live` (v4) | `unfixed` (v11) | `candidate` (v12) |
 |---|---|---|---|
 | **Risk**: cases answered wrong ÷ cases answered (Wilson 95% upper) | 3/22, 13.6% (33.3%) | 2/44, 4.5% (15.1%) | 4/43, 9.3% (21.6%) |
-| Risk if the contested items are not wrong | 2/22 (27.8%) | 1/44 (11.8%) | 2/43 (15.5%) |
 | Coverage: answerable cases, every wording sound or partial | 10/47, 21% | 35/47, 74% | 36/47, 77% |
 | Coverage against `live` (cases resampled) | | +0.53 (+0.36, +0.68) | +0.55 (+0.38, +0.72) |
 | Refusal correctness (absent, price, out of domain) | 14/14 | 14/14 | 14/14 |
@@ -124,10 +139,10 @@ come from key rules: k01's scope and k06/k15's "do not omit" rules, which turn a
 incomplete answer into a wrong one; v3 is development material and those rules should
 become parts).
 
-**Gap to R1.** Safety and refusals are met on v4; coverage is far above live; Gemma's κ
-meets the bar overall but not on answered items; stability is not yet measured (it needs
-a repeat run). **Risk is the gap**: the candidate's upper bound is 21.6% against 5%, and
-its point estimate of 9.3% (4.7% without the contested items) is itself about the bar.
+**Gap to R1.** Safety and refusals are met on v4; coverage is far above live; the graders
+agree (κ 0.897 and 0.953); stability is not yet measured (it needs a repeat run).
+**Risk is the gap**: the candidate's upper bound is 21.6% against 5%, and its point
+estimate of 9.3% is itself above the bar.
 To certify on held-out v5 with about 150 answered cases, at most 2 may be wrong
 (1.3%): a four- to sevenfold fall. v4 could not certify even with no error (43 answered
 cases give an upper bound of 8.2%).
