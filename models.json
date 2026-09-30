@@ -151,5 +151,140 @@
   "sha256": "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1",
   "licence": "Apache-2.0",
   "use": "planned multi-token prediction (X26)"
+ },
+ {
+  "file": "qwen3-reranker-0.6b-q8_0.gguf",
+  "source": "ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF",
+  "revision": "a02f48bb4f057028298c21fa033da2b30d7742d5",
+  "bytes": 639153184,
+  "sha256": "22c9979ce4fbcdc5acdc310c6641c32797eff1aa980b8f7a2db8a8ea23429a48",
+  "licence": "Apache-2.0",
+  "use": "E5 reranker arm r06; claim relevance candidate"
+ },
+ {
+  "file": "Qwen3-Reranker-4B-Q4_K_M.gguf",
+  "source": "Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp",
+  "revision": "1b452c803342e73ac3644551b727dfd51a09fd5b",
+  "bytes": 2496717440,
+  "sha256": "2a693b22cc8122353562c2d261a3894301c14c6eecce7304bc29968f8994258b",
+  "licence": "Apache-2.0",
+  "use": "E5 reranker ceiling arm r4"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/config.json",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 883,
+  "sha256": "6cd7a7f11c44516a4a8e4378514ee0c18e4bf5fa252857fd56254db2e4279184",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/added_tokens.json",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 23,
+  "sha256": "dc046d04c9b0ada7ae6f1dc89c465801799acdf0c9a6aab8c15a1b2d5ca4e91f",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/special_tokens_map.json",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 286,
+  "sha256": "9463f61e1b109a8eb4688b829260d7c6b1e6dff04c98ff7269bb89e2b92369b9",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/spm.model",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 2464616,
+  "sha256": "c679fbf93643d19aab7ee10c0b99e460bdbc02fedf34b92b05af343b4af586fd",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/tokenizer.json",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 8656646,
+  "sha256": "05402ffae6dd382a8491b1d29bfc139bec5d332662e86a026f433ce54c25c202",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/tokenizer_config.json",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 1284,
+  "sha256": "557b3d33d3f41b81ad769244e506549e98a1857d41dd58160aacd4d98d710b5a",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "FactCG-DeBERTa-v3-Large/model.safetensors",
+  "source": "yaxili96/FactCG-DeBERTa-v3-Large",
+  "revision": "0430e3509dbd28d2dff7a117c0eae25359ff3e80",
+  "bytes": 1740304440,
+  "sha256": "379a343d1ca25c9dfe24ae149f76cc958ea4f09c00dae88bd49bbbf58c749d5e",
+  "licence": "MIT",
+  "use": "E5 support-check candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/config.json",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 5579,
+  "sha256": "db9bc75bbae0d9eeae90b1e42ea5bcf297f1235a5eb19faa698f2460e234499f",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/tokenizer.json",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 3583499,
+  "sha256": "2aea6ff4701d063e7e029b6be695a1659f2caaa2ae4fb0e8b18285818271becd",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/tokenizer_config.json",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 21031,
+  "sha256": "626c86908d7c711f93b0feffd8657b782cc2727b391f9be190240e8cafb626d5",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/special_tokens_map.json",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 694,
+  "sha256": "ea97ecdbcc73713039d8d64dbb05e3689495c96657fbd9a18f5bed381be81049",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/modeling_open_provence_standalone.py",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 154122,
+  "sha256": "21dfe928190fcb551dfd5c46b46c0d42ca9498a542a3743f7dca48ac180409e6",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "open-provence-reranker-v1-gte-modernbert-base/model.safetensors",
+  "source": "hotchpotch/open-provence-reranker-v1-gte-modernbert-base",
+  "revision": "911517e2dc847a8ec00ceae795cd89e86ef90319",
+  "bytes": 598444940,
+  "sha256": "5eaba6f11f47c1d595b837d617effcbfe72b6a4adc9ce8fce58d1b59baabe4e6",
+  "licence": "MIT",
+  "use": "E5 sentence relevance candidate (gate)"
  }
 ]
