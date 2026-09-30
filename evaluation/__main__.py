@@ -75,10 +75,22 @@ from evaluation import (
     replay,
     retrieval,
     sets,
+    slotbench,
     support,
     versions,
 )
-from limespec import acquire, answer, assistant, config, ingest, llm, pdf, store, tables
+from limespec import (
+    acquire,
+    answer,
+    assistant,
+    config,
+    ingest,
+    llm,
+    pdf,
+    scope,
+    store,
+    tables,
+)
 from limespec.models import Passage, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
@@ -308,6 +320,36 @@ def parser() -> argparse.ArgumentParser:
     read.add_argument("--model", type=Path, required=True, help="model folder")
     read.add_argument("--text", choices=("quotes", "claim"), required=True)
     read.add_argument("--out", type=Path, required=True)
+    slotted = commands.add_parser(
+        "slot-extract", help="the slots claims' parts ask and their sources state (E7)"
+    )
+    slotted.add_argument("--items", type=Path, required=True, help="claim items")
+    slotted.add_argument(
+        "--set",
+        dest="sittings",
+        nargs=2,
+        action="append",
+        required=True,
+        metavar=("NAME", "SITTING"),
+        help="a set and its graded sitting folder (for the claims' sources)",
+    )
+    slotted.add_argument("--out", type=Path, required=True)
+    compared = commands.add_parser(
+        "slot-compare", help="each claim scored by its slots (E7 comparators a-c)"
+    )
+    compared.add_argument("slots", type=Path, help="the slot-extract file")
+    compared.add_argument("--items", type=Path, required=True, help="claim items")
+    compared.add_argument(
+        "--by", choices=("product", "reranker", "judge"), required=True
+    )
+    compared.add_argument("--version", type=int, help="index version (product names)")
+    compared.add_argument("--out", type=Path, required=True)
+    joined_slots = commands.add_parser(
+        "slot-gate", help="the product check before a phrase score (E7 comparator d)"
+    )
+    joined_slots.add_argument("product", type=Path)
+    joined_slots.add_argument("phrase", type=Path)
+    joined_slots.add_argument("--out", type=Path, required=True)
     termed = commands.add_parser(
         "claim-terms",
         help="each claim scored by its quotes' share of a part's words (E5)",
@@ -1063,6 +1105,49 @@ def run_claim_reader(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_slot_extract(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    blinded = {
+        name: grades.read_json(Path(sitting) / "pairs.json")
+        for name, sitting in args.sittings
+    }
+    sources = slotbench.claim_sources(found, blinded)
+    extracted = slotbench.extract(found, sources, llm.chat)
+    write_json(args.out, {"sources": sources, **extracted})
+    asked, stated = len(extracted["asked"]), len(extracted["stated"])
+    print(f"{asked} parts and {stated} sources read in {args.out}")
+    return 0
+
+
+def run_slot_compare(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    read = grades.read_json(args.slots)
+    sources = {key: [tuple(s) for s in value] for key, value in read["sources"].items()}
+    if args.by == "product":
+        with assistant.connect() as conn:
+            named = scope.naming(store.product_names(conn, args.version))
+        scores = slotbench.by_product(found, sources, named)
+    else:
+        pair_score = (
+            slotbench.reranker_pairs(llm.rerank)
+            if args.by == "reranker"
+            else slotbench.judge_pairs(llm.CLIENT.post)
+        )
+        scores = slotbench.by_pairs(found, sources, read, pair_score)
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
+def run_slot_gate(args: argparse.Namespace) -> int:
+    scores = slotbench.gated(
+        grades.read_json(args.product), grades.read_json(args.phrase)
+    )
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
 def run_claim_terms(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -1694,6 +1779,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_claim_support(args)
         if args.command == "claim-reader":
             return run_claim_reader(args)
+        if args.command == "slot-extract":
+            return run_slot_extract(args)
+        if args.command == "slot-compare":
+            return run_slot_compare(args)
+        if args.command == "slot-gate":
+            return run_slot_gate(args)
         if args.command == "claim-terms":
             return run_claim_terms(args)
         if args.command == "claim-combine":
