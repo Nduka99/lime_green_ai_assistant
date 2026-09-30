@@ -284,6 +284,12 @@ a second claim answering the same part is marked 0) and keeps some off-topic cla
 ("a u-value … is compliant with Part L1B" for a guarantee question). **The relevance check
 stays dropped; the decision returns to the user.**
 
+**User's decision (30 Sept): run the gate with C1 + C2.** The fixes are frozen at the commit
+tagged `s2b-fixes-frozen` (answer path as at `c2f5a5e`: compiled lists in the index,
+version 12, and the question's parts searched). Gate item 3 is expected to fail on held-out
+v2 (C1 + C2 refuse 6 of 10 there, the live index 10): recorded here before the run so the
+outcome is read as foreseen, not explained afterwards.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
