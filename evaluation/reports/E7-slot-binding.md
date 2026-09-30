@@ -102,8 +102,10 @@ with its passage, a claim for it counting as a substitution.
 
 ## S4: the generator, Gemma 4 26B against Qwen3.6 (written before it runs)
 
-Each model answers every kept `nearmiss-dev` question from its passage alone, with the
-assistant's own answer request and verification (`evaluation nearmiss-answer`).
+Each model answers the same sample of kept `nearmiss-dev` questions (up to 200 of each
+label, drawn with seed 72, so each model's run stays under two hours) from its passage
+alone, with the assistant's own answer request and verification (`evaluation
+nearmiss-answer`).
 Measured: the **substitution rate** (near-miss questions given at least one verified
 claim) and the **answer rate** (answerable questions given at least one), each with a
 Wilson 95% interval, and seconds per request. **Rule:** Gemma is a candidate to replace
