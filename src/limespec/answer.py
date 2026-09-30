@@ -24,7 +24,7 @@ from typing import Any
 
 from limespec import config
 from limespec.llm import ModelServerError
-from limespec.models import Answer, DraftClaim, DraftEvidence, Passage
+from limespec.models import Answer, Claim, DraftClaim, DraftEvidence, Passage, Rejection
 from limespec.verify import verify
 
 Retrieve = Callable[[str], list[Passage]]
@@ -35,7 +35,11 @@ INSUFFICIENT = (
     "this reliably. The closest pages are listed below; please contact Lime "
     "Green's technical team for project-specific advice."
 )
-# Shown when the model says a part went unanswered or a claim failed verification.
+# Shown, with the parts listed, when a part of the question has no verified claim:
+# the reader sees exactly what is not answered (E5 stage E).
+UNANSWERED_PARTS = "Nothing verified was found for these parts of the question:"
+ASK_THE_TEAM = "Please contact Lime Green's technical team about them."
+# Shown when every part has a verified claim but another claim failed verification.
 PARTIAL = (
     "Only statements verified against the indexed pages are shown, and they may not "
     "cover every part of this question. Please contact Lime Green's technical team "
@@ -325,9 +329,28 @@ def answer(question: str, retrieve: Retrieve, chat: Chat) -> Answer:
         )
     # The parts checklist: the caution is decided by code, not by the model's own
     # account of how much it answered.
-    every_part = {claim.part for claim in claims} == set(range(1, len(parts) + 1))
-    notice = "" if every_part and not rejected else PARTIAL
-    return Answer(question, "answered", notice, claims, passages, rejected)
+    return Answer(
+        question,
+        "answered",
+        caution(parts, claims, rejected),
+        claims,
+        passages,
+        rejected,
+    )
+
+
+def caution(
+    parts: Sequence[str], claims: Sequence[Claim], rejected: Sequence[Rejection]
+) -> str:
+    """The notice under an answer: the parts no verified claim answers, listed; else
+    the general caution when a claim was removed; else nothing."""
+    answered = {claim.part for claim in claims}
+    missing = [part for number, part in enumerate(parts, 1) if number not in answered]
+    if missing:
+        return "\n".join(
+            [UNANSWERED_PARTS, *(f"- {part}" for part in missing), ASK_THE_TEAM]
+        )
+    return PARTIAL if rejected else ""
 
 
 def closest_pages(

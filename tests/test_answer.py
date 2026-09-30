@@ -246,19 +246,23 @@ def test_an_empty_answer_is_insufficient_evidence() -> None:
     assert result.notice == INSUFFICIENT
 
 
-def test_a_partly_supported_answer_carries_the_fixed_caution() -> None:
+def test_a_partly_supported_answer_names_the_parts_it_does_not_answer() -> None:
     supported = ("Mortex is a low-carbon mix.", [("S1", "It is a low-carbon mix.")])
     unsupported = ("Mortex is cheap.", [("S1", "Mortex is cheap.")])
+    parts = ["q one?", "q two?", "q three?"]
 
-    # Two parts, and only part 1 has a verified claim: code decides the caution.
-    not_every_part = answer(
-        "q", retrieve, FakeModel(reply(supported), parts=["q one?", "q two?"])
-    )
+    # Three parts, and only part 1 has a verified claim: code decides the caution.
+    not_every_part = answer("q", retrieve, FakeModel(reply(supported), parts=parts))
     claim_removed = answer("q", retrieve, FakeModel(reply(supported, unsupported)))
 
+    assert not_every_part.notice == (
+        "Nothing verified was found for these parts of the question:\n"
+        "- q two?\n- q three?\n"
+        "Please contact Lime Green's technical team about them."
+    )
+    assert claim_removed.notice == PARTIAL  # every part answered, a claim removed
     for result in (not_every_part, claim_removed):
         assert result.status == "answered"
-        assert result.notice == PARTIAL
         assert [c.text for c in result.claims] == ["Mortex is a low-carbon mix."]
 
 

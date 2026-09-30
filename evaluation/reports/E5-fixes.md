@@ -349,6 +349,28 @@ ceiling on near-miss evidence (0.68 for the best combined detector). No gate is 
 The standing rule now calls for a further literature search on this stage before
 another attempt; the other stages (A, B's remaining arms) go ahead meanwhile.
 
+**Further search on stage C (30 September).** The detector paper cited above (RINSE,
+arXiv 2609.37469) reports its results by regime. On the regime that is ours, passages on
+the topic with no answer-bearing span ("topical-but-answerless", built by swapping the
+question), its answer-span reader is at chance (0.508) and its strongest reader is a
+linear probe on a frozen 1.5B model's hidden state (0.712); the combination averages
+0.837 only because other regimes (missing coverage) are easier, and gating with it
+still refused 17.8% of sufficient cases while cutting answers on insufficient evidence
+only from 63.6% to 51.1%. Joren et al. (ICLR 2025) raise the accuracy of answered
+questions by up to 10 points by combining a sufficiency label from a large closed
+model (93% accurate) with the generator's own confidence in a logistic head; with
+small open models it helps less, as they abstain or hallucinate even with sufficient
+context. Practitioner guidance (2026) names the same failure, "faithful to the wrong
+evidence", and offers answer-relevance scores, which are the signals measured above.
+So our best (0.755) is at or above the published level for this regime, and no
+published detector reaches the rate the rule asks for. What remains open, recorded for
+later and not run now: a linear probe on the generator's own hidden state (needs
+labelled training claims that are not the test set; v5's labels are for certification),
+and the generator's own confidence as a second input. The structural lever stays
+upstream: 9 of 10 substitutions happened when the part's evidence never arrived, so
+stage A and B's reach, and the notice naming the parts not covered (stage E), carry
+the reduction.
+
 **A, code (before the index is built).** As built, with two changes from the design,
 both recorded here before any index is measured:
 - A bold line (a paragraph wholly in bold, at most 200 characters, not ending in a
