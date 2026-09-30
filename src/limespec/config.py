@@ -74,6 +74,11 @@ MAX_CLAIMS = 8
 # within X39's budget of 32).
 MAX_PARTS = 6
 MAX_PASSAGES = 12
+# After each search, a search inside the products its query names adds its best
+# SCOPED_TOP passages (E5 B4), all passages given staying within PASSAGE_BUDGET
+# (X39: evidence use falls beyond it).
+SCOPED_TOP = 4
+PASSAGE_BUDGET = 32
 MAX_QUOTES_PER_CLAIM = 3
 CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
 

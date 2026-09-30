@@ -11,7 +11,7 @@ from typing import Any
 
 import psycopg
 
-from limespec import config, llm, store, telemetry
+from limespec import config, llm, scope, store, telemetry
 from limespec.answer import PROMPT_SHA256, UNDERSTAND_SCHEMA, Chat, Retrieve, answer
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
@@ -70,6 +70,22 @@ def retriever(conn: store.Connection, version_id: int) -> Retrieve:
     def retrieve(query: str) -> list[Passage]:
         return store.search(
             conn, version_id, query, llm.embed, llm.rerank, config.RERANK_CANDIDATES
+        )
+
+    return retrieve
+
+
+def scoped_retriever(conn: store.Connection, version_id: int) -> Retrieve:
+    """A search of an index version inside the products a query names (E5 B4): its
+    best `config.SCOPED_TOP` passages, or none when the query names no product."""
+    named = scope.naming(store.product_names(conn, version_id))
+
+    def retrieve(query: str) -> list[Passage]:
+        names = named(query)
+        if not names:
+            return []
+        return store.search(
+            conn, version_id, query, llm.embed, llm.rerank, config.SCOPED_TOP, names
         )
 
     return retrieve

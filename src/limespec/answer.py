@@ -25,6 +25,7 @@ from typing import Any
 from limespec import config
 from limespec.llm import ModelServerError
 from limespec.models import Answer, Claim, DraftClaim, DraftEvidence, Passage, Rejection
+from limespec.scope import scope_of
 from limespec.verify import verify
 
 Retrieve = Callable[[str], list[Passage]]
@@ -300,21 +301,49 @@ def interleave(
     return tuple(taken[:limit])
 
 
-def gather(parts: Sequence[str], retrieve: Retrieve) -> tuple[Passage, ...]:
+def gather(
+    parts: Sequence[str], retrieve: Retrieve, scoped: Retrieve | None = None
+) -> tuple[Passage, ...]:
     """The passages the answer request is given for a question's parts. One part:
-    its own search. Several: the parts together, then each alone, interleaved."""
+    its own search. Several: the parts together, then each alone, interleaved. Then
+    each search again inside the products it names (`scoped`), if given."""
     searches = list(parts) if len(parts) == 1 else [" ".join(parts), *parts]
     limit = config.TOP_K if len(parts) == 1 else config.MAX_PASSAGES
-    return interleave([retrieve(query) for query in searches], limit)
+    found = interleave([retrieve(query) for query in searches], limit)
+    if scoped is None:
+        return found
+    return with_own_copies(found, [p for query in searches for p in scoped(query)])
 
 
-def answer(question: str, retrieve: Retrieve, chat: Chat) -> Answer:
-    """Answer one question from the indexed pages."""
+def with_own_copies(
+    found: Sequence[Passage], named: Sequence[Passage]
+) -> tuple[Passage, ...]:
+    """`found`, then the named products' passages after it within the budget. A
+    named passage whose text is already there replaces that copy, unless the copy is
+    itself a named product's, so the product asked about is the one cited."""
+    taken = list(found)
+    place = {same_text(passage.text): n for n, passage in enumerate(taken)}
+    own = {scope_of(passage.title) for passage in named}
+    for passage in named:
+        key = same_text(passage.text)
+        if key not in place:
+            if len(taken) < config.PASSAGE_BUDGET:
+                place[key] = len(taken)
+                taken.append(passage)
+        elif scope_of(taken[place[key]].title) not in own:
+            taken[place[key]] = passage
+    return tuple(taken)
+
+
+def answer(
+    question: str, retrieve: Retrieve, chat: Chat, scoped: Retrieve | None = None
+) -> Answer:
+    """Answer one question from the indexed pages (`scoped`: see `gather`)."""
     exposed, parts = understand(question, chat)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
         return Answer(question, "safety_referral", SAFETY_REFERRAL, (), (), ())
-    passages = gather(parts, retrieve)
+    passages = gather(parts, retrieve, scoped)
     sources = {f"S{number}": passage for number, passage in enumerate(passages, 1)}
     output = chat(
         ANSWER_PROMPT,

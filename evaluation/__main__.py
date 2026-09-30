@@ -267,6 +267,9 @@ def parser() -> argparse.ArgumentParser:
         "--parts", type=Path, help="an earlier replay, whose search questions are kept"
     )
     replayed_searches.add_argument("--out", type=Path, required=True)
+    replayed_searches.add_argument(
+        "--scoped", action="store_true", help="search again inside named products (B4)"
+    )
     again = commands.add_parser(
         "embed-again", help="an index version copied with another embedder (E5)"
     )
@@ -996,6 +999,7 @@ def run_replay(args: argparse.Namespace) -> int:
             lambda question: answer.understand(question, llm.chat),
             assistant.retriever(conn, args.version),
             parts,
+            assistant.scoped_retriever(conn, args.version) if args.scoped else None,
         )
         texts = store.searchable_texts(conn, args.version)
     rows = reach.score(key, questions, given, texts)

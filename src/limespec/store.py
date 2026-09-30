@@ -19,6 +19,7 @@ from psycopg.types.json import Jsonb
 from limespec import config, prices
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank, fuse, rerank_top, unit_vector
+from limespec.scope import SEPARATOR
 
 Connection = psycopg.Connection[tuple[Any, ...]]
 PageRow = tuple[str, str, str, str]  # url, title, fetched_at (ISO 8601), sha256
@@ -165,8 +166,22 @@ def index_version(conn: Connection, version_id: int) -> tuple[int, str] | None:
     return (int(row[0]), str(row[1])) if row else None
 
 
+def in_scope(scope: Sequence[str]) -> sql.Composable:
+    """A filter keeping passages whose scope (`scope.scope_of` their title) is one of
+    `scope`; no filter when it is empty."""
+    if not scope:
+        return sql.SQL("")
+    return sql.SQL(" AND split_part(title, {}, 1) = ANY({})").format(
+        sql.Literal(SEPARATOR), sql.Literal(list(scope))
+    )
+
+
 def keyword_ranking(
-    conn: Connection, version_id: int, question: str, limit: int
+    conn: Connection,
+    version_id: int,
+    question: str,
+    limit: int,
+    scope: Sequence[str] = (),
 ) -> list[int]:
     """Passage ids ranked by BM25 over the question's words (experiment X2).
 
@@ -182,21 +197,29 @@ def keyword_ranking(
     rows = conn.execute(
         sql.SQL(
             "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
-            "AND NOT commercial ORDER BY {}, id LIMIT {}"
-        ).format(sql.Literal(version_id), score, score, sql.Literal(limit))
+            "AND NOT commercial{} ORDER BY {}, id LIMIT {}"
+        ).format(
+            sql.Literal(version_id), score, in_scope(scope), score, sql.Literal(limit)
+        )
     ).fetchall()
     return [row[0] for row in rows]
 
 
 def vector_ranking(
-    conn: Connection, version_id: int, query_vector: Sequence[float], limit: int
+    conn: Connection,
+    version_id: int,
+    query_vector: Sequence[float],
+    limit: int,
+    scope: Sequence[str] = (),
 ) -> list[int]:
     """Passage ids ranked by cosine similarity (inner product of unit vectors),
     leaving out passages with a price (X16)."""
+    query = sql.SQL(
+        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial{} "
+        "ORDER BY embedding <#> %s::vector, id LIMIT %s"
+    ).format(in_scope(scope))
     rows = conn.execute(
-        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial "
-        "ORDER BY embedding <#> %s::vector, id LIMIT %s",
-        (version_id, vector_text(query_vector), limit),
+        query, (version_id, vector_text(query_vector), limit)
     ).fetchall()
     return [row[0] for row in rows]
 
@@ -208,9 +231,10 @@ def search(
     embed: Embed,
     rerank: Rerank,
     top: int | None = None,
+    scope: Sequence[str] = (),
 ) -> list[Passage]:
     """The top passages of one index version for a question, best first: `top` of
-    them, or `config.TOP_K`.
+    them, or `config.TOP_K`; only passages of the named `scope`, if one is given.
 
     Keyword and vector rankings, fused, then the reranker orders the best
     candidates (`retrieve.rerank_top`).
@@ -219,12 +243,24 @@ def search(
     limit = config.CANDIDATES_PER_METHOD
     ranking = fuse(
         [
-            keyword_ranking(conn, version_id, question, limit),
-            vector_ranking(conn, version_id, query_vector, limit),
+            keyword_ranking(conn, version_id, question, limit, scope),
+            vector_ranking(conn, version_id, query_vector, limit, scope),
         ]
     )
     candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
     return rerank_top(question, candidates, rerank, top)
+
+
+def product_names(conn: Connection, version_id: int) -> list[str]:
+    """The titles of the version's product pages: the scopes a question can name."""
+    rows = conn.execute(
+        "SELECT DISTINCT p.title FROM passages p "
+        "JOIN documents d ON d.id = p.document_id "
+        "WHERE p.index_version_id = %s AND d.url LIKE %s AND d.url NOT ILIKE %s "
+        "ORDER BY p.title",
+        (version_id, config.SITE + "products/%", "%.pdf"),
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 def record_answer(

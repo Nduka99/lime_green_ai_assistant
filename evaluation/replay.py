@@ -26,6 +26,7 @@ def replay(
     understand: Understand,
     retrieve: answer.Retrieve,
     parts: dict[str, list[str]] | None = None,
+    scoped: answer.Retrieve | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, list[Passage]]]:
     """For each question the key expects answered: its search questions (from
     `parts` when an earlier replay wrote them, else from the first request) and the
@@ -43,5 +44,6 @@ def replay(
             exposed, searches = understand(row["question"])
             searches = [] if exposed else searches
         written[row["id"]] = searches
-        given[row["id"]] = list(answer.gather(searches, retrieve)) if searches else []
+        found = answer.gather(searches, retrieve, scoped) if searches else ()
+        given[row["id"]] = list(found)
     return written, given
