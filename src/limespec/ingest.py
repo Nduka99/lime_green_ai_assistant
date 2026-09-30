@@ -16,9 +16,9 @@ from urllib.parse import unquote, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
-from limespec import config, lists, store
+from limespec import config, lists, prices, store
 from limespec.models import described
 from limespec.passages import pieces
 from limespec.retrieve import Embed
@@ -27,6 +27,10 @@ HEADINGS = ["h1", "h2", "h3", "h4"]
 # Some articles style a paragraph as a heading: <p class="h2-style">Application</p>
 HEADING_CLASSES = {"h2-style", "h3-style", "h4-style"}
 TEXT_BLOCKS = [*HEADINGS, "p", "li", "dt", "dd", "td", "th", "div"]
+# Articles set a sub-heading, an interview question or a list's lead-in as a wholly
+# bold paragraph. Such a line is at most this long and does not end like a sentence
+# of the running text (147 on 56 of the site's 160 pages, E5).
+BOLD_LINE_CHARS = 200
 # Site furniture repeated across pages, found by inspecting the fetched HTML.
 BOILERPLATE = ", ".join(
     [
@@ -180,12 +184,25 @@ def clean(text: str) -> str:
     return " ".join(text.split())
 
 
+def bold_line(block: Tag, text: str) -> bool:
+    """Whether a paragraph is a bold line: every word in <strong> or <b>, short, and
+    not ending in a full stop or an exclamation mark."""
+    if block.name != "p" or len(text) > BOLD_LINE_CHARS or text[-1] in ".!":
+        return False
+    words = [string for string in block.find_all(string=True) if string.strip()]
+    return all(string.find_parent(["strong", "b"]) for string in words)
+
+
 def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
     """Return the page title and its (heading, paragraphs) sections in reading order.
 
     Headings start sections; each FAQ question (<dt>) starts one, so every
-    question and its answer stay together. Only leaf blocks are read, so no
-    text is counted twice, and inline tags such as links join without a space.
+    question and its answer stay together. A bold line starts a new section under
+    the same heading, as its first paragraph, so a list or an answer stays with the
+    line that introduces it. A list is one paragraph, its items on separate lines
+    after the lead-in that ends with a colon, so the splitter keeps it whole. Only
+    leaf blocks are read, so no text is counted twice, and inline tags such as links
+    join without a space.
     """
     soup = BeautifulSoup(raw_html, "html.parser")
     for line_break in soup.find_all("br"):
@@ -205,6 +222,7 @@ def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
     sections: list[tuple[str, list[str]]] = []
     heading = title
     paragraphs: list[str] = []
+    open_list: Tag | None = None  # the list the paragraph before belongs to
     for block in root.find_all(TEXT_BLOCKS):
         if block.find(TEXT_BLOCKS):
             continue
@@ -214,12 +232,28 @@ def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
         is_heading = block.name in HEADINGS or bool(
             HEADING_CLASSES & set(block.get("class") or [])
         )
+        # The block's list: an item, or a paragraph inside an item.
+        item = block if block.name == "li" else block.find_parent("li")
+        this_list = item.find_parent(["ul", "ol"]) if item else None
         if is_heading or block.name == "dt":
             if paragraphs:
                 sections.append((heading, paragraphs))
             heading, paragraphs = text, []
+        elif paragraphs and bold_line(block, text):
+            sections.append((heading, paragraphs))
+            paragraphs = [text]
+        elif (
+            paragraphs
+            and this_list is not None
+            and (
+                this_list is open_list
+                or (open_list is None and paragraphs[-1].endswith(":"))
+            )
+        ):
+            paragraphs[-1] += "\n" + text  # the list's next item, or its first
         else:
             paragraphs.append(text)
+        open_list = this_list
     if paragraphs:
         sections.append((heading, paragraphs))
     return title, sections
@@ -227,15 +261,19 @@ def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
 
 def split_section(heading: str, paragraphs: list[str]) -> list[str]:
     """Passage texts for one section: the heading, then as many paragraph pieces
-    as fit in MAX_PASSAGE_CHARS. Every passage stays within the maximum."""
+    as fit in MAX_PASSAGE_CHARS. Every passage stays within the maximum. A list
+    (a paragraph of several lines) stays whole when it fits in a passage; a longer
+    one is split between its items."""
     budget = config.MAX_PASSAGE_CHARS - len(heading) - 1
     passages: list[list[str]] = [[]]
     for paragraph in paragraphs:
-        for piece in pieces(paragraph, budget):
-            candidate = "\n".join([heading, *passages[-1], piece])
-            if passages[-1] and len(candidate) > config.MAX_PASSAGE_CHARS:
-                passages.append([])
-            passages[-1].append(piece)
+        lines = paragraph.split("\n") if len(paragraph) > budget else [paragraph]
+        for line in lines:
+            for piece in pieces(line, budget):
+                candidate = "\n".join([heading, *passages[-1], piece])
+                if passages[-1] and len(candidate) > config.MAX_PASSAGE_CHARS:
+                    passages.append([])
+                passages[-1].append(piece)
     return ["\n".join([heading, *chunk]) for chunk in passages]
 
 
@@ -278,6 +316,16 @@ def fingerprint_line(row: store.PassageRow) -> str:
     return f"{url}\t{page}\t{context}\t{text}\n"
 
 
+def without_prices(row: store.PassageRow) -> store.PassageRow | None:
+    """The passage without its sentences that state a price (`prices`), or None when
+    nothing but its heading is left. A passage with no price is returned as it is."""
+    url, title, heading, text, context, page = row
+    kept = prices.without_prices(text)
+    if kept != text and kept.strip() in ("", heading.strip()):
+        return None
+    return (url, title, heading, kept, context, page)
+
+
 def prepare_index(
     pages: Sequence[tuple[str, bytes, str]],
     embed: Embed,
@@ -302,6 +350,7 @@ def prepare_index(
     for page_row, passage_rows in documents:
         page_rows.append(page_row)
         rows += passage_rows
+    rows = [row for row in map(without_prices, rows) if row is not None]
 
     vectors: list[list[float]] = []
     for start in range(0, len(rows), config.EMBEDDING_BATCH_SIZE):

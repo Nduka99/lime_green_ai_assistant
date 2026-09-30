@@ -301,6 +301,17 @@ def test_the_price_rule_finds_currency_amounts_only() -> None:
         assert not prices.states_price(text), text
 
 
+def test_price_sentences_leave_a_passage_and_the_rest_stays() -> None:
+    text = (
+        "Samples\nThey used Solo (£18 for 25kg). Always wear gloves.\n"
+        "£5.00\nNo price here.  Two spaces stay."
+    )
+
+    assert prices.without_prices(text) == (
+        "Samples\nAlways wear gloves.\nNo price here.  Two spaces stay."
+    )
+
+
 def test_a_claim_stating_a_price_is_removed_even_with_its_quote() -> None:
     sample = Passage(
         13,

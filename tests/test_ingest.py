@@ -51,7 +51,7 @@ def test_product_page_keeps_content_and_drops_site_furniture() -> None:
                 "Finish it with one coat of Velour or Satin Top.",
             ],
         ),
-        ("Product uses", ["Stone walls", "Not for timber"]),
+        ("Product uses", ["Stone walls\nNot for timber"]),  # a list: one paragraph
     ]
 
 
@@ -79,9 +79,61 @@ def test_do_and_dont_lists_stay_with_their_heading() -> None:
 
     assert title == "Rendering Checklist"
     assert sections == [
-        ("Application", ["Do:", "Work with a wet edge.", "Don't:", "Apply below 5°C."]),
+        # Each list is one paragraph with the lead-in that ends in a colon.
+        ("Application", ["Do:\nWork with a wet edge.", "Don't:\nApply below 5°C."]),
         ("Inspection", ["Look at the wall square on."]),  # a heading-styled <p>
     ]
+
+
+def test_a_bold_line_starts_a_section_under_the_same_heading() -> None:
+    html = (
+        "<body><h2>Plastics</h2><p>Waste is rising.</p>"
+        "<p><strong>How can we limit it?</strong></p>"
+        "<ol><li>Plan ahead.</li><li>Use natural materials.</li></ol>"
+        "<p><b>What</b> <strong>next?</strong></p><p>Hybrid materials.</p>"
+        "<p><strong>Lime is not cement.</strong></p>"  # a sentence, not a sub-heading
+        f"<p><strong>{'A long bold paragraph ' * 10}</strong></p></body>"
+    )
+
+    _, sections = extract_sections(html)
+
+    assert [heading for heading, _ in sections] == ["Plastics"] * 3
+    assert sections[0][1] == ["Waste is rising."]
+    assert sections[1][1] == [
+        "How can we limit it?",
+        "Plan ahead.\nUse natural materials.",
+    ]
+    assert sections[2][1][:3] == [
+        "What next?",
+        "Hybrid materials.",
+        "Lime is not cement.",
+    ]
+    assert len(sections[2][1]) == 4  # the long bold paragraph stays in the section
+
+
+def test_a_bold_line_right_after_a_heading_is_its_first_paragraph() -> None:
+    html = "<body><h2>Uses</h2><p><strong>Indoors</strong></p><p>Walls.</p></body>"
+
+    assert extract_sections(html)[1] == [("Uses", ["Indoors", "Walls."])]
+
+
+def test_two_lists_in_a_row_stay_two_paragraphs() -> None:
+    html = (
+        "<body><h2>Uses</h2><p>Good for:</p><ul><li>walls</li><li>floors</li></ul>"
+        "<ul><li>not roofs</li></ul><p>See the guide.</p></body>"
+    )
+
+    assert extract_sections(html)[1] == [
+        ("Uses", ["Good for:\nwalls\nfloors", "not roofs", "See the guide."])
+    ]
+
+
+def test_items_written_as_paragraphs_are_still_one_list() -> None:
+    html = (
+        "<body><h2>Types</h2><ul><li><p>Putty</p></li><li><p>NHL</p></li></ul></body>"
+    )
+
+    assert extract_sections(html)[1] == [("Types", ["Putty\nNHL"])]
 
 
 def test_a_page_without_a_body_is_an_error() -> None:
@@ -99,6 +151,21 @@ def test_long_section_splits_at_paragraph_boundaries(
     a, b, c = "a" * 15, "b" * 15, "c" * 15
 
     assert split_section("H", [a, b, c]) == [f"H\n{a}\n{b}", f"H\n{c}"]
+
+
+def test_a_list_stays_whole_when_it_fits_and_splits_between_items_when_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "MAX_PASSAGE_CHARS", 40)
+    intro, short = "i" * 20, "Use:\n" + "a" * 10 + "\n" + "b" * 10
+    long_list = "c" * 20 + "\n" + "d" * 20 + "\n" + "e" * 10
+
+    # The list does not fit beside the intro, so it moves whole to a new passage.
+    assert split_section("H", [intro, short]) == [f"H\n{intro}", f"H\n{short}"]
+    assert split_section("H", [long_list]) == [
+        "H\n" + "c" * 20,
+        "H\n" + "d" * 20 + "\n" + "e" * 10,
+    ]
 
 
 def test_long_paragraph_splits_at_sentences_within_the_maximum(
@@ -159,6 +226,19 @@ def test_an_index_keeps_passages_per_page_with_exact_byte_hashes(
     assert (
         faq_text == "How long does Mortex take to set?\nAbout two days in mild weather."
     )
+
+
+def test_a_price_sentence_is_left_out_of_the_index(fake_embed: Embed) -> None:
+    html = (
+        "<body><h2>Samples</h2><p>A pack costs £5.00. It holds three colours.</p>"
+        "<h2>Fee</h2><p>The fee is £10.</p></body>"
+    )
+    page = (SITE + "samples", html.encode(), "2026-01-01T00:00:00+00:00")
+
+    prepared = prepare_index([page], fake_embed)
+
+    # The second section keeps nothing but its heading, so it is not indexed.
+    assert [row[3] for row in prepared.passages] == ["Samples\nIt holds three colours."]
 
 
 def test_corpus_hash_depends_on_urls_and_hashes_not_order() -> None:

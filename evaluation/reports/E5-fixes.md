@@ -115,7 +115,8 @@ restores **no** rightly removed one. Rules are scored one at a time and together
 ### A. Index (version 13)
 
 (1) A paragraph that is wholly bold and short is a sub-heading; a list stays in one
-passage with its lead-in line when it fits, its items marked. (2) The price fence
+passage with its lead-in line when it fits (see Results for the two changes made when
+this was built). (2) The price fence
 removes the sentences that state a price, not the passage. (3) Each document records
 its product scope: a product page and the files it links.
 
@@ -201,3 +202,33 @@ possible, not likely.
 ## Results
 
 *(added stage by stage)*
+
+**The replay reproduces the gate** (30 September, `f9f0ad4`): on index version 12 with
+unchanged retrieval it reaches 109/130, 102/125, 78/140 and 72/105 parts (0.838 / 0.816
+/ 0.557 / 0.686), the S2b gate run's figures exactly, so it measures what the
+assistant does. Its files are the baseline arm, and every later arm keeps its search
+questions.
+
+**A, code (before the index is built).** As built, with two changes from the design,
+both recorded here before any index is measured:
+- A bold line (a paragraph wholly in bold, at most 200 characters, not ending in a
+  full stop or an exclamation mark) starts a new section **under the same heading**,
+  as that section's first paragraph. It is not made the heading, because a heading
+  with nothing under it is dropped and a bold line can be the only place a fact is
+  stated. The site has 171 wholly bold paragraphs; 15 end like sentences and one is
+  330 characters long, and those stay ordinary paragraphs.
+- A list is one paragraph, with the lead-in before it when that ends in a colon, so
+  the splitter keeps it whole when it fits in a passage and splits it between items
+  when it does not. **Items are not marked**: a marker would put characters in the
+  passage that the page does not show, and quotes and their links must be the page's
+  own words.
+- The price fence leaves out the sentences that state a price; a passage left with
+  nothing but its heading is not indexed; the passage-level tag stays as a second
+  guard.
+
+Measured on the 160 cached pages: lists split across passages **7 of 48 → 1 of 45**
+(the one left is 1,610 characters with its lead-in, longer than a passage, and splits
+between items); v4 c47's three strategies are now one passage under their lead-in; web
+passages 922, none over the maximum. In version 12's three fenced passages the price
+sentences go and the rest stays, including the sentence v4 c33 asks for ("Always wear
+gloves and goggles when applying lime.").
