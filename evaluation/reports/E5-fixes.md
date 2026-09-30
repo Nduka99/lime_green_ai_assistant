@@ -61,6 +61,29 @@ neighbouring passages (10 of 118 missed parts).
   The architecture stays; scope and unit size at retrieval, a calibrated gate and
   verification change.
 
+### Models for the stages besides the generator (cards read 30 September)
+
+Limits: an 8 GB GPU already holding the generator (3.5 GB), the embedder (2.7 GB) and
+the reranker (0.5 GB); about 14 GB of free RAM; llama.cpp for GGUF files, the CPU for
+small encoders. Licences: Apache-2.0, MIT or CC-BY; non-commercial models are out
+(jina-embeddings-v5, jina-reranker-v3 and v3.5, ctxl-rerank-v2, Provence, zerank-1,
+Bespoke-MiniCheck-7B). Published scores come from different test beds and disagree
+(Qwen3-Reranker-0.6B: 65.8 on its own card's table, 56.9 on another card's), so they
+shortlist only.
+
+| Stage | Now | Candidates | Published evidence |
+|---|---|---|---|
+| Embedding | Qwen3-Embedding-0.6B | Qwen3-Embedding-4B (Apache-2.0; held) first; then pplx-embed-context-v1-0.6B (MIT), DenseOn / LateOn (149M), harrier-oss-v1-0.6B (MIT) | Retrieval on MTEB English v2: 61.8 → 68.5 for the 4B model ([card](https://huggingface.co/Qwen/Qwen3-Embedding-4B)) |
+| Reranker | bge-reranker-v2-m3 | Qwen3-Reranker-0.6B (Apache-2.0) first; Qwen3-Reranker-4B as the ceiling; then gte-reranker-modernbert-base (149M) | 57.0 → 65.8 → 69.8 on the Qwen card's table; instruction following 0.0 → 5.4 → 14.8 ([card](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)) |
+| Claim–question relevance | none | the instruction-following reranker scoring each claim against its part; OpenProvence (MIT, 149M), which keeps or drops each sentence for a question | the older reranker separated `relevance-dev`'s labels at AUC 0.89; OpenProvence keeps the answer sentence 93–94% of the time ([repository](https://github.com/hotchpotch/open_provence)) |
+| Support check | quote, number and regulation rules | FactCG-DeBERTa-L (MIT, 0.4B); then MiniCheck (MIT) and the rule that two checkers must agree | 75.6 on [LLM-AggreFact](https://llm-aggrefact.github.io/), level with models a hundred times larger |
+| PDF reading | Docling + GLM-OCR | none for now | newer parsers lead the public benchmark by 1–2 points, but on this corpus's sealed pages GLM-OCR placed 0.984 of table values (X8) and the index holds 124 of v4's 130 keyed parts |
+
+Extraction models (GLiNER2, NuExtract 2.0), image and page retrieval models
+(Qwen3-VL-Embedding-2B, ColQwen-class) and a monitoring judge (Granite Guardian) were
+read and are left for their own stages: v5 asks no image question, and structured
+extraction is needed only if smaller units win their test.
+
 ## Method
 
 Every change is general and chosen offline, on a benchmark built from records already
@@ -120,14 +143,26 @@ frozen90 / v2 / v3).
 passages given stay within the budget of 32, and `exposure-v1` is unchanged (the first
 request is not touched). Changes are scored one at a time, then stacked.
 
+**Model arms** (each a replay of all four sets with the baseline's search questions
+kept, so arms differ only in the model): `r06` Qwen3-Reranker-0.6B in place of the
+reranker; `e4` the index re-embedded with Qwen3-Embedding-4B (vectors cut to 1,024 and
+normalised, so the schema stays); `e4-r06` both; `r4` Qwen3-Reranker-4B as the ceiling
+on the better index. **Model rule:** an arm qualifies if reach rises on v4 by at least
+2 parts (the reranker's near-ties alone move 1, D96) and falls on no set by more than
+1 part. Among qualifying arms within 1 part of the best on every set, the one using
+the least GPU and RAM is chosen, then the fastest; memory and seconds per search are
+measured as in X40 and reported for every arm. If no arm qualifies the models stay.
+
 ### C. Sufficiency gate per part
 
 Before a part's claims are shown, a detector scores whether the evidence states what
 that part asks; below the threshold the part's claims are withheld and the notice
-names the part. Candidates: (a) coverage of the part's terms by its claims' quotes,
-weighted by rarity; (b) an answer-span reader with a no-answer option; (c) a small
-fact-checking model scoring each claim against its own quotes; (d) their equal-weight
-combination.
+names the part. Candidates: (a) the instruction-following reranker scoring each claim
+against its part; (b) OpenProvence's keep-or-drop score of the claim's quote for the
+part; (c) FactCG scoring each claim against its own quotes; (d) second tier: an
+answer-span reader with a no-answer option, and coverage of the part's terms by the
+quotes weighted by rarity; (e) equal-weight combinations of those that separate the
+labels.
 
 **Benchmarks:** `claims-dev`, the 936 claims labelled in the gate sittings' claim
 audits (105 not correct), each with its question part and quotes; `parts-dev`, the

@@ -57,6 +57,7 @@ from evaluation import (
     cases,
     catalogue,
     conversations,
+    drafts,
     generator,
     graders,
     grades,
@@ -263,6 +264,16 @@ def parser() -> argparse.ArgumentParser:
         "--parts", type=Path, help="an earlier replay, whose search questions are kept"
     )
     replayed_searches.add_argument("--out", type=Path, required=True)
+    drafted = commands.add_parser(
+        "drafts", help="draft again the answers whose checks removed a claim (E5)"
+    )
+    drafted.add_argument("runs", type=Path, nargs="+", help="answers files from ask")
+    drafted.add_argument("--out", type=Path, required=True)
+    rescored = commands.add_parser(
+        "verify-score", help="labelled removed drafts checked again as the code stands"
+    )
+    rescored.add_argument("items", type=Path, help="a drafts file")
+    rescored.add_argument("labels", type=Path, help='{"id/n": {"label": ...}}')
     dropped = commands.add_parser(
         "removed", help="every claim a run's checks removed, for reading (C3)"
     )
@@ -937,6 +948,47 @@ def run_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_drafts(args: argparse.Namespace) -> int:
+    records = [record for path in args.runs for record in grades.read_json(path)]
+    found = []
+    seen = set()
+    with assistant.connect() as conn:
+        for record in records:
+            if "answer_id" not in record:
+                continue
+            if not store.removed_claims(conn, record["answer_id"]):
+                continue
+            _, passages = store.given_passages(conn, record["answer_id"])
+            # The view's question is the one the model was asked (stripped).
+            question = record["view"]["question"]
+            request = (question, tuple(passage.id for passage in passages))
+            if request in seen:
+                continue
+            seen.add(request)
+            item = drafts.drafted(question, passages, llm.chat)
+            found.append({"id": f"a{record['answer_id']}", "question": question,
+                          "passages": list(request[1]), **item})  # fmt: skip
+    write_json(args.out, found)
+    count = len(drafts.removed(found))
+    print(f"{len(found)} answers drafted again, {count} drafts removed; in {args.out}")
+    return 0
+
+
+def run_verify_score(args: argparse.Namespace) -> int:
+    items = grades.read_json(args.items)
+    rows = grades.read_json(args.labels)
+    labels = {name: row["label"] for name, row in rows.items()}
+    unknown = set(labels.values()) - set(drafts.LABELS)
+    if set(labels) != set(drafts.removed(items)) or unknown:
+        raise ValueError("label every removed draft, and nothing else, wrong or right")
+    wanted = sorted({passage for item in items for passage in item["passages"]})
+    with assistant.connect() as conn:
+        loaded = store.load_passages(conn, wanted)
+    passages = {passage.id: passage for passage in loaded}
+    print(json.dumps(drafts.rescore(items, labels, passages), indent=1))
+    return 0
+
+
 def run_select_form(args: argparse.Namespace) -> int:
     arms = {}
     for run in args.runs:
@@ -1488,6 +1540,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_reach(args)
         if args.command == "replay":
             return run_replay(args)
+        if args.command == "drafts":
+            return run_drafts(args)
+        if args.command == "verify-score":
+            return run_verify_score(args)
         if args.command == "page-candidates":
             return run_page_candidates(args)
         if args.command == "blind":
