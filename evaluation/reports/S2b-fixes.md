@@ -263,6 +263,27 @@ going to fewer median seconds. `rerank` is reported; it would need its own thres
 before it could be chosen. The chosen candidate runs as rung C3″ under C3′'s rule; if none
 qualifies, the relevance check stays dropped and the decision returns to the user.
 
+**Result (30 Sept; `relevance-dev` registered `65beb5b`: 165 answers, 321 claims, 294
+answering a part, 27 answering nothing asked): no candidate qualifies** (at most 14 wrong
+removals allowed):
+
+| Candidate | Wrongly removed (of 294) | Rightly removed (of 27) | Median s per answer |
+|---|---|---|---|
+| `c3` (bare number) | 45 | 19 | 2.9 |
+| `c3p` (words, then number) | 42 | 21 | 4.2 |
+| `think128` | 106 | 17 | 8.7 |
+| `think256` | 62 | 21 | 12.3 |
+| `rerank` (best score over parts) | AUC 0.89 | | 0.02 |
+
+The benchmark reproduces the rungs (c3 45/19 here against 44/20 read in its rung), so it
+measures what the rungs measured. Capped thinking is worse, not better: the budget cuts the
+reasoning and the answer is forced. The reranker separates the labels only moderately (an
+AUC of 0.89 over 27 negatives: any threshold catching most off-topic claims removes many
+on-topic ones). In `c3p`'s errors the model treats a part as taking one claim (q001, q003:
+a second claim answering the same part is marked 0) and keeps some off-topic claims
+("a u-value … is compliant with Part L1B" for a guarantee question). **The relevance check
+stays dropped; the decision returns to the user.**
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
