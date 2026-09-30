@@ -54,6 +54,7 @@ from pypdf import PdfReader
 
 from evaluation import (
     ask,
+    candidates,
     cases,
     catalogue,
     claims,
@@ -345,6 +346,14 @@ def parser() -> argparse.ArgumentParser:
     )
     compared.add_argument("--version", type=int, help="index version (product names)")
     compared.add_argument("--out", type=Path, required=True)
+    smoked = commands.add_parser(
+        "smoke", help="does a candidate generator do both requests at all (E8 G0)"
+    )
+    smoked.add_argument("--url", required=True, help="the candidate's server")
+    smoked.add_argument("--set", dest="name", required=True, help="questions' set")
+    smoked.add_argument("--items", type=Path, required=True, help="near-miss items")
+    smoked.add_argument("--version", type=int, required=True, help="index version")
+    smoked.add_argument("--out", type=Path, required=True)
     near_written = commands.add_parser(
         "nearmiss-write", help="near-miss questions written from passages (E7 S3)"
     )
@@ -1170,6 +1179,20 @@ def case_passages(conn: store.Connection, found: list[Any]) -> dict[str, Passage
     return {f"p{p.id}": p for p in store.load_passages(conn, ids)}
 
 
+def run_smoke(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    found = grades.read_json(args.items)[: candidates.COUNT]
+    with assistant.connect() as conn:
+        passages = case_passages(conn, found)
+    result = candidates.smoke(
+        [q["question"] for q in questions], found, passages, graders.post_to(args.url)
+    )
+    write_json(args.out, result)
+    print(json.dumps(result))
+    return 0
+
+
 def run_nearmiss_write(args: argparse.Namespace) -> int:
     with assistant.connect() as conn:
         chosen = nearmiss.sample(
@@ -1845,6 +1868,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_slot_extract(args)
         if args.command == "slot-compare":
             return run_slot_compare(args)
+        if args.command == "smoke":
+            return run_smoke(args)
         if args.command == "nearmiss-write":
             return run_nearmiss_write(args)
         if args.command == "nearmiss-check":
