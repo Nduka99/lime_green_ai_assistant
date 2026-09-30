@@ -85,36 +85,25 @@ def test_do_and_dont_lists_stay_with_their_heading() -> None:
     ]
 
 
-def test_a_bold_line_starts_a_section_under_the_same_heading() -> None:
+def test_a_bold_line_is_an_ordinary_paragraph_of_its_section() -> None:
+    # Bold lines as sections cut sections into short passages that crowded out
+    # other evidence (E5, A); a bold lead-in still keeps its list.
     html = (
-        "<body><h2>Plastics</h2><p>Waste is rising.</p>"
-        "<p><strong>How can we limit it?</strong></p>"
-        "<ol><li>Plan ahead.</li><li>Use natural materials.</li></ol>"
-        "<p><b>What</b> <strong>next?</strong></p><p>Hybrid materials.</p>"
-        "<p><strong>Lime is not cement.</strong></p>"  # a sentence, not a sub-heading
-        f"<p><strong>{'A long bold paragraph ' * 10}</strong></p></body>"
+        "<body><h2>Checklist</h2><p><strong>Do:</strong></p>"
+        "<ul><li>Protect from rain.</li><li>Mist the wall.</li></ul>"
+        "<p><strong>First Coat</strong></p><p>Apply diagonally.</p></body>"
     )
 
-    _, sections = extract_sections(html)
-
-    assert [heading for heading, _ in sections] == ["Plastics"] * 3
-    assert sections[0][1] == ["Waste is rising."]
-    assert sections[1][1] == [
-        "How can we limit it?",
-        "Plan ahead.\nUse natural materials.",
+    assert extract_sections(html)[1] == [
+        (
+            "Checklist",
+            [
+                "Do:\nProtect from rain.\nMist the wall.",
+                "First Coat",
+                "Apply diagonally.",
+            ],
+        )
     ]
-    assert sections[2][1][:3] == [
-        "What next?",
-        "Hybrid materials.",
-        "Lime is not cement.",
-    ]
-    assert len(sections[2][1]) == 4  # the long bold paragraph stays in the section
-
-
-def test_a_bold_line_right_after_a_heading_is_its_first_paragraph() -> None:
-    html = "<body><h2>Uses</h2><p><strong>Indoors</strong></p><p>Walls.</p></body>"
-
-    assert extract_sections(html)[1] == [("Uses", ["Indoors", "Walls."])]
 
 
 def test_two_lists_in_a_row_stay_two_paragraphs() -> None:

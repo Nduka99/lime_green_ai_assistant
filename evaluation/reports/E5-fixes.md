@@ -164,6 +164,19 @@ frozen90 / v2 / v3).
 passages given stay within the budget of 32, and `exposure-v1` is unchanged (the first
 request is not touched). Changes are scored one at a time, then stacked.
 
+*(4) as it will be built and scored, written before it is (30 September):* a passage's
+scope is its title up to " — " (a PDF is titled after the product page linking it, so
+no new column is needed); product names are the titles of the version's product pages;
+a search query names a product when each of the name's words found in at most two
+product names is in the query, spaces and hyphens ignored (`limespec.scope`). For each
+search the question makes, a second search restricted to the named products' scope
+adds its best 4 passages after the passages already gathered; a passage whose text is
+already among them replaces that copy in place (the named product's own copy is
+cited), and the total stays within 32. Questions naming no product are unchanged. The
+fallback to the scope of the best hits is not built unless the named scope qualifies
+and leaves missed parts it would reach. Scored by B's rule on the stage A index and on
+the stack with the embedder that qualified.
+
 **Model arms** (each a replay of all four sets with the baseline's search questions
 kept, so arms differ only in the model): `r06` Qwen3-Reranker-0.6B in place of the
 reranker; `e4` the index re-embedded with Qwen3-Embedding-4B (vectors cut to 1,024 and
@@ -289,6 +302,33 @@ v3 by 3. It changes the passages given on almost every question (the same set on
 four sets. GPU memory 912 MiB against 477 MiB. Its published lead (65.8 against 57.0)
 does not carry to this corpus.
 
+**B, model arm `e4`: qualifies.** Version 12's 1,900 passages embedded again with
+Qwen3-Embedding-4B (Q8_0, vectors cut to 1,024 and normalised: `evaluation
+embed-again`, 151 s on the GPU with the generator stopped) as index version 13; same
+search questions, same reranker:
+
+| Set | Parts reached, current | `e4` | Gained / lost | Questions with every part |
+|---|---|---|---|---|
+| held-out v4 | 109 of 130 | **112** | 3 / 0 | 78 → 79 |
+| frozen90 | 102 of 125 | **104** | 2 / 0 | 57 → 59 |
+| held-out v2 | 78 of 140 | **81** | 6 / 3 | 17 → 17 |
+| held-out v3 | 72 of 105 | **74** | 2 / 0 | 29 → 30 |
+
+v4 rises by 3 (the rule asks 2) and no set falls: it qualifies. On v4 it reaches both
+parts of v4q050 and v4q118's part. Memory: on the GPU the 4B takes 5.7 GB, which
+cannot sit beside the generator (3.5 GB) on this 8 GB card. Queries embedded on the
+CPU (`-ngl 0`) reach exactly the same parts; at `-ngl 0` llama.cpp still keeps 1.7 GB
+of compute buffers on the GPU, so the serving form measured next is the CPU alone
+(`--device none`), RAM 4.8 GB.
+
+**B, model arm `r4`: does not qualify; the reranker stays.** Qwen3-Reranker-4B
+(Q4_K_M) on index version 13, the arm that qualified (`e4-r06` was not run, as `r06`
+failed): v4 109, frozen90 101, v2 82, v3 74 parts reached, against 112, 104, 81, 74
+with the current reranker on the same index and 109, 102, 78, 72 at baseline. v4 does
+not rise, and it trails the current reranker on v4 and frozen90. It takes about 2.4 s
+per search against about 0.4 s, and 3.5 GB of GPU memory. The larger instruction-
+following rerankers do not help this corpus; bge-reranker-v2-m3 stays.
+
 **C, first tier: no candidate qualifies, so no gate is added.** Scored on `claims-dev`
 (seed 5; test half 370 correct, 30 not correct), and on seeds 1 to 20:
 
@@ -394,3 +434,26 @@ between items); v4 c47's three strategies are now one passage under their lead-i
 passages 922, none over the maximum. In version 12's three fenced passages the price
 sentences go and the rest stays, including the sentence v4 c33 asks for ("Always wear
 gloves and goggles when applying lime.").
+
+**A, built: fails on frozen90; the bold-line rule is the cause.** The stage A index
+(`limespec ingest --no-live --all-pages --pdf-form page` at `60850db`'s ingest code) is
+index version 14: 258 documents, 2,000 passages (version 12: 1,900), no passage fenced
+and none searchable stating a price (version 12 hid 3 whole passages). Replayed with
+the current models:
+
+| Set | Version 12 | Version 14 (A) | Gained / lost | Version 15 (A + 4B embedder, queries on the CPU) |
+|---|---|---|---|---|
+| held-out v4 | 109 of 130 | 110 | 2 / 1 | 113 |
+| frozen90 | 102 of 125 | **97** | 1 / 6 | 100 |
+| held-out v2 | 78 of 140 | 82 | 4 / 0 | 83 |
+| held-out v3 | 72 of 105 | 73 | 1 / 0 | 73 |
+
+The parts evidence could reach rose (v4 124 → 126 of 130 in the index), but frozen90
+lost two cases (one of them in all five wordings). Both losses come from the bold-line
+rule: a bold line ("Do:", "First Coat") now starts a new section, so a section that
+was one passage becomes several short ones. The renders checklist's "Do" list (holding
+"Protect from the weather") separated from its "Don't" list and fell out of the top 12;
+four pieces of "5. Plastering" filled a one-part question's top 8 and pushed out the
+Ultra page that holds the other half of its evidence. **Variant A′, written before it
+is built:** bold lines stay ordinary paragraphs (sections are packed as before); lists
+stay whole with their lead-in and the price fence stays by sentence. Same rule.

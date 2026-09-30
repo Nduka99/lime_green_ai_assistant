@@ -27,10 +27,6 @@ HEADINGS = ["h1", "h2", "h3", "h4"]
 # Some articles style a paragraph as a heading: <p class="h2-style">Application</p>
 HEADING_CLASSES = {"h2-style", "h3-style", "h4-style"}
 TEXT_BLOCKS = [*HEADINGS, "p", "li", "dt", "dd", "td", "th", "div"]
-# Articles set a sub-heading, an interview question or a list's lead-in as a wholly
-# bold paragraph. Such a line is at most this long and does not end like a sentence
-# of the running text (147 on 56 of the site's 160 pages, E5).
-BOLD_LINE_CHARS = 200
 # Site furniture repeated across pages, found by inspecting the fetched HTML.
 BOILERPLATE = ", ".join(
     [
@@ -184,22 +180,13 @@ def clean(text: str) -> str:
     return " ".join(text.split())
 
 
-def bold_line(block: Tag, text: str) -> bool:
-    """Whether a paragraph is a bold line: every word in <strong> or <b>, short, and
-    not ending in a full stop or an exclamation mark."""
-    if block.name != "p" or len(text) > BOLD_LINE_CHARS or text[-1] in ".!":
-        return False
-    words = [string for string in block.find_all(string=True) if string.strip()]
-    return all(string.find_parent(["strong", "b"]) for string in words)
-
-
 def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
     """Return the page title and its (heading, paragraphs) sections in reading order.
 
     Headings start sections; each FAQ question (<dt>) starts one, so every
-    question and its answer stay together. A bold line starts a new section under
-    the same heading, as its first paragraph, so a list or an answer stays with the
-    line that introduces it. A list is one paragraph, its items on separate lines
+    question and its answer stay together. A bold line is an ordinary paragraph:
+    made a section of its own, it cut sections into short passages that crowded out
+    other evidence (E5, A). A list is one paragraph, its items on separate lines
     after the lead-in that ends with a colon, so the splitter keeps it whole. Only
     leaf blocks are read, so no text is counted twice, and inline tags such as links
     join without a space.
@@ -239,9 +226,6 @@ def extract_sections(raw_html: str) -> tuple[str, list[tuple[str, list[str]]]]:
             if paragraphs:
                 sections.append((heading, paragraphs))
             heading, paragraphs = text, []
-        elif paragraphs and bold_line(block, text):
-            sections.append((heading, paragraphs))
-            paragraphs = [text]
         elif (
             paragraphs
             and this_list is not None
