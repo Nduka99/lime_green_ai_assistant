@@ -17,6 +17,8 @@ def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
     if "describes_exposure" in schema["properties"]:
         asked = user.removeprefix("Question: ")
         return {"describes_exposure": False, "search_questions": [asked]}
+    if "parts" in schema["properties"]:  # the relevance check: part 1 for each claim
+        return {"parts": [1] * schema["properties"]["parts"]["minItems"]}
     blocks = user.split('<passage id="')[1:]
     source = next(b.split('"')[0] for b in blocks if "About two days" in b)
     claim = {
@@ -69,7 +71,7 @@ def test_ask_answers_from_the_live_index_with_both_model_requests(
 
     result = assistant.ask("How long does Mortex take to set?")
 
-    assert len(requests) == 2  # the emergency request, then the answer request
+    assert len(requests) == 3  # understanding, answering, the relevance check
     assert reranked == ["How long does Mortex take to set?"]
     assert result.status == "answered"
     assert result.claims[0].evidence[0].url == "https://example.test/support/faq"

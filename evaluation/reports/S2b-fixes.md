@@ -181,6 +181,13 @@ claim was made; v2q052 was kept as one question though it asks about four produc
 are judged in the gate's grading. The answers cost 3–5 s more at the median (more searches,
 up to 12 passages).
 
+**C3 as built, clarified before any C3 run:** a claim the check removes only for stating no
+part does not by itself add the caution ("may not cover every part"): the caution shows
+when a part has no remaining claim or a claim failed verification. Everything else follows
+the design: the check sees the numbered parts and each verified claim with its quotes, no
+passages, returns one part number (0 for none) per claim, and its numbers replace the
+answer request's for completeness; the prompt's definition is general.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
