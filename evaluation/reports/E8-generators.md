@@ -236,6 +236,33 @@ Green, it rejects 29%. Giving every source its publisher (a general change) woul
 therefore bring correct rejections from 34% to about 29% at best, far from the 10% the
 rule allows. It was not run, and the arm stays failed on `claims-dev`.
 
+**Specialist arm on `nearmiss-dev`, reported beside the rule** (21:49–22:23, 1,043
+questions, each with its whole passage).
+
+| | `claims-dev` (cited quotes, real questions) | `nearmiss-dev` (whole passage) |
+|---|---|---|
+| AUC | 0.666 | 0.837 |
+| Correct kept at its own verdict (0.5) | 493/755 (65%) | 539/543 (99.3%) |
+| Not correct caught at its own verdict | 68/101 (67%) | 269/500 (54%) |
+| Rule's threshold, seed 5 | fails | withholds 33/270 (12.2%), catches 182/254: fails |
+| Seeds 1–20 qualifying | 0 | 10 |
+
+AUC 0.837 is the highest of any detector measured in E5, E7 or E8. At its own verdict it
+keeps nearly every answerable question and catches half the near-misses. The rule's
+threshold misses because the scores are nearly binary: a threshold placed between tied
+scores withholds more than it allows. As a gate behind each generator on the G1 sample
+(verdict 0.5): Qwen3.6's substitutions fall from 73 to 58 of 200 (0.290 [0.232, 0.356])
+and Gemma's from 47 to 41 (0.205 [0.155, 0.266]); each loses one answerable answer. The
+reduction is smaller than its catch rate, because the near-misses a generator falls for
+are mostly the ones that fool the gate too.
+
+The two benchmarks differ in what the gate reads: cited quotes against whole passages,
+and customers' questions (which often name Lime Green) against questions written from
+the passage. A production gate would read the whole passages the generator is given.
+Whether it helps there is not measured: that needs it as a stage of the answer path,
+graded on real questions (as G3 grades answers). That is a separate experiment for the
+user to decide on after E8.
+
 **Specialist arm, the reading of OCC-RAG's status.** A probe (two invented questions on
 the CPU) showed that llama-server writes special tokens as empty text, so a stop at
 `<|status_end|>` never fires and the status cannot be found by its text. It is found by

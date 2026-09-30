@@ -430,5 +430,23 @@
   "sha256": "7f3e60bf51287948716575d7b05b98e39a1f7714a7fab06092104a78948c8ff3",
   "licence": "MIT",
   "use": "E8 specialist arm: per-part answerability gate"
+ },
+ {
+  "file": "Qwen3.5-9B-UD-Q5_K_XL.gguf",
+  "source": "unsloth/Qwen3.5-9B-GGUF",
+  "revision": "3885219b6810b007914f3a7950a8d1b469d598a5",
+  "bytes": 6743680224,
+  "sha256": "96cf42ddb97f9572410a72b9ed6f2299b1e887ee08da4c2a6c01e897cfa9f673",
+  "licence": "Apache-2.0",
+  "use": "E8 dense candidate, not run after the list was narrowed to one model per family"
+ },
+ {
+  "file": "GLM-4.7-Flash-UD-Q4_K_XL.gguf",
+  "source": "unsloth/GLM-4.7-Flash-GGUF",
+  "revision": "0d32489ecb9db6d2a4fc93bd27ef01519f95474d",
+  "bytes": 17520169312,
+  "sha256": "b0d4fbc1211f891b4cfbf2a497160bfe06a49412420068904d426b7a13f4ba7f",
+  "licence": "MIT",
+  "use": "E8 generator candidate (MoE)"
  }
 ]
