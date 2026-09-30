@@ -238,6 +238,12 @@ def parser() -> argparse.ArgumentParser:
     reached = commands.add_parser(
         "reach", help="did the passages each answer's model was given hold the evidence"
     )
+    dropped = commands.add_parser(
+        "removed", help="every claim a run's checks removed, for reading (C3)"
+    )
+    dropped.add_argument("run", type=Path, help="an answers file from `ask` (v1 API)")
+    dropped.add_argument("--out", type=Path, required=True)
+    dropped.add_argument("--reason", default="", help="only claims removed for this")
     reached.add_argument("name")
     reached.add_argument("run", type=Path, help="an answers file from `ask` (v1 API)")
     reached.add_argument("--out", type=Path, help="a JSON file with every part's row")
@@ -751,6 +757,25 @@ def run_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_removed(args: argparse.Namespace) -> int:
+    rows = []
+    with assistant.connect() as conn:
+        for record in grades.read_json(args.run):
+            if "answer_id" not in record:
+                continue
+            kept = [claim["text"] for claim in record["view"]["claims"]]
+            for item in store.removed_claims(conn, record["answer_id"]):
+                if args.reason and item["reason"] != args.reason:
+                    continue
+                rows.append({"id": record["id"], "question": record["question"],
+                             "removed": item["text"], "reason": item["reason"],
+                             "kept": kept})  # fmt: skip
+    write_json(args.out, rows)
+    reasons = Counter(row["reason"] for row in rows)
+    print(f"{len(rows)} removed claims in {args.out}: {dict(reasons)}")
+    return 0
+
+
 def run_reach(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -1228,6 +1253,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_generator_compare(args)
         if args.command == "generator-diagnose":
             return run_generator_diagnose(args)
+        if args.command == "removed":
+            return run_removed(args)
         if args.command == "exposure":
             return run_exposure(args)
         if args.command == "generator-outcomes":

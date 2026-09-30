@@ -290,6 +290,17 @@ def given_passages(conn: Connection, answer_id: int) -> tuple[int, list[Passage]
     return int(row[0]), load_passages(conn, row[1])
 
 
+def removed_claims(conn: Connection, answer_id: int) -> list[dict[str, str]]:
+    """The claims an answer's checks removed, each with its reason (read from the
+    answer's audit record)."""
+    row = conn.execute(
+        "SELECT removed FROM answers WHERE id = %s", (answer_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no answer record {answer_id}")
+    return list(row[0])
+
+
 def document_passages(conn: Connection, version_id: int, url: str) -> list[Passage]:
     """Every passage of one document in an index version, in stored order."""
     rows = conn.execute(

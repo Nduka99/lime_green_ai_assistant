@@ -250,6 +250,20 @@ def test_an_answer_s_given_passages_are_read_back_in_order(
         store.given_passages(pg, answer_id + 1000)
 
 
+def test_an_answer_s_removed_claims_are_read_back_with_their_reasons(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    removed = [{"text": "Duro is cheap.", "reason": "does not answer the question"}]
+    answer_id = store.record_answer(
+        pg, "q", "answered", {}, removed, [], version, "e", "p", 1.0
+    )
+
+    assert store.removed_claims(pg, answer_id) == removed
+    with pytest.raises(ValueError, match="no answer record"):
+        store.removed_claims(pg, answer_id + 1000)
+
+
 def test_an_unknown_status_is_refused_by_the_database(pg: store.Connection) -> None:
     with pytest.raises(psycopg.errors.CheckViolation):
         store.record_answer(

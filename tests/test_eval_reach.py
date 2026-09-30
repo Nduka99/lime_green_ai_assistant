@@ -145,3 +145,40 @@ def test_a_run_spanning_index_versions_is_refused(
 
     assert cli.main([*base, "reach", "keyed", str(run)]) == 1
     assert "one index version, not [1, 2]" in capsys.readouterr().err
+
+
+def test_removed_claims_are_listed_by_reason_beside_what_was_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = tmp_path / "answers-c3.json"
+    shown = {"claims": [{"text": "Duro is free of cement."}]}
+    records = [
+        {"id": "q1", "question": "Duro?", "answer_id": 7, "view": shown},
+        {"id": "q2", "http": None, "error": "refused"},  # no audit record
+    ]
+    run.write_text(json.dumps(records), encoding="utf-8")
+    removed = [
+        {"text": "Duro is grey.", "reason": "does not answer the question"},
+        {"text": "Duro costs £5.", "reason": "states a price"},
+    ]
+
+    @contextmanager
+    def connect() -> Iterator[None]:
+        yield None
+
+    monkeypatch.setattr(assistant, "connect", connect)
+    monkeypatch.setattr(store, "removed_claims", lambda conn, i: removed)
+    out = tmp_path / "removed.json"
+
+    arguments = ["removed", str(run), "--out", str(out),
+                 "--reason", "does not answer the question"]  # fmt: skip
+    assert cli.main(arguments) == 0
+
+    assert "1 removed claims" in capsys.readouterr().out
+    assert json.loads(out.read_text(encoding="utf-8")) == [
+        {"id": "q1", "question": "Duro?", "removed": "Duro is grey.",
+         "reason": "does not answer the question",
+         "kept": ["Duro is free of cement."]}
+    ]  # fmt: skip
+    assert cli.main(["removed", str(run), "--out", str(out)]) == 0
+    assert len(json.loads(out.read_text(encoding="utf-8"))) == 2
