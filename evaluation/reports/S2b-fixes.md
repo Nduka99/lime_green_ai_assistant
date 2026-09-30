@@ -290,6 +290,16 @@ version 12, and the question's parts searched). Gate item 3 is expected to fail 
 v2 (C1 + C2 refuse 6 of 10 there, the live index 10): recorded here before the run so the
 outcome is read as foreseen, not explained afterwards.
 
+**Held-out v4 read-through** (30 Sept, after the freeze, before the gate run): all 64 cases
+read. Every answerable case's expected answer follows from its quoted evidence, and its
+wordings ask what its parts answer; the emergencies, prices and out-of-domain questions
+are classed as the brief defines them. The eight absent cases were checked against version
+12's passages for their terms: none holds the asked value (the nearest text is a
+distractor: woodfibre's specific heat 2,100 J/kgK for Ultra's, c03; "free from
+formaldehyde" for a removal rate, c06; mixing water per bag for factory consumption, c60;
+an unnamed "local food producer", c32; nothing for c07, c22, c43, c49). **No case is
+excluded.**
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
