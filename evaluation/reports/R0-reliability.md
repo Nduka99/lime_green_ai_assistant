@@ -65,7 +65,8 @@ certification needs held-out v5 (≥ 160 answerable cases), written and sealed l
   graded, so each arm has a verdict for every question.
 - Claim audit: every shown claim of the live and candidate answers to held-out v4.
 - Second graders: Gemma 4 26B-A4B (local, open weights; the generator stopped while it
-  runs) and Codex (a fresh thread, a different model family), each on the same sample:
+  runs) and an outside model of a different family (a fresh session, blind to the
+  system), each on the same sample:
   a stratified 30% of v4's graded items by case type and arm, plus every item the primary
   grader graded wrong or missing. Both see the grading guide and the items only, with no
   arm names. κ is computed per grader against the primary; below 0.8, the disagreements

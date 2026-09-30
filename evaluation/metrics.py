@@ -63,6 +63,36 @@ def median(values: Sequence[float]) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
+def wilson(found: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """The Wilson score interval (95% by default) for `found` out of `total`; with no
+    data, the whole range. Sound at small counts and at 0, unlike the normal
+    approximation (Brown, Cai and DasGupta 2001)."""
+    if total == 0:
+        return (0.0, 1.0)
+    p = found / total
+    denominator = 1 + z * z / total
+    centre = (p + z * z / (2 * total)) / denominator
+    half = (
+        z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denominator
+    )
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def cohen_kappa(first: Sequence[str], second: Sequence[str]) -> float:
+    """Agreement between two graders' labels on the same items beyond what their label
+    frequencies give by chance (Cohen 1960); 1.0 when both give one label throughout."""
+    total = len(first)
+    observed = sum(a == b for a, b in zip(first, second, strict=True)) / total
+    labels = set(first) | set(second)
+    expected = sum(
+        (list(first).count(label) / total) * (list(second).count(label) / total)
+        for label in labels
+    )
+    if expected == 1.0:
+        return 1.0
+    return (observed - expected) / (1 - expected)
+
+
 def auc(pairs: Sequence[tuple[float, bool]]) -> float:
     """ROC AUC of (score, positive) pairs: the chance a positive scores above a
     negative, ties counting half (Mann-Whitney)."""

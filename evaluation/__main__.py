@@ -56,6 +56,7 @@ from evaluation import (
     catalogue,
     conversations,
     generator,
+    graders,
     grades,
     guardrails,
     keys,
@@ -65,6 +66,7 @@ from evaluation import (
     parsing,
     reach,
     relevance,
+    reliability,
     retrieval,
     sets,
     support,
@@ -281,6 +283,11 @@ def parser() -> argparse.ArgumentParser:
         help="answers files, baselines first, candidate last",
     )
     hidden.add_argument("--seed", type=int, required=True)
+    hidden.add_argument(
+        "--all",
+        action="store_true",
+        help="every question, not only differing ones (R0)",
+    )
     hidden.add_argument("--out", type=Path, required=True)
     shown = commands.add_parser("unblind", help="compare runs from blind verdicts")
     shown.add_argument("name")
@@ -338,6 +345,42 @@ def parser() -> argparse.ArgumentParser:
     scored_relevance = commands.add_parser("relevance-score", help="against labels")
     scored_relevance.add_argument("labels", type=Path)
     scored_relevance.add_argument("results", type=Path)
+    reliable = commands.add_parser("reliability", help="risk, coverage, refusals (R0)")
+    reliable.add_argument("name")
+    reliable.add_argument(
+        "runs", type=Path, nargs="+", help="answers files, one per arm"
+    )
+    reliable.add_argument(
+        "--dir", type=Path, required=True, help="a graded blind sitting"
+    )
+    reliable.add_argument(
+        "--reach", type=Path, nargs="*", default=[], help="reach-<run>.json rows files"
+    )
+    reliable.add_argument(
+        "--baseline", default="", help="the arm coverage is compared to"
+    )
+    reliable.add_argument("--out", type=Path)
+    bundled = commands.add_parser(
+        "grading-bundle", help="blind items for second graders"
+    )
+    bundled.add_argument("name")
+    bundled.add_argument(
+        "--dir", type=Path, required=True, help="a graded blind sitting"
+    )
+    bundled.add_argument("--out", type=Path, required=True, help="a folder to write")
+    bundled.add_argument("--share", type=float, default=0.3)
+    bundled.add_argument("--seed", type=int, required=True)
+    modelled = commands.add_parser(
+        "grade-with-model", help="a local model grades items"
+    )
+    modelled.add_argument("items", type=Path)
+    modelled.add_argument(
+        "url", help="the grading model's server, e.g. http://127.0.0.1:8083"
+    )
+    modelled.add_argument("--out", type=Path, required=True)
+    agreed = commands.add_parser("agreement", help="Cohen's kappa between two graders")
+    agreed.add_argument("first", type=Path)
+    agreed.add_argument("second", type=Path)
     exposed = commands.add_parser(
         "exposure", help="the first request on an exposure set (C2's safety bar)"
     )
@@ -875,7 +918,9 @@ def run_blind(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")["questions"]
     runs = load_runs(args.runs)
-    ids = pairs.differing(runs, [row["id"] for row in questions])
+    ids = [row["id"] for row in questions]
+    if not args.all:
+        ids = pairs.differing(runs, ids)
     blinded, order = pairs.blind(ids, runs, args.seed)
     ask.write_records(args.out / "pairs.json", blinded)
     (args.out / "order.json").write_text(json.dumps(order, indent=1), encoding="utf-8")
@@ -1157,6 +1202,72 @@ def run_relevance_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_reliability(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    runs = load_runs(args.runs)
+    graded = pairs.unblind(
+        grades.read_json(args.dir / "verdicts.json"),
+        grades.read_json(args.dir / "order.json"),
+    )
+    rows = reliability.case_rows(key, questions, graded, runs)
+    reached = {
+        path.stem.removeprefix("reach-"): reliability.reached_parts(
+            grades.read_json(path)["rows"]
+        )
+        for path in args.reach
+    }
+    result: dict[str, Any] = {
+        "arms": reliability.by_arm(rows),
+        "attribution": reliability.attribution(rows, reached),
+    }
+    if args.baseline:
+        result["coverage_difference"] = {
+            arm: reliability.coverage_difference(rows, arm, args.baseline)
+            for arm in runs
+            if arm != args.baseline
+        }
+    if args.out:
+        write_json(args.out, result)
+    print(json.dumps(result, indent=1))
+    return 0
+
+
+def run_grading_bundle(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    found = graders.items(key, questions, grades.read_json(args.dir / "pairs.json"))
+    primary = graders.flat(grades.read_json(args.dir / "verdicts.json"))
+    chosen = graders.sample(found, primary, args.share, args.seed)
+    args.out.mkdir(parents=True, exist_ok=True)
+    shown = [{k: v for k, v in item.items() if k != "type"} for item in chosen]
+    write_json(args.out / "items.json", shown)
+    shutil.copyfile(graders.GUIDE, args.out / "grading-guide.md")
+    print(f"{len(chosen)} of {len(found)} items in {args.out}")
+    return 0
+
+
+def run_grade_with_model(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    verdicts = graders.grade(
+        found, graders.GUIDE.read_text(encoding="utf-8"), graders.post_to(args.url)
+    )
+    write_json(args.out, verdicts)
+    print(f"{len(verdicts)} items graded in {args.out}")
+    return 0
+
+
+def run_agreement(args: argparse.Namespace) -> int:
+    result = graders.agreement(
+        graders.flat(grades.read_json(args.first)),
+        graders.flat(grades.read_json(args.second)),
+    )
+    print(json.dumps(result, indent=1))
+    return 0
+
+
 def run_exposure(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")
@@ -1298,6 +1409,14 @@ def main(argv: list[str] | None = None) -> int:
             return run_relevance_check(args)
         if args.command == "relevance-score":
             return run_relevance_score(args)
+        if args.command == "reliability":
+            return run_reliability(args)
+        if args.command == "grading-bundle":
+            return run_grading_bundle(args)
+        if args.command == "grade-with-model":
+            return run_grade_with_model(args)
+        if args.command == "agreement":
+            return run_agreement(args)
         if args.command == "exposure":
             return run_exposure(args)
         if args.command == "generator-outcomes":
