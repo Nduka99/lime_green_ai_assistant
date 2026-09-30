@@ -278,6 +278,12 @@ def parser() -> argparse.ArgumentParser:
         help="a set, its graded sitting folder and a replay file (for the parts)",
     )
     claimed.add_argument("--out", type=Path, required=True)
+    reranked = commands.add_parser(
+        "claim-rerank", help="each claim scored against its parts by a reranker (E5)"
+    )
+    reranked.add_argument("items", type=Path)
+    reranked.add_argument("--url", default="", help="another reranking server")
+    reranked.add_argument("--out", type=Path, required=True)
     gated = commands.add_parser(
         "claim-score", help="a detector's scores against the labelled claims (E5)"
     )
@@ -986,6 +992,14 @@ def run_claim_items(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_claim_rerank(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    scores = claims.by_reranker(found, lambda q, docs: llm.rerank(q, docs, args.url))
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
 def run_claim_score(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     scores = grades.read_json(args.scores)
@@ -1592,6 +1606,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_drafts(args)
         if args.command == "claim-items":
             return run_claim_items(args)
+        if args.command == "claim-rerank":
+            return run_claim_rerank(args)
         if args.command == "claim-score":
             return run_claim_score(args)
         if args.command == "verify-score":

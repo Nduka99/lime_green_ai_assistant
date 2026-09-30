@@ -15,12 +15,13 @@ claims are related.
 
 import math
 import random
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from evaluation import grades, metrics, pairs
 
 Item = dict[str, Any]
+Rerank = Callable[[str, list[str]], list[float]]  # a query and documents to scores
 CORRECT = "correct"
 ALPHA = 0.1  # correct claims the gate may withhold: at most 1 in 10
 CAUGHT = 0.5  # claims that are not correct it must withhold: at least half
@@ -62,6 +63,17 @@ def items(
                     },
                 )
     return list(found.values())
+
+
+def by_reranker(found: Sequence[Item], rerank: Rerank) -> dict[str, float]:
+    """Candidate (a): a reranker reads each claim as the document for each part of
+    its question; the claim's score is that of the part it answers best."""
+    scores = {}
+    for item in found:
+        scores[item["id"]] = max(
+            rerank(part, [item["claim"]])[0] for part in item["parts"]
+        )
+    return scores
 
 
 def halves(found: Sequence[Item], seed: int) -> tuple[list[Item], list[Item]]:

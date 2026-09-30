@@ -176,6 +176,21 @@ only if, at its threshold, it withholds at most 1 in 10 correct claims and at le
 half of the not-correct ones, on the held-out half. Among qualifiers the one
 withholding the most not-correct claims is chosen. If none qualifies, no gate is added.
 
+*Added before any candidate is scored (30 September):* `claims-dev` is registered with
+**856 distinct claims** (a claim shown in several arms' answers to one question counts
+once): 755 correct, 82 off the question, 8 incorrect, 11 forbidden, from 80 cases. The
+split is `evaluation claim-score --seed 5`; because one split of 80 cases is a small
+sample, every candidate is also scored on seeds 1 to 20, and one that qualifies on
+seed 5 but on fewer than half of those is reported as unstable and not adopted.
+Candidate (a) uses the server's reranking route as it stands: the part is the query,
+the claim the document, and a claim's score is that of its best part. The route fixes
+the reranker's instruction in the model file (checked in both Qwen3 reranker files:
+"Given a web search query, retrieve relevant passages that answer the query"), so a
+custom instruction is not tested here. The current reranker is scored the same way as
+the reference. `parts-dev` is built when a candidate that reads passages before
+generation is scored (the second tier); the first tier's three candidates all score
+claims.
+
 ### E. The notice
 
 The notice names the parts with no shown claim. Code only; no prompt rule is relied on
@@ -208,6 +223,23 @@ unchanged retrieval it reaches 109/130, 102/125, 78/140 and 72/105 parts (0.838 
 / 0.557 / 0.686), the S2b gate run's figures exactly, so it measures what the
 assistant does. Its files are the baseline arm, and every later arm keeps its search
 questions.
+
+**B, model arm `r06`: does not qualify; the reranker stays.** Qwen3-Reranker-0.6B
+(Q8, ggml-org conversion) in place of bge-reranker-v2-m3, same index and search
+questions:
+
+| Set | Parts reached, current | `r06` | Gained / lost | Questions with every part |
+|---|---|---|---|---|
+| held-out v4 | 109 of 130 | 107 | 0 / 2 | 78 → 76 |
+| frozen90 | 102 of 125 | 103 | 6 / 5 | 57 → 55 |
+| held-out v2 | 78 of 140 | 82 | 8 / 4 | 17 → 14 |
+| held-out v3 | 72 of 105 | 69 | 2 / 5 | 29 → 24 |
+
+The rule asked for at least +2 on v4 and no set down by more than 1: v4 falls by 2 and
+v3 by 3. It changes the passages given on almost every question (the same set on 9 of
+264) without reaching more evidence, and questions with every part reached fall on all
+four sets. GPU memory 912 MiB against 477 MiB. Its published lead (65.8 against 57.0)
+does not carry to this corpus.
 
 **A, code (before the index is built).** As built, with two changes from the design,
 both recorded here before any index is measured:

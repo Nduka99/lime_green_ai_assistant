@@ -1,5 +1,11 @@
 {
  "sets": {
+  "claims-dev": {
+   "description": "E5 stage C: the 856 distinct claims shown in the S2b gate run's answers on heldout-v4, frozen90, heldout-v2 and heldout-v3, each with its question, search parts, quotes and claim-audit label (755 correct, 82 off the question, 8 incorrect, 11 forbidden); development material, not held out",
+   "files": {
+    "items.json": "03b28cfb59eccf868610c6447f28ba05ed999f97313219230abd1ceda78fa570"
+   }
+  },
   "conv-v1": {
    "description": "Conversation key: 20 conversations, 86 turns (62 of 66 later turns lean on earlier turns), one subject each, ten multi-turn situations; written by an independent model blind to the assistant from brief.md and the source text in plan.json, corrected once by feedback-1.md; every quote checked verbatim by check-conversations",
    "files": {

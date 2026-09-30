@@ -9,6 +9,7 @@ import pytest
 
 from evaluation import __main__ as cli
 from evaluation import claims, sets
+from limespec import llm
 
 KEY: dict[str, Any] = {"cases": [
     {"id": "k1", "expected_status": "answered",
@@ -64,6 +65,16 @@ def test_each_distinct_claim_is_one_item_with_its_parts_quotes_and_label() -> No
     assert found[2]["parts"] == ["Is Solo for interiors?"]  # no replay: the question
 
 
+def test_a_reranker_scores_each_claim_by_the_part_it_answers_best() -> None:
+    found = [{"id": "a", "claim": "No cement.", "parts": ["what is in Duro", "price"]}]
+
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        assert documents == ["No cement."]
+        return [2.5 if query == "what is in Duro" else -4.0]
+
+    assert claims.by_reranker(found, rerank) == {"a": 2.5}
+
+
 def test_the_threshold_withholds_at_most_the_allowed_share_of_correct_claims() -> None:
     scores = [float(n) for n in range(1, 30)]  # 29 correct claims
 
@@ -98,7 +109,7 @@ def test_a_detector_is_scored_on_the_half_it_was_not_calibrated_on() -> None:
 
 
 def test_the_command_line_builds_the_items_and_scores_a_detector(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     folder = tmp_path / "demo"
     sitting = folder / "sitting"
@@ -116,6 +127,11 @@ def test_the_command_line_builds_the_items_and_scores_a_detector(
     assert cli.main([*base, "claim-items", "--set", "demo", str(sitting), str(replayed),
                      "--out", str(out)]) == 0  # fmt: skip
     assert "3 claims" in capsys.readouterr().out
+    monkeypatch.setattr(llm, "rerank", lambda query, documents, url: [1.0])
+    reranked = tmp_path / "reranked.json"
+    assert cli.main(["claim-rerank", str(out), "--out", str(reranked)]) == 0
+    assert json.loads(reranked.read_text())["demo/q3/A1"] == 1.0
+    assert "3 claims scored" in capsys.readouterr().out
     scores = tmp_path / "scores.json"
     scores.write_text(json.dumps({"demo/q1/A1": 0.9, "demo/q1/A2": 0.1}))
     assert cli.main(["claim-score", str(out), str(scores), "--seed", "1"]) == 1
