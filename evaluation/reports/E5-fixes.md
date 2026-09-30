@@ -240,6 +240,15 @@ waits for a decision on running it under the transformers 4.57 it was written fo
 The notice names the parts with no shown claim. Code only; no prompt rule is relied on
 for abstention.
 
+*Built (`0b4c6bb`), and one limit found in a smoke run (30 September):* when a part has
+no verified claim the notice lists it ("Nothing verified was found for these parts of
+the question: …"); when every part is answered but a claim was removed the general
+caution stays. The notice can only name parts the first request wrote: asked "What
+does Warmshell Meshcoat cost and how long does it take to cure?", the first request
+kept one part, the answer gave the curing times, and the cost (withheld by the price
+fence) went unmentioned with no notice. Recorded for the gate's attribution; changing
+how the first request splits questions is a separate change with its own test.
+
 ## The test
 
 1. Freeze and tag. Breakage checks only: unit tests, `exposure-v1`, guardrails, a
