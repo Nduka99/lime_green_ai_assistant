@@ -103,7 +103,7 @@ def test_formats_get_a_floor_then_a_share_by_size() -> None:
 def test_types_needing_a_kind_of_source_get_it_first() -> None:
     slots = {"pdf:safety": 3, "page:product": 6, "page:colour": 52}
 
-    pairs = cases.assign(slots, random.Random(1))
+    pairs = cases.assign(slots, random.Random(1), cases.TYPES)
 
     assert Counter(kind for kind, _ in pairs) == Counter(
         {k: n for k, n in cases.TYPES.items() if k != "out_of_domain"}
@@ -111,7 +111,7 @@ def test_types_needing_a_kind_of_source_get_it_first() -> None:
     for kind, fmt in pairs:
         assert fmt in cases.FORMATS.get(kind, {fmt})
     with pytest.raises(ValueError, match="no format left for a"):
-        cases.assign({"page:colour": 61}, random.Random(1))
+        cases.assign({"page:colour": 61}, random.Random(1), cases.TYPES)
 
 
 def test_the_plan_spreads_cases_and_never_reuses_a_source() -> None:
@@ -146,13 +146,14 @@ def test_a_second_source_comes_from_the_subject_or_the_topic() -> None:
     rng = random.Random(1)
 
     linked = cases.second_source(
-        "multi_part", page, pool_, groups, set(), Counter(), rng
+        "multi_part", page, pool_, groups, Counter(), Counter(), rng
     )
-    topic = cases.second_source("multi_part", other, pool_, [[other]], {"file:c"},
-                                Counter(), rng)  # fmt: skip
-    far = cases.second_source("comparison", sheet, pool_, groups, {"file:b"},
+    topic = cases.second_source("multi_part", other, pool_, [[other]],
+                                Counter(["file:c"]), Counter(), rng)  # fmt: skip
+    far = cases.second_source("comparison", sheet, pool_, groups, Counter(["file:b"]),
                               Counter(), rng)  # fmt: skip
-    none = cases.second_source("comparison", near, pool_, groups, {"page:a", "page:d"},
+    none = cases.second_source("comparison", near, pool_, groups,
+                               Counter(["page:a", "page:d"]),
                                Counter(), rng)  # fmt: skip
 
     assert linked is sheet
@@ -455,7 +456,7 @@ def test_a_comparison_never_pairs_two_sources_about_one_product() -> None:
     groups = [[page, declaration, report], [other]]
 
     found = cases.second_source(
-        "comparison", declaration, pool_, groups, {"file:dop"}, Counter(),
+        "comparison", declaration, pool_, groups, Counter(["file:dop"]), Counter(),
         random.Random(1),
     )  # fmt: skip
 
@@ -548,3 +549,138 @@ def test_the_command_line_replaces_flagged_cases_once(
     assert "exists already" in capsys.readouterr().err
     assert cli.main([*command[:2], "v4c99", *command[3:]]) == 1
     assert "not planned: v4c99" in capsys.readouterr().err
+
+
+# A larger key over the same corpus (held-out v5): sources serve again, in rounds.
+
+V5: dict[str, Any] = {
+    "prefix": "v5c",
+    "counts": {"simple": 60, "multi_part": 38, "comparison": 4, "out_of_domain": 2},
+    "reuse": True,
+    "styles": [["original", "rushed"], ["original"], ["rushed"]],
+}
+
+
+def test_a_reusing_plan_serves_every_source_once_before_any_twice() -> None:
+    entries = pool()[:60]  # 60 sources for 102 cases with a source
+    served = frozenset(e["id"] for e in entries[:10])
+
+    planned = cases.plan(entries, texts_of(entries), 4, V5, served)
+
+    assert [c["id"] for c in planned[:2]] == ["v5c001", "v5c002"]  # 104 cases
+    assert [c["styles"] for c in planned[:3]] == [["original"], ["rushed"],
+                                                  ["original", "rushed"]]  # fmt: skip
+    uses = Counter(s for c in planned for s in c["sources"])
+    assert len(uses) == 60 and max(uses.values()) - min(uses.values()) <= 2
+    fresh = [n for source, n in uses.items() if source not in served]
+    waited = [n for source, n in uses.items() if source in served]
+    assert sum(waited) / len(waited) < sum(fresh) / len(fresh)  # they wait their turn
+    for case in planned:
+        assert len(set(case["sources"])) == len(case["sources"])
+
+
+def test_a_flagged_case_never_gets_its_own_sources_back() -> None:
+    entries = [entry(f"page:{n}", "page:product", "t") for n in range(2)]
+    planned = [{"id": "v5c001", "type": "simple", "sources": ["page:0"]},
+               {"id": "v5c002", "type": "simple", "sources": ["page:1"]}]  # fmt: skip
+
+    replaced = cases.replace(planned, {"v5c001"}, entries, texts_of(entries), 1, True)
+
+    assert replaced[0]["sources"] == ["page:1"]  # used already, but not its own
+
+
+def test_a_part_names_the_wordings_and_the_facts_already_taken(tmp_path: Path) -> None:
+    page = entry("page:p", "page:product", "t")
+    planned = [{"id": "v5c001", "type": "simple", "sources": ["page:p"],
+                "styles": ["rushed"]}]  # fmt: skip
+    out = tmp_path / "bundle"
+
+    cases.bundle(planned, [page], {"page:p": PAGE_TEXT}, {}, out, 16, 8000, 2,
+                 True, {"page:p": ["Duro is free of cement"]})  # fmt: skip
+
+    part = (out / "part-1.md").read_text(encoding="utf-8")
+    assert part.startswith("# Case v5c001: simple\n\nWordings: rushed\n")
+    assert "Already asked about (ask about something else):\n- Duro is free" in part
+    seen = json.loads((out / "plan.json").read_text(encoding="utf-8"))
+    assert seen["reuse"] is True and seen["taken"] == {
+        "page:p": ["Duro is free of cement"]
+    }
+    seen["plan"].append({"id": "v5c002", "type": "simple", "sources": ["page:p"]})
+    both = [page, entry("page:q", "page:product", "t")]
+    again, text = cases.rebundle(seen, {"v5c001"}, both, texts_of(both), 8000, 3)
+    assert again["taken"] == seen["taken"] and again["plan"][0]["sources"] == ["page:q"]
+    assert "Already asked about" not in text  # nothing was taken from the new source
+
+
+def test_a_reusing_key_asks_no_fact_twice() -> None:
+    seen = {**SEEN, "reuse": True,
+            "taken": {"file:s": ["wear gloves and goggles when mixing the product"]},
+            "plan": [SEEN["plan"][0], {**SEEN["plan"][1], "type": "simple",
+                                       "styles": ["original"]}]}  # fmt: skip
+    key = sound_key()
+    second = {
+        "id": "v4c02",
+        "type": "simple",
+        "expected_status": "answered",
+        "wordings": [{"style": "original", "text": "What is Duro free of?"}],
+        "expected_answer": "Cement.",
+        "must_not": [],
+        "parts": [
+            {
+                "id": "p1",
+                "asks": "Free of?",
+                "expected_answer": "Cement.",
+                "evidence": [
+                    {
+                        "source": "v4c02-s1",
+                        "quote": "Duro is free of cement, gypsum and",
+                    }
+                ],
+            }
+        ],
+    }
+    key["cases"] = [key["cases"][0], second, {"id": "v4c09", "parts": [None, {}]}]
+
+    found = cases.key_problems(key, seen, PDFS, CORPUS)
+
+    assert found == [
+        "v4c09: not planned",
+        "v4c01: a quote is already used by an earlier key",
+        "v4c02: a quote is already used by v4c01",
+    ]
+    second["wordings"] = wordings("What is Duro free of?")
+    assert "v4c02: wordings are ['original', 'rushed'], not ['original']" in (
+        cases.key_problems(key, seen, PDFS, CORPUS)
+    )
+
+
+def test_the_command_line_plans_and_seals_a_later_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    entries = pool()[:60]
+    monkeypatch.setattr(cases, "source_text", lambda e: "Words to quote. " * 20)
+    listed = tmp_path / "catalogue.json"
+    listed.write_text(json.dumps(entries))
+    for name in ("brief.md", "agents.md", "design.json"):
+        (tmp_path / name).write_text(json.dumps(V5) if name.endswith("json") else name)
+    earlier = tmp_path / "heldout-v4"
+    earlier.mkdir()
+    shown = {"v4c01-s1": {"entry": entries[0]["id"], "text": "t"}}
+    (earlier / "plan.json").write_text(json.dumps({"plan": [], "sources": shown}))
+    evidence = [{"url": entries[0]["url"], "quote": "Words to quote."}]
+    (earlier / "key.json").write_text(json.dumps(
+        {"cases": [{"parts": [{"evidence": evidence}]}, {"parts": []}]}))  # fmt: skip
+    out = tmp_path / "bundle"
+
+    brief, agents = tmp_path / "brief.md", tmp_path / "agents.md"
+    code = cli.main(["plan-cases", "--catalogue", str(listed), "--brief", str(brief),
+                     "--agents", str(agents), "--out", str(out), "--seed", "4",
+                     "--design", str(tmp_path / "design.json"),
+                     "--earlier", str(earlier)])  # fmt: skip
+
+    assert code == 0
+    assert "104 cases, 144 sources, 7 parts" in capsys.readouterr().out
+    seen = json.loads((out / "plan.json").read_text(encoding="utf-8"))
+    assert seen["taken"] == {entries[0]["id"]: ["Words to quote."]}
+    key = cases.sealed({"cases": []}, seen, {e["id"]: e for e in entries})
+    assert key["version"] == 5

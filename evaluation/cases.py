@@ -59,9 +59,18 @@ FORMATS = {
 UNINDEXED = {"image", "external:guidance"}  # not in the assistant's index yet
 MIN_PER_FORMAT = 3
 STYLES = ["original", "rushed"]
+# A plan's design: the prefix of its case ids, its cases per type, whether a source may
+# serve more than one case, and the wordings its cases get in turn. Held-out v4's:
+V4: dict[str, Any] = {
+    "prefix": "v4c",
+    "counts": TYPES,
+    "reuse": False,
+    "styles": [STYLES],
+}
 PAGE_MARK = re.compile(r"^\[page (\d+)\]$", re.MULTILINE)
 # A customer never sees the bundle, so never names its source ids or page markers.
-BUNDLE_WORDS = re.compile(r"\bv4c\d{2}-s\d+\b|\[page \d+\]|\bexcerpt\b", re.IGNORECASE)
+BUNDLE_WORDS = re.compile(r"\bv\d+c\d+-s\d+\b|\[page \d+\]|\bexcerpt\b", re.IGNORECASE)
+CASE_ID = re.compile(r"v(\d+)c\d+")  # a case id names its key's version
 CASE_FIELDS: dict[str, type] = {
     "id": str,
     "type": str,
@@ -123,13 +132,15 @@ def allocate(counts: dict[str, int], total: int) -> dict[str, int]:
     return slots
 
 
-def assign(slots: dict[str, int], rng: random.Random) -> list[tuple[str, str]]:
+def assign(
+    slots: dict[str, int], rng: random.Random, counts: dict[str, int]
+) -> list[tuple[str, str]]:
     """(type, format) for every case with a source; types that need a kind of
     source choose first, those allowed the fewest formats before the others."""
     formats = [name for name, count in sorted(slots.items()) for _ in range(count)]
     rng.shuffle(formats)
     kinds = [
-        kind for kind, n in TYPES.items() if SOURCES.get(kind, 1) for _ in range(n)
+        kind for kind, n in counts.items() if SOURCES.get(kind, 1) for _ in range(n)
     ]
     kinds.sort(key=lambda kind: len(FORMATS.get(kind, formats)))
     pairs = []
@@ -147,15 +158,21 @@ def assign(slots: dict[str, int], rng: random.Random) -> list[tuple[str, str]]:
 
 
 def pick(
-    candidates: list[Entry], used: set[str], topics: Counter[str], rng: random.Random
+    candidates: list[Entry],
+    used: Counter[str],
+    topics: Counter[str],
+    rng: random.Random,
+    reuse: bool = False,
 ) -> Entry | None:
-    """An unused source, from the topic used least so far (ties at random)."""
-    fresh = [entry for entry in candidates if entry["id"] not in used]
+    """An unused source, from the topic used least so far (ties at random). With
+    `reuse`, the source used least so far, so none serves twice before all have
+    served once."""
+    fresh = [entry for entry in candidates if reuse or not used[entry["id"]]]
     if not fresh:
         return None
     rng.shuffle(fresh)
-    chosen = min(fresh, key=lambda entry: topics[entry["topic"]])
-    used.add(chosen["id"])
+    chosen = min(fresh, key=lambda e: (used[e["id"]], topics[e["topic"]]))
+    used[chosen["id"]] += 1
     topics[chosen["topic"]] += 1
     return chosen
 
@@ -165,22 +182,27 @@ def second_source(
     first: Entry,
     pool: list[Entry],
     groups: list[list[Entry]],
-    used: set[str],
+    used: Counter[str],
     topics: Counter[str],
     rng: random.Random,
+    reuse: bool = False,
 ) -> Entry | None:
     """A comparison's second product: same format, same topic when possible, never
     from the first source's subject (a page and the files it links to), which is the
     same product. A multi-part case's second source: another format from the first
-    source's subject, else any source of the same topic."""
+    source's subject, else another source of the same topic."""
     subject = [e for g in groups if first in g for e in g] or [first]
     if kind == "comparison":
         same = [e for e in pool if e["format"] == first["format"] and e not in subject]
         on_topic = [e for e in same if e["topic"] == first["topic"]]
-        return pick(on_topic, used, topics, rng) or pick(same, used, topics, rng)
+        return pick(on_topic, used, topics, rng, reuse) or pick(
+            same, used, topics, rng, reuse
+        )
     linked = [e for e in subject if e["format"] != first["format"]]
-    on_topic = [e for e in pool if e["topic"] == first["topic"]]
-    return pick(linked, used, topics, rng) or pick(on_topic, used, topics, rng)
+    on_topic = [e for e in pool if e["topic"] == first["topic"] and e is not first]
+    return pick(linked, used, topics, rng, reuse) or pick(
+        on_topic, used, topics, rng, reuse
+    )
 
 
 def usable_pool(entries: list[Entry], texts: dict[str, str]) -> list[Entry]:
@@ -193,20 +215,28 @@ def usable_pool(entries: list[Entry], texts: dict[str, str]) -> list[Entry]:
 
 
 def plan(
-    entries: list[Entry], texts: dict[str, str], seed: int
+    entries: list[Entry],
+    texts: dict[str, str],
+    seed: int,
+    design: dict[str, Any] = V4,
+    served: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
-    """Every case: its id, type and source ids, out-of-domain cases last."""
+    """Every case: its id, type, source ids and wording styles, out-of-domain cases
+    last. `served` names the sources earlier keys used: they wait their turn behind
+    the sources no key has used."""
     rng = random.Random(seed)
+    counts, reuse = design["counts"], design["reuse"]
     pool = usable_pool(entries, texts)
-    total = sum(n for kind, n in TYPES.items() if SOURCES.get(kind, 1))
+    total = sum(n for kind, n in counts.items() if SOURCES.get(kind, 1))
     slots = allocate(dict(Counter(e["format"] for e in pool)), total)
     groups = conversations.subjects(pool)
-    used: set[str] = set()
+    used = Counter(served)
     topics: Counter[str] = Counter()
     firsts = []
     # Every case's own source first, so second sources never exhaust a small format.
-    for kind, name in assign(slots, rng):
-        first = pick([e for e in pool if e["format"] == name], used, topics, rng)
+    for kind, name in assign(slots, rng, counts):
+        named = [e for e in pool if e["format"] == name]
+        first = pick(named, used, topics, rng, reuse)
         if first is None:
             raise ValueError(f"no {name} source left for a {kind} case")
         firsts.append((kind, first))
@@ -214,14 +244,23 @@ def plan(
     for kind, first in firsts:
         sources = [first]
         if SOURCES.get(kind, 1) == 2:
-            other = second_source(kind, first, pool, groups, used, topics, rng)
+            other = second_source(kind, first, pool, groups, used, topics, rng, reuse)
             if other is None and kind == "comparison":
                 raise ValueError(f"no second {first['format']} source for a comparison")
             sources += [other] if other else []  # a multi-part case may use one
         planned.append({"type": kind, "sources": [e["id"] for e in sources]})
-    for _ in range(TYPES["out_of_domain"]):
+    for _ in range(counts["out_of_domain"]):
         planned.append({"type": "out_of_domain", "sources": []})
-    return [{"id": f"v4c{n:02d}", **case} for n, case in enumerate(planned, 1)]
+    width = max(2, len(str(len(planned))))
+    styles = design["styles"]
+    return [
+        {
+            "id": f"{design['prefix']}{n:0{width}d}",
+            **case,
+            "styles": styles[n % len(styles)],
+        }
+        for n, case in enumerate(planned, 1)
+    ]
 
 
 def replace(
@@ -230,16 +269,18 @@ def replace(
     entries: list[Entry],
     texts: dict[str, str],
     seed: int,
+    reuse: bool = False,
 ) -> list[dict[str, Any]]:
     """The plan with each flagged case given new sources by the planning rules: a
     first source of the format its old first source had (so each format keeps its
     cases) and, where the type takes two, a second; never a source any case of the
-    plan has used, the flagged ones included."""
+    plan has used, the flagged ones included, unless the plan reuses sources and none
+    is left."""
     rng = random.Random(seed)
     pool = usable_pool(entries, texts)
     groups = conversations.subjects(pool)
     by_id = {e["id"]: e for e in entries}
-    used = {source for case in planned for source in case["sources"]}
+    used = Counter(source for case in planned for source in case["sources"])
     topics = Counter(by_id[source]["topic"] for source in used)
     replaced = []
     for case in planned:
@@ -248,12 +289,14 @@ def replace(
             continue
         kind = case["type"]
         name = by_id[case["sources"][0]]["format"]
-        first = pick([e for e in pool if e["format"] == name], used, topics, rng)
+        old = set(case["sources"])  # never the sources the writer flagged
+        named = [e for e in pool if e["format"] == name and e["id"] not in old]
+        first = pick(named, used, topics, rng, reuse)
         if first is None:
             raise ValueError(f"no {name} source left to replace {case['id']}")
         sources = [first]
         if SOURCES.get(kind, 1) == 2:
-            other = second_source(kind, first, pool, groups, used, topics, rng)
+            other = second_source(kind, first, pool, groups, used, topics, rng, reuse)
             if other is None and kind == "comparison":
                 raise ValueError(f"no second {name} source to replace {case['id']}")
             sources += [other] if other else []
@@ -281,12 +324,16 @@ def part_text(
     limit: int,
     rng: random.Random,
     shown: dict[str, dict[str, Any]],
+    taken: dict[str, list[str]],
 ) -> str:
-    """One part file: each case's sources as the writer sees them. What is shown is
-    recorded in `shown` by source id."""
+    """One part file: each case's wordings and its sources as the writer sees them,
+    with the quotes earlier keys took from a source (`taken`, by entry id) listed
+    under it. What is shown is recorded in `shown` by source id."""
     lines = []
     for case in planned:
         lines += [f"# Case {case['id']}: {case['type']}", ""]
+        if "styles" in case:
+            lines += [f"Wordings: {', '.join(case['styles'])}", ""]
         for number, entry_id in enumerate(case["sources"], 1):
             source_id = f"{case['id']}-s{number}"
             text = excerpt(texts[entry_id], limit, rng)
@@ -299,6 +346,9 @@ def part_text(
             whole = len(texts[entry_id])
             if len(text) < whole:
                 lines.append(f"(part of a longer source: {whole:,} characters)")
+            if taken.get(entry_id):
+                lines += ["", "Already asked about (ask about something else):"]
+                lines += [f"- {quote}" for quote in taken[entry_id]]
             lines += ["", text, ""]
     return "\n".join(lines)
 
@@ -313,7 +363,8 @@ def rebundle(
 ) -> tuple[dict[str, Any], str]:
     """What the writer has seen, with the flagged cases given new sources, and the
     part file that shows them. The flagged cases' old sources leave `sources`."""
-    planned = replace(seen["plan"], flagged, entries, texts, seed)
+    reuse, taken = seen.get("reuse", False), seen.get("taken", {})
+    planned = replace(seen["plan"], flagged, entries, texts, seed, reuse)
     shown = {
         source_id: source
         for source_id, source in seen["sources"].items()
@@ -321,8 +372,8 @@ def rebundle(
     }
     by_id = {e["id"]: e for e in entries}
     cases = [case for case in planned if case["id"] in flagged]
-    text = part_text(cases, by_id, texts, limit, random.Random(seed), shown)
-    return {"plan": planned, "sources": shown}, text
+    text = part_text(cases, by_id, texts, limit, random.Random(seed), shown, taken)
+    return {**seen, "plan": planned, "sources": shown}, text
 
 
 def bundle(
@@ -334,10 +385,14 @@ def bundle(
     per_part: int,
     limit: int,
     seed: int,
+    reuse: bool = False,
+    taken: dict[str, list[str]] | None = None,
 ) -> list[Path]:
     """Write the brief and writer's instructions (`notes`: file name -> text), the
-    part files, `plan.json` (what the writer saw) and `corpus/` (every indexed
+    part files, `plan.json` (what the writer saw, whether the plan reuses sources,
+    and the quotes earlier keys took, by entry id) and `corpus/` (every indexed
     source's whole text, with `corpus/index.md` naming each file's URL)."""
+    taken = taken or {}
     rng = random.Random(seed)
     by_id = {e["id"]: e for e in entries}
     out.mkdir(parents=True, exist_ok=True)
@@ -348,10 +403,11 @@ def bundle(
     for first in range(0, len(planned), per_part):
         cases = planned[first : first + per_part]
         part = out / f"part-{first // per_part + 1}.md"
-        text = part_text(cases, by_id, texts, limit, rng, shown)
+        text = part_text(cases, by_id, texts, limit, rng, shown, taken)
         part.write_text(text, encoding="utf-8", newline="\n")
         parts.append(part)
-    seen = json.dumps({"plan": planned, "sources": shown}, indent=1, ensure_ascii=False)
+    saw = {"plan": planned, "sources": shown, "reuse": reuse, "taken": taken}
+    seen = json.dumps(saw, indent=1, ensure_ascii=False)
     (out / "plan.json").write_text(seen + "\n", encoding="utf-8", newline="\n")
     corpus = out / "corpus"
     if corpus.exists():
@@ -411,8 +467,9 @@ def case_problems(
     if case["expected_status"] != status:
         found.append(f"{cid}: a {kind} case is {status}")
     styles = [str(w.get("style")) for w in case["wordings"]]
-    if sorted(styles) != sorted(STYLES):
-        found.append(f"{cid}: wordings are {styles}, not {STYLES}")
+    wanted = planned.get("styles", STYLES)
+    if sorted(styles) != sorted(wanted):
+        found.append(f"{cid}: wordings are {styles}, not {wanted}")
     for wording in case["wordings"]:
         if not str(wording.get("text", "")).strip():
             found.append(f"{cid}: an empty wording")
@@ -474,6 +531,39 @@ def absence_problems(case: dict[str, Any], cid: str, corpus: list[str]) -> list[
     return found
 
 
+def quotes(case: dict[str, Any]) -> list[str]:
+    """A written case's evidence quotes, normalised; none for a malformed case."""
+    parts = case.get("parts")
+    found = []
+    for part in parts if isinstance(parts, list) else []:
+        evidence = part.get("evidence") if isinstance(part, dict) else None
+        for item in evidence if isinstance(evidence, list) else []:
+            found.append(keys.normalise(str(item.get("quote", ""))))
+    return [quote for quote in found if quote]
+
+
+def repeat_problems(
+    written: dict[str, dict[str, Any]], taken: dict[str, list[str]]
+) -> list[str]:
+    """Cases asking what is already asked: a quote that overlaps one an earlier key
+    took (`taken`) or one an earlier case of this key uses. A held-out key must ask
+    new facts, and two cases on one fact count as one."""
+    owners = {
+        keys.normalise(quote): "an earlier key"
+        for found in taken.values()
+        for quote in found
+    }
+    problems = []
+    for cid in sorted(written):
+        mine = quotes(written[cid])
+        for quote in mine:
+            clash = next((o for q, o in owners.items() if quote in q or q in quote), "")
+            if clash:
+                problems.append(f"{cid}: a quote is already used by {clash}")
+        owners.update(dict.fromkeys(mine, cid))
+    return problems
+
+
 def key_problems(
     key: dict[str, Any], seen: dict[str, Any], pdfs: set[str], corpus: list[str]
 ) -> list[str]:
@@ -491,6 +581,8 @@ def key_problems(
         found += case_problems(
             written[cid], planned[cid], seen["sources"], pdfs, corpus
         )
+    if seen.get("reuse"):
+        found += repeat_problems(written, seen.get("taken", {}))
     return found
 
 
@@ -537,4 +629,5 @@ def sealed(
                 "scope": "every indexed page and PDF, as the writer's corpus held them",
             }
         cases.append(found)
-    return {"version": 4, "cases": cases}
+    version = int(CASE_ID.findall(seen["plan"][0]["id"])[0])
+    return {"version": version, "cases": cases}

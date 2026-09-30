@@ -149,6 +149,16 @@ def parser() -> argparse.ArgumentParser:
     cased.add_argument("--seed", type=int, required=True)
     cased.add_argument("--per-part", type=int, default=16)
     cased.add_argument("--limit", type=int, default=8000, help="characters per source")
+    cased.add_argument(
+        "--design", type=Path, help="prefix, counts, reuse and styles (default: v4's)"
+    )
+    cased.add_argument(
+        "--earlier",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="sets whose sources wait their turn and whose quotes are taken",
+    )
     checked = commands.add_parser(
         "check-cases", help="check a single-question key against its bundle"
     )
@@ -526,6 +536,24 @@ def run_check_conversations(args: argparse.Namespace) -> int:
     return 0
 
 
+def earlier_use(
+    folders: list[Path], entries: list[dict[str, Any]]
+) -> tuple[frozenset[str], dict[str, list[str]]]:
+    """From earlier sets (each with `plan.json` and `key.json`): the catalogue entries
+    their cases used, and the quotes their keys took from each entry."""
+    by_url = {entry["url"]: entry["id"] for entry in entries}
+    served: set[str] = set()
+    taken: dict[str, list[str]] = {}
+    for folder in folders:
+        shown = grades.read_json(folder / "plan.json")["sources"].values()
+        served.update(source["entry"] for source in shown)
+        for case in grades.read_json(folder / "key.json")["cases"]:
+            for part in case["parts"]:
+                for item in part["evidence"]:
+                    taken.setdefault(by_url[item["url"]], []).append(item["quote"])
+    return frozenset(served), taken
+
+
 def run_plan_cases(args: argparse.Namespace) -> int:
     entries = grades.read_json(args.catalogue)
     texts = {
@@ -533,14 +561,17 @@ def run_plan_cases(args: argparse.Namespace) -> int:
         for e in entries
         if e["format"] not in cases.UNINDEXED
     }
-    planned = cases.plan(entries, texts, args.seed)
+    design = grades.read_json(args.design) if args.design else cases.V4
+    served, taken = earlier_use(args.earlier, entries)
+    planned = cases.plan(entries, texts, args.seed, design, served)
     notes = {
         "brief.md": args.brief.read_text(encoding="utf-8"),
         "AGENTS.md": args.agents.read_text(encoding="utf-8"),
     }
     parts = cases.bundle(
-        planned, entries, texts, notes, args.out, args.per_part, args.limit, args.seed
-    )
+        planned, entries, texts, notes, args.out, args.per_part, args.limit, args.seed,
+        design["reuse"], taken,
+    )  # fmt: skip
     by_id = {entry["id"]: entry for entry in entries}
     formats = Counter(by_id[c["sources"][0]]["format"] for c in planned if c["sources"])
     for label, count in sorted(formats.items()):
@@ -598,7 +629,7 @@ def run_check_cases(args: argparse.Namespace) -> int:
         raise ValueError("--seed is needed to shuffle the blind questions")
     entries = {e["id"]: e for e in grades.read_json(args.catalogue)}
     key = cases.sealed({"cases": written}, seen, entries)
-    rows = keys.blind_questions(key, args.seed, "v4q")
+    rows = keys.blind_questions(key, args.seed, f"v{key['version']}q")
     write_json(key_file, key)
     write_json(blind_file, {"questions": rows})
     print(f"key and {len(rows)} blind questions written to {args.out_set}")
