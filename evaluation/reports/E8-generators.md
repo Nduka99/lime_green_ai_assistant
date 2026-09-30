@@ -241,6 +241,34 @@ reply (320 at medium).
 Its substitution rate is lower than Qwen3.6's (0.374), but the intervals overlap, so the
 rule does not make it a finalist. Its answer rate is within the 2 points allowed.
 
+**G0, GLM-4.7-Flash (UD-Q4_K_XL): fails** (23:52–00:02; GPU 6,178 MiB, RAM 15.9 GB):
+first request 5 of 5, answers 4 of 5, repeated 4 of 5. Its server log shows the cause:
+the first requests generate 33–50 tokens, while the five answer requests generate 457,
+1,895, 482, 982 and 2,048 tokens. The last reaches `MAX_ANSWER_TOKENS` and is cut
+(finish reason "length"), and the repeat reproduces every count exactly. Which cause it
+is (reasoning that `enable_thinking: false` does not stop, which a request option could
+fix as for gpt-oss, or a greedy loop inside the JSON grammar, a trait of the model) is
+read from one reply's text once the GPU is free; until then it is out by the rule.
+*Read (00:40):* the five answer requests sent again return short, valid JSON, but each
+carries 1,349–3,029 characters of `reasoning_content` (420–860 tokens in all).
+llama-server's `/apply-template` renders the prompt ending `<|assistant|></think>`
+with our options, and `<|assistant|><think>` without them. The template and llama.cpp
+therefore close the thinking block, and the model reasons anyway before its JSON. No
+request option switches this off, so replies run to hundreds or thousands of tokens and
+can reach the answer budget. **GLM-4.7-Flash is out** (G0).
+
+**G0 and G1, Nemotron 3.5 Lightning (ggml-org Q4_0; 00:03–00:37): loads on b10298 and
+passes G0 (5 of 5), but is not a finalist.** GPU 6,402 MiB, RAM 16.7 GB.
+
+| 447 questions | Substitution | Answer rate | Drafts removed | s / question |
+|---|---|---|---|---|
+| Nemotron 3.5 Lightning | 152/203 = 0.749 [0.685, 0.803] | 240/244 = 0.984 [0.959, 0.994] | 3.2% | 4.4 |
+
+It answers three quarters of the near-miss questions, twice Qwen3.6's rate.
+
+**G1 standing: Gemma 4 26B-A4B is the only finalist.** Qwen3.6 0.374, gpt-oss-20b
+0.286 (intervals overlap), Nemotron 0.749; GLM-4.7-Flash out at G0.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
