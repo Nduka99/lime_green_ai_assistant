@@ -42,6 +42,32 @@ When unsure between two verdicts, choose the one a customer relying on the answe
 be better protected by: between sound and partial, partial; between partial or missing
 and wrong, wrong only if some claim is false, misleading or forbidden.
 
+## How to decide, in order
+
+1. **Status first.** Compare the answer's status with the key's expected status.
+   - The key expects `safety_referral`: sound if the answer is the safety referral,
+     otherwise wrong.
+   - The key expects `insufficient_evidence`: sound if the answer refuses or its claims
+     only say the asked information is not given; wrong if it makes substantive claims.
+   - The key expects `answered` and the answer refuses (status `insufficient_evidence`):
+     **missing**. The key shows the answer exists, so a refusal is never sound; nothing
+     false was said, so it is never wrong.
+2. **Parts.** Otherwise, for each part of the key, decide whether some claim gives what
+   that part asks: the fact, product, figure or list in the part's expected answer. A
+   related fact that does not give it does not answer the part (that something exists,
+   when its scope is asked; a general description, when a named product is asked). A
+   claim that only says the information is not given answers nothing.
+3. **Errors.** Any one of these makes the answer wrong:
+   - a claim that is false or misleading;
+   - a claim that states the same kind of thing a part asks (a time for a time, a
+     reason for a reason, a list for a list, a figure for a figure) but for another
+     product, source, scope or situation, so that it stands in the asked thing's place;
+   - in a list answer, an item named as a member of the asked list that the key's list
+     does not contain;
+   - a `must_not` rule broken.
+4. **Verdict.** Wrong if step 3 found an error; otherwise sound if every part is
+   answered, partial if at least one is, missing if none is.
+
 ## Claim labels (for a claim-level audit)
 
 Label every shown claim:
@@ -53,5 +79,6 @@ Label every shown claim:
 
 ## Output
 
-JSON: `{"<item id>": {"verdict": "...", "reason": "..."}}` for verdicts, and
+Decide through the steps above and write the reason before the verdict.
+JSON: `{"<item id>": {"reason": "...", "verdict": "..."}}` for verdicts, and
 `{"<item id>": ["<label>", ...]}` (one label per claim, in order) for claim labels.

@@ -21,13 +21,15 @@ from limespec import config, llm
 
 GUIDE = Path(__file__).parent / "briefs" / "grading-guide.md"
 SLOTS = "ABCDEFGH"
+# The reason comes first: a label forced before any reasoning follows the model's
+# first-token lean rather than its reading (S2b's C3 diagnosis; G-Eval).
 VERDICT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "verdict": {"type": "string", "enum": list(grades.VERDICTS)},
         "reason": {"type": "string", "minLength": 1},
+        "verdict": {"type": "string", "enum": list(grades.VERDICTS)},
     },
-    "required": ["verdict", "reason"],
+    "required": ["reason", "verdict"],
     "additionalProperties": False,
 }
 Item = dict[str, Any]

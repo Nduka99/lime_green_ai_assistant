@@ -208,6 +208,8 @@ def test_a_model_grades_each_item_through_a_chat_request(
     }
     assert sent[0]["url"] == "http://127.0.0.1:8083/v1/chat/completions"
     assert sent[0]["messages"][0]["content"] == "GUIDE"
+    schema = sent[0]["response_format"]["json_schema"]["schema"]
+    assert list(schema["properties"]) == ["reason", "verdict"]  # reason first
 
 
 def test_agreement_is_kappa_over_the_items_both_graded() -> None:
