@@ -56,6 +56,7 @@ from evaluation import (
     ask,
     cases,
     catalogue,
+    claims,
     conversations,
     drafts,
     generator,
@@ -264,6 +265,25 @@ def parser() -> argparse.ArgumentParser:
         "--parts", type=Path, help="an earlier replay, whose search questions are kept"
     )
     replayed_searches.add_argument("--out", type=Path, required=True)
+    claimed = commands.add_parser(
+        "claim-items", help="the labelled claims of graded sittings, as gate items (E5)"
+    )
+    claimed.add_argument(
+        "--set",
+        dest="sittings",
+        nargs=3,
+        action="append",
+        required=True,
+        metavar=("NAME", "SITTING", "REPLAY"),
+        help="a set, its graded sitting folder and a replay file (for the parts)",
+    )
+    claimed.add_argument("--out", type=Path, required=True)
+    gated = commands.add_parser(
+        "claim-score", help="a detector's scores against the labelled claims (E5)"
+    )
+    gated.add_argument("items", type=Path)
+    gated.add_argument("scores", type=Path, help='{"item id": score}, higher = correct')
+    gated.add_argument("--seed", type=int, required=True)
     drafted = commands.add_parser(
         "drafts", help="draft again the answers whose checks removed a claim (E5)"
     )
@@ -948,6 +968,34 @@ def run_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_claim_items(args: argparse.Namespace) -> int:
+    found: list[claims.Item] = []
+    for name, sitting, replayed in args.sittings:
+        folder = sets.require(name, args.root, args.registry)
+        found += claims.items(
+            name,
+            grades.read_json(folder / "key.json"),
+            grades.read_json(folder / "questions.json")["questions"],
+            grades.read_json(Path(sitting) / "pairs.json"),
+            grades.read_json(Path(sitting) / "claims.json"),
+            grades.read_json(Path(replayed))["parts"],
+        )
+    write_json(args.out, found)
+    counts = Counter(item["label"] for item in found)
+    print(f"{len(found)} claims in {args.out}: {dict(sorted(counts.items()))}")
+    return 0
+
+
+def run_claim_score(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    scores = grades.read_json(args.scores)
+    missing = [item["id"] for item in found if item["id"] not in scores]
+    if missing:
+        raise ValueError(f"{len(missing)} items have no score, e.g. {missing[0]}")
+    print(json.dumps(claims.score(found, scores, args.seed), indent=1))
+    return 0
+
+
 def run_drafts(args: argparse.Namespace) -> int:
     records = [record for path in args.runs for record in grades.read_json(path)]
     found = []
@@ -1542,6 +1590,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_replay(args)
         if args.command == "drafts":
             return run_drafts(args)
+        if args.command == "claim-items":
+            return run_claim_items(args)
+        if args.command == "claim-score":
+            return run_claim_score(args)
         if args.command == "verify-score":
             return run_verify_score(args)
         if args.command == "page-candidates":
