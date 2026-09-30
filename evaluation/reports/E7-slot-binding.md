@@ -100,6 +100,17 @@ answerable (question, answering quote) kept and near-miss (question, tempting qu
 caught; (iii) S4's substitution rate: the answer request run on each near-miss question
 with its passage, a claim for it counting as a substitution.
 
+## S4: the generator, Gemma 4 26B against Qwen3.6 (written before it runs)
+
+Each model answers every kept `nearmiss-dev` question from its passage alone, with the
+assistant's own answer request and verification (`evaluation nearmiss-answer`).
+Measured: the **substitution rate** (near-miss questions given at least one verified
+claim) and the **answer rate** (answerable questions given at least one), each with a
+Wilson 95% interval, and seconds per request. **Rule:** Gemma is a candidate to replace
+Qwen only if its substitution rate is lower with intervals not overlapping, and its
+answer rate is at most 2 points lower; a candidate then goes to the dev sets' replayed
+requests before any startup-line change, which is the user's decision.
+
 ## Results
 
 **S1 extraction** (`78e0d29`; 30 September, 2,046 s on the generator alone): 379
@@ -123,3 +134,34 @@ and code frozen): the extracted slots do expose the mismatches in words ("year n
 production plant was built" against "plant: opening date"; "iso 9001 certificate:
 scope" against "the business: ISO certification"; "Mesh Coat: incompatible materials"
 against "Meshcoat: mixing instructions"), which is what the judge is asked to read.
+
+**S1, comparators (c) and (d): neither qualifies. S1 fails; no gate is built.**
+
+| Comparator | AUC | Correct withheld (seed 5) | Not correct caught | Qualifies (seeds 1–20) |
+|---|---|---|---|---|
+| (c) phrase judge | 0.689 | 40 of 370 | 8 of 30 | no (0); median caught 30% |
+| (a) then (c) | 0.692 | 0 of 370 | 0 of 30 | no (0) |
+
+By label, the judge reads off-question claims at 0.693, incorrect ones at 0.798 and
+forbidden ones at 0.577: no better than the whole-text detectors of E5 (best 0.755).
+
+**Diagnosis, read on the claims it gets most wrong in each direction.** Two extraction
+faults exist but are small: 7 of 572 sources received another source's slots when eight
+were read in one request (their answers drifted out of position; nothing in a list
+answer ties an item to its input), and 3 of 379 parts hit the four-slot cap. The cause
+is the abstraction itself. Judged one pair at a time, outside any list, the judge still
+passes "Lime Green: year new production plant was built" against "plant: opening date"
+(0.78) and fails "Duro base coat: cement content" against "Duro lime render:
+composition" (0.03) and "cavity: ventilation method" against "the cavity: ventilation
+requirement" (0.15). A (subject, property) slot drops the value, and the value is what
+decides whether a quote answers: "completely free of cement" answers the cement content;
+the slot "composition" cannot show it. Near-synonymous properties ("built", "opened")
+stay as close for the judge as they were in whole texts. RefChecker's triplets keep the
+object; a relevance check that keeps the object is a claim against a question again,
+which is where E5's detectors stopped. Batching was checked separately: the same eight
+pairs judged alone and as a list moved in both directions but did not separate.
+
+What follows, by the plan: S3 and S4 run (the generator comparison needs no gate), and
+the near-miss set gives every detector a second, larger test with labels by
+construction: if a detector reads that set well but `claims-dev` poorly, the benchmark's
+own labels and composition become the question.
