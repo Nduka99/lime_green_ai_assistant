@@ -119,6 +119,13 @@
     "questions.json": "6fea31bbd29cd355e72e6d61ea4cefa1cd55f11b422acdf1405d2ac1394500ee"
    }
   },
+  "relevance-dev": {
+   "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
+   "files": {
+    "items.json": "6204a0daf568dcc8712cb46c2db7c50ca037d927831aeb4b9aed8ff7f969dfd8",
+    "labels.json": "d1df03a567127eef8c1569a5cfd66db8fe24aa8b93b19397d49e0866486857b8"
+   }
+  },
   "x8-pages": {
    "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
    "files": {
