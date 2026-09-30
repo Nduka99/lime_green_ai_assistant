@@ -475,3 +475,22 @@ current embedder holds), and about 0.77 s per search against 0.40 s with the cur
 embedder (replays of v4 with the generator idle: 103 s against 54 s for 134 searches),
 so a question searched three times waits about 1.1 s longer. Adopting it changes the
 embedding server's startup line, which is the user's decision.
+
+**B4, the scoped search: qualifies, and is now in the answer path** (`6dcd37c`; wired
+into `assistant.ask_and_record` after this result). Replayed with `--scoped`:
+
+| Set | Version 12 | A′ (v16) | A′ + scoped | A′ + 4B (v17) | A′ + 4B + scoped |
+|---|---|---|---|---|---|
+| held-out v4 | 109 of 130 | 111 | **116** | 114 | **119** |
+| frozen90 | 102 of 125 | 102 | 102 | 103 | **103** |
+| held-out v2 | 78 of 140 | 82 | 82 | 83 | **83** |
+| held-out v3 | 72 of 105 | 72 | **74** | 74 | **76** |
+
+On A′ the scoped search adds 5 parts on v4 and 2 on v3 and loses none on any set; on the
+stack it adds 5 on v4 and 2 on v3 again. With everything, v4 reaches 119 of the 126
+parts its index holds (0.915; baseline 0.838), questions with every part reached rise
+from 78 to 85 of 94, and across the four sets 23 parts are gained and 3 lost (all on
+v2). Passages given per question: mean 9.2 → 9.7, at most 18 (budget 32). The whole
+stack's search takes about 1.3 s per v4 question against 0.6 s at baseline. The
+fallback to the best hits' scope was not built: the named scope qualified, and the
+parts still missed on v4 (7) are left for the gate's diagnosis.

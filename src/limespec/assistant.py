@@ -77,7 +77,8 @@ def retriever(conn: store.Connection, version_id: int) -> Retrieve:
 
 def scoped_retriever(conn: store.Connection, version_id: int) -> Retrieve:
     """A search of an index version inside the products a query names (E5 B4): its
-    best `config.SCOPED_TOP` passages, or none when the query names no product."""
+    best `config.SCOPED_TOP` passages, or none when the query names no product.
+    Answers use it after each search; `evaluation replay --scoped` measures it."""
     named = scope.naming(store.product_names(conn, version_id))
 
     def retrieve(query: str) -> list[Passage]:
@@ -100,7 +101,7 @@ def ask_and_record(
         version_id = served_index(conn)
         started = time.perf_counter()
         retrieve, chat = with_stages(retriever(conn, version_id), llm.chat, on_stage)
-        result = answer(question, retrieve, chat)
+        result = answer(question, retrieve, chat, scoped_retriever(conn, version_id))
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(
