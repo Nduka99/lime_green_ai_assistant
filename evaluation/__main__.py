@@ -195,6 +195,13 @@ def parser() -> argparse.ArgumentParser:
         help="when clean, write key.json and questions.json here",
     )
     checked.add_argument("--seed", type=int, help="shuffles the blind questions")
+    checked.add_argument(
+        "--withdraw",
+        action="append",
+        default=[],
+        metavar="CASE",
+        help="leave a case out of the plan and the key (its reason goes in the report)",
+    )
     redrawn = commands.add_parser(
         "replace-cases", help="new sources for cases the writer flagged (v4)"
     )
@@ -331,7 +338,9 @@ def parser() -> argparse.ArgumentParser:
     abstained.add_argument("--url", required=True, help="the answerability server")
     where = abstained.add_mutually_exclusive_group(required=True)
     where.add_argument("--sources", type=Path, help="a slot-extract file's sources")
-    where.add_argument("--version", type=int, help="index version (whole passages)")
+    where.add_argument(
+        "--passages", action="store_true", help="each near-miss case's whole passage"
+    )
     abstained.add_argument("--out", type=Path, required=True)
     slotted = commands.add_parser(
         "slot-extract", help="the slots claims' parts ask and their sources state (E7)"
@@ -779,6 +788,11 @@ def run_replace_cases(args: argparse.Namespace) -> int:
 def run_check_cases(args: argparse.Namespace) -> int:
     seen = grades.read_json(args.plan)
     written = [c for path in args.keys for c in grades.read_json(path)["cases"]]
+    if args.withdraw:
+        # A case no draw of sources could support leaves the set before it is sealed.
+        seen["plan"] = [c for c in seen["plan"] if c["id"] not in args.withdraw]
+        written = [c for c in written if c.get("id") not in args.withdraw]
+        print("withdrawn:", ", ".join(args.withdraw))
     pdfs = {sid for sid, s in seen["sources"].items() if s["entry"].startswith("file:")}
     corpus_files = sorted((args.plan.parent / "corpus").glob("*.txt"))
     corpus = [keys.normalise(path.read_text(encoding="utf-8")) for path in corpus_files]

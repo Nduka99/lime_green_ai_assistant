@@ -171,6 +171,19 @@
     "sitting-s2b-gate/verdicts.json": "9bf9b239ee2aea21cbc523be9d5b9233637f5b32a4cd99c64050351d8c5c137b"
    }
   },
+  "heldout-v5": {
+   "description": "Held-out v5: 253 single-question cases (201 answerable, 40 to refuse, 12 emergencies), 337 wordings over site pages and PDFs, written by an independent model blind to the assistant from brief.md and the source text in plan.json (seed-51 plan; flagged cases redrawn with seeds 52 and 53 after feedback-1 and feedback-2); v5c188 withdrawn after three refused draws (E6); blind order seed 54 (D101)",
+   "files": {
+    "brief.md": "5c2d033db679b172c0d5cdc52c157b61513c2473b26eb4b409a0036d14838adb",
+    "feedback-1.md": "35c5493cb7cf80262de2bba826eaa63669748bcf3e1a47db9e10bef0e25730fe",
+    "feedback-2.md": "ab3a12e6bf5357beb5a686186e3ad10837f4f6d39442b5fa3e2e760df16df319",
+    "key.json": "87d4827464c899a0a36616245e0f4044ddaf0ba171fbdee0ddab54e487f2a4d4",
+    "plan-before-part-17.json": "3a71eabbf5e0429ba2cc74cfab5021b53580ab45306482f54ab2cf743922a960",
+    "plan-before-part-18.json": "cace097470a27f369b111011640de211f394ca8a0f62bc349a910268adfe7e9b",
+    "plan.json": "fc6e4a49cec7ef7bddcd462ac6c279ce04b1e739281bd76ef5330b173f630d27",
+    "questions.json": "fb35c2586dc22a9f11e025182c3428e1424ce24ae7673094f63ecca4be5ebec5"
+   }
+  },
   "nearmiss-dev": {
    "description": "E7 S3: near-miss questions written by the generator from 300 passages of index version 17 (seed 71), answerable and near-miss, each with its quote; kept only where Gemma 4 26B, reading the passage alone, agreed with the label. Evaluation only; never training",
    "files": {

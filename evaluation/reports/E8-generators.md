@@ -60,6 +60,19 @@ chose to include one).
 Each file is recorded in `models.json` with its source, revision, SHA-256 and licence;
 files already on this machine are hard links.
 
+**Narrowed to one model per family (user, 30 Sept 20:25, before any of the dropped
+models ran).** The main quality gates are the largest model of each family that serves
+on this laptop: Qwen3.6 (baseline), Gemma 4 26B-A4B, Nemotron 3.5 Lightning,
+GLM-4.7-Flash and gpt-oss-20b (if G0 passes), plus the OCC-RAG arm. The dense models
+(Gemma 4 12B and E4B, Qwen3.5-9B, Qwen3-8B, Qwen3.5-4B, Nemotron 3 Nano 4B) and the
+Qwen3.8-27B reference are not run. Each repeats a family already measured at a larger
+size; the evidence above says size does not buy abstention within a family; and the
+27B cannot serve at this laptop's speeds. A small model returns only for a stated need
+(for example an 8-bit companion model), measured by G1 as its own arm. OCC-RAG is built
+on Qwen3-1.7B, so its architecture is the baseline's family: what differs is its training
+(to state answerability first) and its role (a gate separate from the generator). It
+therefore runs next, and its claims-dev result shows whether it catches what Qwen misses.
+
 ## Stages and rules
 
 Every model is served alone as a scratch llama-server on port 8083 with 8080 stopped
@@ -119,3 +132,23 @@ candidate for the v5 gate. Changing a server's startup line is the user's decisi
 ## Results
 
 *(added after each run)*
+
+**G0 and G1, Qwen3.6-35B-A3B (baseline; 30 Sept, 19:35–20:04).** Served on 8083 with
+the MoE flags (experts in RAM): GPU 6,644 MiB, RAM 20.3 GB. G0: 5 of 5 on the first
+request, the answer request and the repeat. G1 on the 400-question sample:
+
+| Model | Substitution (near-miss answered) | Answer rate (answerable answered) | Drafts removed | s / question |
+|---|---|---|---|---|
+| Qwen3.6-35B-A3B | 73/200 = 0.365 [0.301, 0.434] | 199/200 = 0.995 [0.972, 0.999] | 2.1% | 3.9 |
+
+A finalist must therefore substitute on fewer than 30.1% of near-miss questions with its
+upper bound below that, and answer at least 97.5% of the answerable ones.
+
+**Specialist arm, the reading of OCC-RAG's status.** A probe (two invented questions on
+the CPU) showed that llama-server writes special tokens as empty text, so a stop at
+`<|status_end|>` never fires and the status cannot be found by its text. It is found by
+its token id (151680 in the model's vocabulary), then the first word after the line
+break; the model gives the chosen reading probability ≈ 1 and the other falls outside
+the top 10, so a missing reading takes the lowest listed log-probability (an upper
+bound). Probe: 0.9999995 for a drying time the source states, 0.0000013 for a price it
+does not. No item of either benchmark was read before this change.

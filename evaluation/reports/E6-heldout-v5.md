@@ -55,3 +55,25 @@ answerable cases.
 4. Gate R1 is run once: the live system and the frozen candidate, every answer graded
    blind by the primary grader, with two second graders on a sample by the grading
    guide, the majority of three used, and a repeat run of the candidate for stability.
+
+## Writing rounds and sealing (30 September)
+
+Every round was checked by case id only; the key's text was not read.
+
+- Round 1: all 16 parts written; 7 problems (5 cases flagged by the writer, 2 quotes
+  overlapping v4's). The flagged cases got new sources (`replace-cases`, seed 52,
+  `part-17.md`) and `feedback-1.md` named every problem.
+- Round 2: 1 problem. v5c188 was flagged again and drew new sources (seed 53,
+  `part-18.md`, `feedback-2.md`).
+- Round 3: only `key-part-12.json` changed (checked against the copy saved after round
+  2), and v5c188 was flagged a third time.
+- **v5c188 withdrawn (user's decision).** It is a condition case with one rushed wording.
+  Its three draws were all declarations or test reports (`pdf:performance`), because the
+  planner redraws within a case's format, and such documents rarely state a condition,
+  so a fourth draw from that format would most likely fail as well. It leaves the plan
+  and the key before sealing (`check-cases --withdraw v5c188`). The set is 253 cases
+  (201 answerable, 27 of them condition cases). The Wilson bound for the release bar
+  moves by less than 0.1 point.
+- Sealed (253 cases, 337 questions, 0 problems) with blind order seed 54 into
+  `data/eval/heldout-v5` and registered with its brief, plans and feedback (8 files).
+  The key's text stays unread until the candidate is frozen.

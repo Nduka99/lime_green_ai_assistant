@@ -447,6 +447,36 @@ def test_the_command_line_seals_only_a_clean_key_once(
     assert capsys.readouterr().out.endswith("already holds a key\n")
 
 
+def test_a_withdrawn_case_leaves_the_plan_and_the_sealed_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bundle = tmp_path / "bundle"
+    (bundle / "corpus").mkdir(parents=True)
+    (bundle / "plan.json").write_text(json.dumps(SEEN))
+    for number, text in enumerate(CORPUS):
+        (bundle / "corpus" / f"{number:03d}.txt").write_text(text)
+    listed = tmp_path / "catalogue.json"
+    listed.write_text(json.dumps([entry("page:p", "page:product", "t"),
+                                  entry("file:s", "pdf:safety", "t")]))  # fmt: skip
+    key = sound_key()
+    key["cases"][1] = {"id": "v4c02", "type": "absent", "flag": "nothing is absent"}
+    part = tmp_path / "key-part-1.json"
+    part.write_text(json.dumps(key))
+    out = tmp_path / "eval" / "heldout-v4"
+    command = ["check-cases", str(part), "--plan", str(bundle / "plan.json"),
+               "--catalogue", str(listed), "--out-set", str(out),
+               "--seed", "9"]  # fmt: skip
+
+    assert cli.main(command) == 1
+    assert "PROBLEM v4c02: flagged" in capsys.readouterr().out
+    assert cli.main([*command, "--withdraw", "v4c02"]) == 0
+
+    printed = capsys.readouterr().out
+    assert printed.startswith("withdrawn: v4c02\n2 cases, ")
+    sealed = json.loads((out / "key.json").read_text(encoding="utf-8"))
+    assert [case["id"] for case in sealed["cases"]] == ["v4c01", "v4c03"]
+
+
 def test_a_comparison_never_pairs_two_sources_about_one_product() -> None:
     page = entry("page:solo", "page:product", "plaster")
     declaration = entry("file:dop", "pdf:performance", "plaster", pages=["page:solo"])

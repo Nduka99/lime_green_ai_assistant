@@ -121,7 +121,7 @@ def test_the_command_line_scores_quotes_or_whole_passages(
     monkeypatch.setattr(graders, "post_to", lambda url: server([]))
     command = ["claim-answerable", str(items), "--url", "http://gate"]
 
-    for where in (["--sources", str(slots)], ["--version", "17"]):
+    for where in (["--sources", str(slots)], ["--passages"]):
         out = tmp_path / "scores.json"
         assert cli.main([*command, *where, "--out", str(out)]) == 0
         assert json.loads(out.read_text())["p7/a1"] == pytest.approx(0.9)
