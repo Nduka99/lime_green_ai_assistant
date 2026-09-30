@@ -457,3 +457,21 @@ four pieces of "5. Plastering" filled a one-part question's top 8 and pushed out
 Ultra page that holds the other half of its evidence. **Variant A′, written before it
 is built:** bold lines stay ordinary paragraphs (sections are packed as before); lists
 stay whole with their lead-in and the price fence stays by sentence. Same rule.
+
+**A′: qualifies; and stacked with the 4B embedder, the best so far** (`10dac43`). Index
+version 16 (1,902 passages, none fenced, none searchable stating a price), and version
+17 (the same passages embedded by Qwen3-Embedding-4B; queries embedded on the CPU):
+
+| Set | Version 12 | Version 16 (A′) | Gained / lost | Version 17 (A′ + 4B) | Gained / lost |
+|---|---|---|---|---|---|
+| held-out v4 | 109 of 130 | **111** | 2 / 0 | **114** | 5 / 0 |
+| frozen90 | 102 of 125 | 102 | 0 / 0 | **103** | 1 / 0 |
+| held-out v2 | 78 of 140 | **82** | 4 / 0 | **83** | 8 / 3 |
+| held-out v3 | 72 of 105 | 72 | 0 / 0 | **74** | 2 / 0 |
+
+A′ rises on v4 and v2 and loses nothing anywhere; the stack gains on every set. Cost of
+the 4B embedder served on the CPU: 4.7 GB of RAM, no GPU (it frees the 2.7 GB the
+current embedder holds), and about 0.77 s per search against 0.40 s with the current
+embedder (replays of v4 with the generator idle: 103 s against 54 s for 134 searches),
+so a question searched three times waits about 1.1 s longer. Adopting it changes the
+embedding server's startup line, which is the user's decision.
