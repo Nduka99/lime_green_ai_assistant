@@ -112,6 +112,26 @@ scored: **wrongly removed** (the passages given state the claim) or **rightly re
 **Rule:** a candidate rule is kept only if it restores wrongly removed claims and
 restores **no** rightly removed one. Rules are scored one at a time and together.
 
+*Built and labelled before any rule was scored (30 September):* `verify-dev` holds 177
+answers drafted again from the audit records of every evaluation run whose checks
+removed a claim (410 drafts, the same request drafted once), with **87 removed drafts,
+76 labelled wrongly removed and 11 rightly removed**, each with its reason. The wrongly
+removed: 29 quotes joined with "…" whose fragments are all in the cited passage, 27
+digits inside names (Silic8, AD2, MPL1, ISO 9001, ISO 14001), 6 quotes word for word in
+another given passage, 5 source markers the model wrote into its claim ("[S2]"), 5
+"regs" read as Building Regulations, 4 numbers in the cited passage beside the quoted
+words, 4 quotes that differ slightly from the passage, 2 claims whose other quotes
+state them. The rightly removed: 3 "approved" where the passage says "works with" or
+"unsuitable", 2 calling a standard "the regulation", 3 statements that the passages
+lack something (one false), 1 price, 1 adding a product as recommended, 1 with numbers
+in no passage. The current checks keep 0 of the 87. The rules as they will be scored:
+(1) a quote containing "..." or "…" is found when its fragments are found in the cited
+passage in order; (2) a quote not in its cited passage is cited to the first other
+given passage that holds it; (3) a number missing from the quotes is supported when
+the token it is joined to ("Silic8", "25kg"), or when it stands alone the word before
+it and the number ("ISO 9001", "around 1"), is in the title, heading or text of a
+cited passage.
+
 ### A. Index (version 13)
 
 (1) A paragraph that is wholly bold and short is a sub-heading; a list stays in one
@@ -235,6 +255,23 @@ unchanged retrieval it reaches 109/130, 102/125, 78/140 and 72/105 parts (0.838 
 assistant does. Its files are the baseline arm, and every later arm keeps its search
 questions.
 
+**D: rules 2 and 3 kept, rule 1 not.** On `verify-dev` (76 wrongly, 11 rightly removed):
+
+| Rule | Wrongly removed restored | Rightly removed restored | Kept |
+|---|---|---|---|
+| (1) "…" fragments found in order | 26 | **2** (a claim that the passages name no products when they do; a claim adding an unlisted product as "recommended") | no |
+| (2) a quote cited to the supplied passage holding it | 6 | 0 | yes |
+| (3) a number found with its name or the word before it in a cited passage | 26 | 0 | yes |
+| (2) and (3) | **32** | **0** | yes |
+
+Rule 1 fails because the "…" joins were also where the model assembled claims its
+evidence does not state; the rule is not adopted. Rules 2 and 3 are in
+`verify.check_claim` (`locate`, `named_number`); a claim the old checks kept is kept
+unchanged (both rules only apply where a check used to fail). Not restored, and left
+for a later general fix: 5 claims carrying the model's own "[S2]" markers (the digits
+fail check 3), 5 where "regs" in the quote is Building Regulations (the regulation
+check is unchanged by design), and the "…" quotes.
+
 **B, model arm `r06`: does not qualify; the reranker stays.** Qwen3-Reranker-0.6B
 (Q8, ggml-org conversion) in place of bge-reranker-v2-m3, same index and search
 questions:
@@ -278,6 +315,19 @@ asked. Next, by the standing rule: the second tier's reader with a "no answer" o
 (trained on SQuAD 2.0, whose unanswerable questions were written to have plausible
 near-miss passages), which asks the part itself of the quotes rather than scoring
 their topic, and a further search of the literature on this stage.
+
+*Second tier, written before it is scored:* (d) the reader deepset/deberta-v3-large-squad2
+(CC-BY-4.0; SQuAD 2.0 dev: no-answer questions 90.8% exact, answerable 90.7 F1) reads
+each part of a claim's question as the question, over (d1) the claim's quotes joined by
+new lines, and (d2) the claim itself. A (part, text) pair scores the best answer span
+(start plus end logit, at most 30 tokens, inside the text) minus the no-answer score
+(the two logits at the first token), as SQuAD 2.0 systems decide; a claim scores its
+best part. Both variants are held to the same rule, with the seeds 1–20 check.
+
+*Added after (d1) and (d2) were scored (AUC 0.701 and 0.709, neither qualifies) and
+before these were:* (e) with the reader: the current reranker with (d1); with (d2);
+and the current reranker, (c) and (d1) together (the reader over quotes reads the
+incorrect claims at 0.786, the reranker the off-question ones at 0.790).
 
 **A, code (before the index is built).** As built, with two changes from the design,
 both recorded here before any index is measured:

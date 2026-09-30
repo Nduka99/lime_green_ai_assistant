@@ -3,8 +3,11 @@
 A claim is shown only if every check passes:
 
 1. it has at least one quote, and every source id names a supplied passage;
-2. every quote appears in its passage, ignoring only case and whitespace;
-3. every number in the claim, with its sign, appears in one of its quotes;
+2. every quote appears in its passage, ignoring only case and whitespace; a quote
+   the model cited to the wrong passage is cited to the supplied passage holding it;
+3. every number in the claim, with its sign, appears in one of its quotes, or, if
+   unsigned, in a cited passage's title, heading or text together with the token it
+   is part of ("Silic8", "25kg") or the word before it ("ISO 9001");
 4. every regulation the claim mentions (Building Regulations, Part L, building
    control ...) is mentioned in its quotes;
 5. it states no price, whatever it quotes (the price fence, `prices`).
@@ -155,6 +158,48 @@ def numbers(text: str) -> set[str]:
     return {n.replace("−", "-").replace("–", "-") for n in found}
 
 
+def number_units(claim: str, number: str) -> list[str]:
+    """What an unsigned number in a claim is found with in a passage: each token it is
+    part of ("Silic8", "25kg"), or, where it stands alone, the word before it and the
+    number ("ISO 9001"). A signed number has none: only its quotes can support it."""
+    if not number[0].isdigit():
+        return []
+    units = []
+    for match in re.finditer(rf"(?<![\d.]){re.escape(number)}(?!\.?\d)", claim):
+        start, end = match.span()
+        while start > 0 and claim[start - 1].isalnum():
+            start -= 1
+        while end < len(claim) and claim[end].isalnum():
+            end += 1
+        if (start, end) != match.span():
+            units.append(claim[start:end])
+            continue
+        before = re.search(r"(\w+)\W*$", claim[:start])
+        if before:
+            units.append(claim[before.start(1) : end])
+    return units
+
+
+def named_number(claim: str, number: str, passages: Sequence[Passage]) -> bool:
+    """Whether a cited passage states the number as the claim uses it (check 3):
+    digits inside names ("Silic8", "ISO 9001") are rarely in the quoted words."""
+    places = [f"{p.title}\n{p.heading}\n{p.text}" for p in passages]
+    units = number_units(claim, number)
+    return any(find_quote(unit, place) for unit in units for place in places)
+
+
+def locate(
+    quote: str, cited: Passage, sources: Mapping[str, Passage]
+) -> tuple[Passage, str] | None:
+    """The passage a quote is in and its wording there: the cited passage, else the
+    first other supplied passage holding it word for word (a wrong source id)."""
+    for passage in (cited, *sources.values()):
+        wording = find_quote(quote, passage.text)
+        if wording is not None:
+            return passage, wording
+    return None
+
+
 def regulation_terms(text: str) -> set[str]:
     """The rules and approvals the text mentions, each under one name."""
     found = {
@@ -172,15 +217,18 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
     if prices.states_price(draft.text):
         return Rejection(draft.text, "states a price")
     evidence = []
+    cited = []
     for item in draft.evidence:
         passage = sources.get(item.source_id)
         if passage is None:
             return Rejection(draft.text, f"unknown source {item.source_id}")
-        quote = find_quote(item.quote, passage.text)
-        if quote is None:
+        found = locate(item.quote, passage, sources)
+        if found is None:
             return Rejection(
                 draft.text, f"quote not in {item.source_id}: {item.quote!r}"
             )
+        passage, quote = found
+        cited.append(passage)
         evidence.append(
             Evidence(
                 passage_id=passage.id,
@@ -193,7 +241,11 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
             )
         )
     quoted = " ".join(item.quote for item in evidence)
-    missing = sorted(numbers(draft.text) - numbers(quoted))
+    missing = [
+        number
+        for number in sorted(numbers(draft.text) - numbers(quoted))
+        if not named_number(draft.text, number, cited)
+    ]
     if missing:
         return Rejection(draft.text, f"number not in its quotes: {', '.join(missing)}")
     unquoted = sorted(regulation_terms(draft.text) - regulation_terms(quoted))

@@ -291,6 +291,13 @@ def parser() -> argparse.ArgumentParser:
     supported.add_argument("items", type=Path)
     supported.add_argument("--model", type=Path, required=True, help="model folder")
     supported.add_argument("--out", type=Path, required=True)
+    read = commands.add_parser(
+        "claim-reader", help="each claim's parts asked of its text by a reader (E5)"
+    )
+    read.add_argument("items", type=Path)
+    read.add_argument("--model", type=Path, required=True, help="model folder")
+    read.add_argument("--text", choices=("quotes", "claim"), required=True)
+    read.add_argument("--out", type=Path, required=True)
     termed = commands.add_parser(
         "claim-terms",
         help="each claim scored by its quotes' share of a part's words (E5)",
@@ -1027,6 +1034,15 @@ def run_claim_support(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_claim_reader(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    reader = detectors.reader_model(args.model)
+    scores = detectors.by_reader(found, reader, args.text)
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
 def run_claim_terms(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -1654,6 +1670,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_claim_rerank(args)
         if args.command == "claim-support":
             return run_claim_support(args)
+        if args.command == "claim-reader":
+            return run_claim_reader(args)
         if args.command == "claim-terms":
             return run_claim_terms(args)
         if args.command == "claim-combine":

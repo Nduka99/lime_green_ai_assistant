@@ -177,6 +177,13 @@
     "labels.json": "d1df03a567127eef8c1569a5cfd66db8fe24aa8b93b19397d49e0866486857b8"
    }
   },
+  "verify-dev": {
+   "description": "E5 stage D: 177 answers drafted again from the audit records of every evaluation run whose checks removed a claim (410 drafts, 87 removed), each removed draft labelled by reading against the passages given: 76 wrongly removed, 11 rightly removed (labels.json, with the reason for each); development material",
+   "files": {
+    "items.json": "361fb13f03b092a323365072e34e22539d3f7bb4659d86361337be610fdb610d",
+    "labels.json": "975c73e12600f6ac176c3094fa35d12c7af0e00370c44d09c44e1baef184ddb4"
+   }
+  },
   "x8-pages": {
    "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
    "files": {

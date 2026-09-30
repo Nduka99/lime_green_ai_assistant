@@ -98,6 +98,70 @@ def test_the_support_model_reads_class_one_as_supported(
     assert predict(["one", "two"]) == [0.5, 0.5]
 
 
+def test_the_answer_margin_is_the_best_span_inside_the_text_over_no_answer() -> None:
+    start = [1.0, 0.0, 5.0, 0.0, 9.0]
+    end = [1.0, 0.0, 0.0, 4.0, 0.0]
+    inside = [False, False, True, True, False]  # the question and padding are outside
+
+    # Best span inside: tokens 2 to 3 (5 + 4); no answer scores 1 + 1.
+    assert detectors.answer_margin(start, end, inside) == 7.0
+    assert detectors.answer_margin(start, end, [False] * 5) == float("-inf")
+
+
+def test_the_reader_scores_a_claim_by_its_best_part_over_quotes_or_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(detectors, "BATCH", 1)
+    asked: list[tuple[str, str]] = []
+
+    def read(questions: list[str], texts: list[str]) -> list[float]:
+        asked.extend(zip(questions, texts, strict=True))
+        return [2.0 if "cement" in questions[0] else -3.0]
+
+    assert detectors.by_reader(ITEMS, read, "quotes") == {"a": 2.0, "b": -3.0}
+    assert asked[0] == ("does Duro contain cement", "Duro contains no cement.")
+    assert asked[2] == ("is Solo for floors", "Solo suits walls.\nDry.")
+    asked.clear()
+    detectors.by_reader(ITEMS, read, "claim")
+    assert asked[0] == ("does Duro contain cement", "Duro has no cement.")
+
+
+class Batch(dict[str, Any]):
+    def sequence_ids(self, row: int) -> list[int | None]:
+        return [None, 0, None, 1, 1, None]
+
+
+class Reader:
+    def eval(self) -> "Reader":
+        return self
+
+    def __call__(self, **batch: Any) -> Any:
+        logits = torch.tensor([[2.0, 0.0, 0.0, 3.0, 1.0, 9.0]])
+        return type("Output", (), {"start_logits": logits, "end_logits": logits})
+
+
+def test_the_reader_model_reads_spans_of_the_second_text_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def tokenizer(questions: list[str], texts: list[str], **options: Any) -> Batch:
+        assert options["truncation"] == "only_second" and options["max_length"] == 512
+        return Batch(input_ids=torch.zeros((1, 6), dtype=torch.long))
+
+    monkeypatch.setattr(
+        transformers.AutoTokenizer, "from_pretrained", lambda folder: tokenizer
+    )
+    monkeypatch.setattr(
+        transformers.AutoModelForQuestionAnswering,
+        "from_pretrained",
+        lambda folder: Reader(),
+    )
+
+    read = detectors.reader_model(Path("models/any"))
+
+    # Inside: tokens 3 and 4; best span 3 to 3 (3 + 3); no answer 2 + 2.
+    assert read(["q"], ["t"]) == [2.0]
+
+
 def test_the_command_line_scores_terms_combines_and_checks_support(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -113,6 +177,18 @@ def test_the_command_line_scores_terms_combines_and_checks_support(
     monkeypatch.setattr(
         detectors, "support_model", lambda folder: lambda t: [0.9] * len(t)
     )
+    monkeypatch.setattr(
+        detectors, "reader_model", lambda folder: lambda q, t: [1.5] * len(q)
+    )
+    read = tmp_path / "read.json"
+    assert (
+        cli.main(
+            ["claim-reader", str(items), "--model", "m", "--text", "claim"]
+            + ["--out", str(read)]
+        )
+        == 0
+    )
+    assert json.loads(read.read_text()) == {"a": 1.5, "b": 1.5}
     terms = tmp_path / "terms.json"
     support = tmp_path / "support.json"
     mixed = tmp_path / "mixed.json"
@@ -131,4 +207,4 @@ def test_the_command_line_scores_terms_combines_and_checks_support(
 
     assert json.loads(support.read_text()) == {"a": 0.9, "b": 0.9}
     assert set(json.loads(mixed.read_text())) == {"a", "b"}
-    assert capsys.readouterr().out.count("2 claims scored") == 3
+    assert capsys.readouterr().out.count("2 claims scored") == 4

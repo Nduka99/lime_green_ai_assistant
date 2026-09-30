@@ -286,5 +286,68 @@
   "sha256": "5eaba6f11f47c1d595b837d617effcbfe72b6a4adc9ce8fce58d1b59baabe4e6",
   "licence": "MIT",
   "use": "E5 sentence relevance candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/config.json",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 1060,
+  "sha256": "85a1e480375368e2390d3131a1a5954288ca9d219ba66684e052f993b3f1938d",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/added_tokens.json",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 18,
+  "sha256": "cd0141b19e809eb963a8f8244fad72530233f729e1f6960d281e1fbb3537b2fb",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/special_tokens_map.json",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 156,
+  "sha256": "fcfbeb4e25cd37fb5b8030406394253b245230fd3b552750092bab7d24d827da",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/spm.model",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 2464616,
+  "sha256": "c679fbf93643d19aab7ee10c0b99e460bdbc02fedf34b92b05af343b4af586fd",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/tokenizer.json",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 8648791,
+  "sha256": "7fb827d15550c884144bec6129b81d7ee7cc42c7181a678aa6b408c04a03d764",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/tokenizer_config.json",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 392,
+  "sha256": "f9a58c28eb46d3258770f9aa199b125934f238d1ceefff21272fc3d1e6ac0181",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
+ },
+ {
+  "file": "deberta-v3-large-squad2/model.safetensors",
+  "source": "deepset/deberta-v3-large-squad2",
+  "revision": "ff971b7ff7946434a93edc8271fa4de35eab29f7",
+  "bytes": 1736110072,
+  "sha256": "6b812abad65a88f85d211877306e139c6ce643768b3138a7d490b46f010ceab8",
+  "licence": "CC-BY-4.0",
+  "use": "E5 answer-span reader candidate (gate)"
  }
 ]

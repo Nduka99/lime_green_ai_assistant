@@ -135,13 +135,68 @@ def test_an_unknown_source_id_is_rejected() -> None:
     assert reason(result) == "unknown source S9"
 
 
-def test_a_quote_absent_from_its_passage_drops_the_claim() -> None:
+def test_a_quote_in_no_supplied_passage_drops_the_claim() -> None:
+    result = check_claim(
+        claim("Mortex is low carbon.", ("S2", "zero-carbon mix")), SOURCES
+    )
+
+    assert reason(result) == "quote not in S2: 'zero-carbon mix'"
+
+
+def test_a_quote_cited_to_the_wrong_passage_is_cited_to_the_one_holding_it() -> None:
     # The words exist, but in S1, not in the passage the model cited.
     result = check_claim(
         claim("Mortex is low carbon.", ("S2", "low-carbon mix")), SOURCES
     )
 
-    assert reason(result) == "quote not in S2: 'low-carbon mix'"
+    assert isinstance(result, Claim)
+    (evidence,) = result.evidence
+    assert evidence.passage_id == MORTAR.id and evidence.quote == "low-carbon mix"
+
+
+def test_a_number_in_a_name_is_supported_by_the_cited_passage_holding_the_name() -> (
+    None
+):
+    primer = Passage(
+        14,
+        "u",
+        "Silic8 MPL1 Primer",
+        "Silic8 MPL1 Primer",
+        "A gritted primer. Certified to ISO 9001:2015. Add 25kg to the mixer.",
+        "d",
+    )
+    sources = {"S1": primer}
+
+    names = check_claim(
+        claim("Silic8 MPL1 is gritted.", ("S1", "A gritted primer")), sources
+    )
+    standard = check_claim(
+        claim("It is ISO 9001 certified.", ("S1", "primer")), sources
+    )
+    joined = check_claim(claim("Mix 25 kg bags.", ("S1", "primer")), sources)
+    alone = check_claim(claim("Mix it into 25 bags.", ("S1", "primer")), sources)
+    other = check_claim(claim("Silic8 MPL2 is gritted.", ("S1", "primer")), sources)
+
+    assert isinstance(names, Claim)
+    assert isinstance(standard, Claim)  # "ISO 9001" is in the passage's text
+    assert reason(joined) == "number not in its quotes: 25"  # "Mix 25" is not
+    assert reason(alone) == "number not in its quotes: 25"  # "into 25" is not
+    assert reason(other) == "number not in its quotes: 2"  # MPL2 is not MPL1
+
+
+def test_a_joined_number_matches_its_token_and_decimals_stay_whole() -> None:
+    passage = Passage(
+        15, "u", "Mortar", "Mixing", "Add 25kg to 5 litres of water.", "d"
+    )
+    sources = {"S1": passage}
+
+    joined = check_claim(claim("Add 25kg to it.", ("S1", "of water")), sources)
+    decimal = check_claim(claim("Add 1.5 litres.", ("S1", "of water")), sources)
+    start = check_claim(claim("5 litres of water.", ("S1", "of water")), sources)
+
+    assert isinstance(joined, Claim)
+    assert reason(decimal) == "number not in its quotes: 1.5"
+    assert reason(start) == "number not in its quotes: 5"  # no word before it
 
 
 def test_one_bad_quote_drops_the_whole_claim() -> None:
