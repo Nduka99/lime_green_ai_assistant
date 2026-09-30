@@ -188,6 +188,43 @@ the design: the check sees the numbered parts and each verified claim with its q
 passages, returns one part number (0 for none) per claim, and its numbers replace the
 answer request's for completeness; the prompt's definition is general.
 
+**C3, the relevance check — fails as built; not kept** (`88be48d`; `s2b-c3`, 30 Sept, 0
+errors). Against C2: reach unchanged (0.816 / 0.557 / 0.686); guardrails perfect;
+expected refusals 8 → 9, 6 → 9, 15 → 15 (the target: v2 c10's three wordings lose the
+brochure's "stores 28 kg of CO₂ per m²" and are refused, as is frozen90's "guaranteed regs
+compliant"); status 88 → 89, 52 → 55, **68 → 65** (v3 falls by more than `N_s`: v3q006
+and v3q056 lose on-topic claims to the check, v3q010 loses its claims to verification).
+Every claim it removed, read (`data/runs/<set>/removed-s2b-c3-read.json`): **64 removed,
+20 rightly, 44 wrongly** (frozen90 6/13, v2 12/21, v3 2/10), e.g. "Ultra is five to ten
+times thermally more efficient" removed from "how much better thermally", "Lime Green does
+not sell any products online" from "can I buy online", a 25-year warranty from a question
+asking the warranty years; and inconsistent (the 28 kg claim kept in a fourth wording).
+
+*Diagnosis* (v3q056's check reproduced exactly, then sent with log-probabilities): the
+model's own first choice was to write prose before the JSON ("0" 0.58, "The" 0.34); where
+the schema forced the key `parts`, it wanted "answer", "analysis" or "reason"; the label
+was a near-tie (0 at 0.58, 1 at 0.38) that greedy decoding took as 0. The check had no room
+to reason before a bare number, beside claims numbered like the parts. Practitioner and
+research guidance agree that a judge's rationale before its label improves accuracy
+(Wolfe, "Using LLMs for Evaluation"; G-Eval), as this system's own answer request writes
+quotes before claims.
+
+*Also found (not C3's):* verification's number rule reads the digit in a product name as a
+number ("Silic8 Silguard …": "number not in its quotes: 8"). A general fix to that rule is
+a later rung of its own, not part of this ladder.
+
+**C3′, fixed generally (design and rule written before its code and run).** The check's
+reply gives, per claim in order, first `answers` — the part the claim answers, in that
+part's words, or "none" — then `part` (0 for none). Claims are lettered (A, B, …) so they
+cannot be read as part numbers. The definition, still general: a claim answers a part when
+it gives what that part asks, or says it is absent or not the case; a statement about
+something the part does not ask — another quantity, unit, property or product — answers no
+part, even when it is true and about the same subject. Everything else as C3. **C3′ stays**
+if, against C2, the ladder rule holds (guardrails perfect, reach not lower, status within
+`N_s`), expected refusals refused rise on at least one set and fall on none, and at most
+one in five of its removals is read as wrongly removed (every removal read as for C3).
+Otherwise the relevance check is dropped and the ladder ends at C2.
+
 ## D. Gate run (fixed now)
 
 Arms, in one session on the running servers: `live` (version 4, code at
