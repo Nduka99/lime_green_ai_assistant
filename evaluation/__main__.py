@@ -64,6 +64,7 @@ from evaluation import (
     pairs,
     parsing,
     reach,
+    relevance,
     retrieval,
     sets,
     support,
@@ -325,6 +326,18 @@ def parser() -> argparse.ArgumentParser:
     diagnosed.add_argument("requests", type=Path)
     diagnosed.add_argument("kept", type=Path)
     diagnosed.add_argument("step", type=Path)
+    benched = commands.add_parser(
+        "relevance-items", help="a relevance benchmark from answer runs"
+    )
+    benched.add_argument("runs", type=Path, nargs="+", help="answers files from `ask`")
+    benched.add_argument("--out", type=Path, required=True)
+    checked = commands.add_parser("relevance-check", help="one candidate on it")
+    checked.add_argument("items", type=Path)
+    checked.add_argument("--candidate", choices=relevance.CANDIDATES, required=True)
+    checked.add_argument("--out", type=Path, required=True)
+    scored_relevance = commands.add_parser("relevance-score", help="against labels")
+    scored_relevance.add_argument("labels", type=Path)
+    scored_relevance.add_argument("results", type=Path)
     exposed = commands.add_parser(
         "exposure", help="the first request on an exposure set (C2's safety bar)"
     )
@@ -1120,6 +1133,30 @@ def run_support_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_relevance_items(args: argparse.Namespace) -> int:
+    records = [record for run in args.runs for record in grades.read_json(run)]
+    found = relevance.items(records, lambda q: answer.understand(q, llm.chat)[1])
+    write_json(args.out, found)
+    claims = sum(len(item["claims"]) for item in found)
+    print(f"{len(found)} answers, {claims} claims in {args.out}")
+    return 0
+
+
+def run_relevance_check(args: argparse.Namespace) -> int:
+    results = relevance.check(args.candidate, grades.read_json(args.items))
+    write_json(args.out, results)
+    print(f"{len(results)} items checked by {args.candidate} in {args.out}")
+    return 0
+
+
+def run_relevance_score(args: argparse.Namespace) -> int:
+    result = relevance.score(
+        grades.read_json(args.labels), grades.read_json(args.results)
+    )
+    print(json.dumps(result, indent=1))
+    return 0
+
+
 def run_exposure(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")
@@ -1255,6 +1292,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_generator_diagnose(args)
         if args.command == "removed":
             return run_removed(args)
+        if args.command == "relevance-items":
+            return run_relevance_items(args)
+        if args.command == "relevance-check":
+            return run_relevance_check(args)
+        if args.command == "relevance-score":
+            return run_relevance_score(args)
         if args.command == "exposure":
             return run_exposure(args)
         if args.command == "generator-outcomes":

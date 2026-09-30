@@ -63,6 +63,19 @@ def median(values: Sequence[float]) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
+def auc(pairs: Sequence[tuple[float, bool]]) -> float:
+    """ROC AUC of (score, positive) pairs: the chance a positive scores above a
+    negative, ties counting half (Mann-Whitney)."""
+    positives = [score for score, positive in pairs if positive]
+    negatives = [score for score, positive in pairs if not positive]
+    if not positives or not negatives:
+        return 0.0
+    wins = sum(
+        1.0 if p > n else 0.5 if p == n else 0.0 for p in positives for n in negatives
+    )
+    return wins / (len(positives) * len(negatives))
+
+
 def bootstrap_interval(
     values: Sequence[float], rounds: int = 10000, seed: int = 42
 ) -> tuple[float, float]:
