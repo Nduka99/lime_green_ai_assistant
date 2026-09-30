@@ -137,6 +137,16 @@ def test_embed_returns_vectors_in_input_order(monkeypatch: pytest.MonkeyPatch) -
     assert llm.embed(["first", "second"]) == [[1.0, 0.0], [0.0, 1.0]]
 
 
+def test_a_longer_vector_is_cut_to_the_index_size_and_made_unit_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "EMBEDDING_DIMENSIONS", 2)
+
+    assert llm.fitted([3.0, 4.0, 12.0]) == [0.6, 0.8]
+    assert llm.fitted([0.0, 0.0, 1.0]) == [0.0, 0.0]  # nothing to scale
+    assert llm.fitted([0.6, 0.8]) == [0.6, 0.8]  # already the index's size
+
+
 def test_rerank_sends_the_query_and_documents_and_returns_scores_in_input_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

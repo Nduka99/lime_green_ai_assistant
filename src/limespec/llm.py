@@ -69,7 +69,18 @@ def embed(texts: list[str], url: str = "") -> list[list[float]]:
             "the embedding server returned a malformed response"
         ) from error
     # Match by index, never response order, so vectors stay attached to their text.
-    return [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
+    ordered = [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
+    return [fitted(vector) for vector in ordered]
+
+
+def fitted(vector: list[float]) -> list[float]:
+    """The vector at the index's size: a longer one cut to its first
+    `EMBEDDING_DIMENSIONS` values and scaled back to unit length."""
+    if len(vector) <= config.EMBEDDING_DIMENSIONS:
+        return vector
+    cut = vector[: config.EMBEDDING_DIMENSIONS]
+    length = math.sqrt(sum(value * value for value in cut)) or 1.0
+    return [value / length for value in cut]
 
 
 def rerank(query: str, documents: list[str], url: str = "") -> list[float]:

@@ -76,6 +76,7 @@ from evaluation import (
     retrieval,
     sets,
     support,
+    versions,
 )
 from limespec import acquire, answer, assistant, config, ingest, llm, pdf, store, tables
 from limespec.models import Passage, described
@@ -266,6 +267,12 @@ def parser() -> argparse.ArgumentParser:
         "--parts", type=Path, help="an earlier replay, whose search questions are kept"
     )
     replayed_searches.add_argument("--out", type=Path, required=True)
+    again = commands.add_parser(
+        "embed-again", help="an index version copied with another embedder (E5)"
+    )
+    again.add_argument("--version", type=int, required=True, help="index version")
+    again.add_argument("--url", required=True, help="the other embedding server")
+    again.add_argument("--model", required=True, help="its model, as recorded")
     claimed = commands.add_parser(
         "claim-items", help="the labelled claims of graded sittings, as gate items (E5)"
     )
@@ -1000,6 +1007,15 @@ def run_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_embed_again(args: argparse.Namespace) -> int:
+    with assistant.connect() as conn:
+        version = versions.embedded_again(
+            conn, args.version, lambda texts: llm.embed(texts, args.url), args.model
+        )
+    print(f"version {args.version} embedded again by {args.model}: version {version}")
+    return 0
+
+
 def run_claim_items(args: argparse.Namespace) -> int:
     found: list[claims.Item] = []
     for name, sitting, replayed in args.sittings:
@@ -1664,6 +1680,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_replay(args)
         if args.command == "drafts":
             return run_drafts(args)
+        if args.command == "embed-again":
+            return run_embed_again(args)
         if args.command == "claim-items":
             return run_claim_items(args)
         if args.command == "claim-rerank":

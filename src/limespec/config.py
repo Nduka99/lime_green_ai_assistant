@@ -33,6 +33,9 @@ REQUEST_RETRIES = 2
 EMBEDDING_URL = "http://127.0.0.1:8081/v1/embeddings"
 EMBEDDING_MODEL = "Qwen3-Embedding-0.6B-f16.gguf"
 EMBEDDING_BATCH_SIZE = 16
+# The index column's size. A model trained for shorter vectors (Qwen3-Embedding's
+# Matryoshka training) gives longer ones that are cut to this size and normalised.
+EMBEDDING_DIMENSIONS = 1024
 # Qwen3-Embedding expects an instruction before a query and nothing before a passage.
 QUERY_INSTRUCTION = (
     "Instruct: Given a question about Lime Green building products, "
