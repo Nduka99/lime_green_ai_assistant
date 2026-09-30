@@ -296,16 +296,21 @@ def interleave(
     return tuple(taken[:limit])
 
 
+def gather(parts: Sequence[str], retrieve: Retrieve) -> tuple[Passage, ...]:
+    """The passages the answer request is given for a question's parts. One part:
+    its own search. Several: the parts together, then each alone, interleaved."""
+    searches = list(parts) if len(parts) == 1 else [" ".join(parts), *parts]
+    limit = config.TOP_K if len(parts) == 1 else config.MAX_PASSAGES
+    return interleave([retrieve(query) for query in searches], limit)
+
+
 def answer(question: str, retrieve: Retrieve, chat: Chat) -> Answer:
     """Answer one question from the indexed pages."""
     exposed, parts = understand(question, chat)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
         return Answer(question, "safety_referral", SAFETY_REFERRAL, (), (), ())
-    # One part: its own search. Several: the parts together, then each alone.
-    searches = parts if len(parts) == 1 else [" ".join(parts), *parts]
-    limit = config.TOP_K if len(parts) == 1 else config.MAX_PASSAGES
-    passages = interleave([retrieve(query) for query in searches], limit)
+    passages = gather(parts, retrieve)
     sources = {f"S{number}": passage for number, passage in enumerate(passages, 1)}
     output = chat(
         ANSWER_PROMPT,

@@ -62,6 +62,19 @@ def with_stages(
     return staged_retrieve, staged_chat
 
 
+def retriever(conn: store.Connection, version_id: int) -> Retrieve:
+    """One search of an index version with the configured model servers. It returns
+    its whole reranked pool; `answer.gather` takes the top 8, or interleaves several
+    searches up to 12 (S2b C2). The evaluation replay uses the same function."""
+
+    def retrieve(query: str) -> list[Passage]:
+        return store.search(
+            conn, version_id, query, llm.embed, llm.rerank, config.RERANK_CANDIDATES
+        )
+
+    return retrieve
+
+
 def ask_and_record(
     question: str, on_stage: Callable[[str], None] = no_stage
 ) -> tuple[Answer, int]:
@@ -70,20 +83,7 @@ def ask_and_record(
     with telemetry.span("answer"), connect() as conn:
         version_id = served_index(conn)
         started = time.perf_counter()
-        retrieve, chat = with_stages(
-            # Each search returns its whole reranked pool; `answer` takes the top
-            # 8, or interleaves several searches up to 12 (S2b C2).
-            lambda query: store.search(
-                conn,
-                version_id,
-                query,
-                llm.embed,
-                llm.rerank,
-                config.RERANK_CANDIDATES,
-            ),
-            llm.chat,
-            on_stage,
-        )
+        retrieve, chat = with_stages(retriever(conn, version_id), llm.chat, on_stage)
         result = answer(question, retrieve, chat)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]

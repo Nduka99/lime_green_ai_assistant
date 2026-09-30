@@ -22,6 +22,8 @@
     uv run python -m evaluation select-form table=FILE rows=FILE both=FILE page=FILE
     uv run --env-file .env python -m evaluation coverage conv-v1 --version N  # X36
     uv run --env-file .env python -m evaluation reach SET RUN.json  # evidence given
+    uv run --env-file .env python -m evaluation replay SET --version N --out FILE \
+        [--parts EARLIER.json]        # searches only, scored by reach (E5)
     uv run python -m evaluation unblind SET FIRST.json SECOND.json --dir DIR
     uv run --env-file .env python -m evaluation replay-requests RUN.json ... --out F
     uv run --env-file .env python -m evaluation generator-pass URL REQUESTS.json \
@@ -67,6 +69,7 @@ from evaluation import (
     reach,
     relevance,
     reliability,
+    replay,
     retrieval,
     sets,
     support,
@@ -251,6 +254,15 @@ def parser() -> argparse.ArgumentParser:
     reached = commands.add_parser(
         "reach", help="did the passages each answer's model was given hold the evidence"
     )
+    replayed_searches = commands.add_parser(
+        "replay", help="the first request and the searches, scored by reach (E5)"
+    )
+    replayed_searches.add_argument("name")
+    replayed_searches.add_argument("--version", type=int, required=True)
+    replayed_searches.add_argument(
+        "--parts", type=Path, help="an earlier replay, whose search questions are kept"
+    )
+    replayed_searches.add_argument("--out", type=Path, required=True)
     dropped = commands.add_parser(
         "removed", help="every claim a run's checks removed, for reading (C3)"
     )
@@ -902,6 +914,29 @@ def run_reach(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_replay(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    parts = grades.read_json(args.parts)["parts"] if args.parts else None
+    with assistant.connect() as conn:
+        written, given = replay.replay(
+            key,
+            questions,
+            lambda question: answer.understand(question, llm.chat),
+            assistant.retriever(conn, args.version),
+            parts,
+        )
+        texts = store.searchable_texts(conn, args.version)
+    rows = reach.score(key, questions, given, texts)
+    found = reach.summary(rows)
+    passages = {qid: [p.id for p in shown] for qid, shown in given.items()}
+    saved = {"summary": found, "rows": rows, "parts": written, "passages": passages}
+    write_json(args.out, saved)
+    print(reach.text(found))
+    return 0
+
+
 def run_select_form(args: argparse.Namespace) -> int:
     arms = {}
     for run in args.runs:
@@ -1451,6 +1486,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_coverage(args)
         if args.command == "reach":
             return run_reach(args)
+        if args.command == "replay":
+            return run_replay(args)
         if args.command == "page-candidates":
             return run_page_candidates(args)
         if args.command == "blind":
