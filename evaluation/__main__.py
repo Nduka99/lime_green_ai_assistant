@@ -53,6 +53,7 @@ import httpx
 from pypdf import PdfReader
 
 from evaluation import (
+    abstainer,
     ask,
     candidates,
     cases,
@@ -322,6 +323,16 @@ def parser() -> argparse.ArgumentParser:
     read.add_argument("--model", type=Path, required=True, help="model folder")
     read.add_argument("--text", choices=("quotes", "claim"), required=True)
     read.add_argument("--out", type=Path, required=True)
+    abstained = commands.add_parser(
+        "claim-answerable",
+        help="each claim's parts judged answerable from its sources (E8 specialist)",
+    )
+    abstained.add_argument("items", type=Path)
+    abstained.add_argument("--url", required=True, help="the answerability server")
+    where = abstained.add_mutually_exclusive_group(required=True)
+    where.add_argument("--sources", type=Path, help="a slot-extract file's sources")
+    where.add_argument("--version", type=int, help="index version (whole passages)")
+    abstained.add_argument("--out", type=Path, required=True)
     slotted = commands.add_parser(
         "slot-extract", help="the slots claims' parts ask and their sources state (E7)"
     )
@@ -1136,6 +1147,19 @@ def run_claim_reader(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_claim_answerable(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    if args.sources:
+        texts = abstainer.quoted(grades.read_json(args.sources)["sources"])
+    else:
+        with assistant.connect() as conn:
+            texts = abstainer.whole(found, case_passages(conn, found))
+    scores = abstainer.by_parts(found, texts, graders.post_to(args.url))
+    write_json(args.out, scores)
+    print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
 def run_slot_extract(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     blinded = {
@@ -1864,6 +1888,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_claim_support(args)
         if args.command == "claim-reader":
             return run_claim_reader(args)
+        if args.command == "claim-answerable":
+            return run_claim_answerable(args)
         if args.command == "slot-extract":
             return run_slot_extract(args)
         if args.command == "slot-compare":
