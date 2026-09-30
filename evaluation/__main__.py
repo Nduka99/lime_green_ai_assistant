@@ -66,6 +66,7 @@ from evaluation import (
     guardrails,
     keys,
     lookups,
+    nearmiss,
     pages,
     pairs,
     parsing,
@@ -329,9 +330,9 @@ def parser() -> argparse.ArgumentParser:
         dest="sittings",
         nargs=2,
         action="append",
-        required=True,
+        default=[],
         metavar=("NAME", "SITTING"),
-        help="a set and its graded sitting folder (for the claims' sources)",
+        help="a set and its graded sitting folder (claims' sources, unless in items)",
     )
     slotted.add_argument("--out", type=Path, required=True)
     compared = commands.add_parser(
@@ -344,6 +345,27 @@ def parser() -> argparse.ArgumentParser:
     )
     compared.add_argument("--version", type=int, help="index version (product names)")
     compared.add_argument("--out", type=Path, required=True)
+    near_written = commands.add_parser(
+        "nearmiss-write", help="near-miss questions written from passages (E7 S3)"
+    )
+    near_written.add_argument("--version", type=int, required=True)
+    near_written.add_argument("--count", type=int, required=True, help="passages")
+    near_written.add_argument("--seed", type=int, required=True)
+    near_written.add_argument("--out", type=Path, required=True)
+    near_checked = commands.add_parser(
+        "nearmiss-check", help="keep the questions a second model agrees with (E7 S3)"
+    )
+    near_checked.add_argument("items", type=Path)
+    near_checked.add_argument("--version", type=int, required=True)
+    near_checked.add_argument("--url", required=True, help="the second model's server")
+    near_checked.add_argument("--out", type=Path, required=True)
+    near_answered = commands.add_parser(
+        "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
+    )
+    near_answered.add_argument("items", type=Path)
+    near_answered.add_argument("--version", type=int, required=True)
+    near_answered.add_argument("--url", required=True, help="the generator's server")
+    near_answered.add_argument("--out", type=Path, required=True)
     joined_slots = commands.add_parser(
         "slot-gate", help="the product check before a phrase score (E7 comparator d)"
     )
@@ -1111,7 +1133,10 @@ def run_slot_extract(args: argparse.Namespace) -> int:
         name: grades.read_json(Path(sitting) / "pairs.json")
         for name, sitting in args.sittings
     }
-    sources = slotbench.claim_sources(found, blinded)
+    if blinded:
+        sources = slotbench.claim_sources(found, blinded)
+    else:
+        sources = {item["id"]: [tuple(s) for s in item["sources"]] for item in found}
     extracted = slotbench.extract(found, sources, llm.chat)
     write_json(args.out, {"sources": sources, **extracted})
     asked, stated = len(extracted["asked"]), len(extracted["stated"])
@@ -1136,6 +1161,43 @@ def run_slot_compare(args: argparse.Namespace) -> int:
         scores = slotbench.by_pairs(found, sources, read, pair_score)
     write_json(args.out, scores)
     print(f"{len(scores)} claims scored in {args.out}")
+    return 0
+
+
+def case_passages(conn: store.Connection, found: list[Any]) -> dict[str, Passage]:
+    """The passage behind each near-miss case ("p<passage id>")."""
+    ids = sorted({int(item["case"][1:]) for item in found})
+    return {f"p{p.id}": p for p in store.load_passages(conn, ids)}
+
+
+def run_nearmiss_write(args: argparse.Namespace) -> int:
+    with assistant.connect() as conn:
+        chosen = nearmiss.sample(
+            store.searchable_passages(conn, args.version), args.count, args.seed
+        )
+    found = [item for passage in chosen for item in nearmiss.written(passage, llm.chat)]
+    write_json(args.out, found)
+    print(f"{len(found)} questions from {len(chosen)} passages in {args.out}")
+    return 0
+
+
+def run_nearmiss_check(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    with assistant.connect() as conn:
+        passages = case_passages(conn, found)
+    kept = nearmiss.checked(found, passages, graders.post_to(args.url))
+    write_json(args.out, kept)
+    print(f"{len(kept)} of {len(found)} questions kept in {args.out}")
+    return 0
+
+
+def run_nearmiss_answer(args: argparse.Namespace) -> int:
+    found = grades.read_json(args.items)
+    with assistant.connect() as conn:
+        passages = case_passages(conn, found)
+    shown = nearmiss.shown_claims(found, passages, graders.post_to(args.url))
+    write_json(args.out, shown)
+    print(f"{len(shown)} questions answered in {args.out}")
     return 0
 
 
@@ -1783,6 +1845,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_slot_extract(args)
         if args.command == "slot-compare":
             return run_slot_compare(args)
+        if args.command == "nearmiss-write":
+            return run_nearmiss_write(args)
+        if args.command == "nearmiss-check":
+            return run_nearmiss_check(args)
+        if args.command == "nearmiss-answer":
+            return run_nearmiss_answer(args)
         if args.command == "slot-gate":
             return run_slot_gate(args)
         if args.command == "claim-terms":

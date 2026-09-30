@@ -200,3 +200,12 @@ def test_the_command_line_extracts_compares_and_gates(
         "demo/q1/A2": 0.0,
     }
     assert json.loads(gated.read_text()) == {"demo/q1/A1": 0.5, "demo/q1/A2": -0.5}
+    # Items that carry their sources (the near-miss set) need no sitting.
+    carried = tmp_path / "carried.json"
+    sources = [["Solo — Data", "Drying", "Dries in 2 days."]]
+    carried.write_text(json.dumps([ITEMS[0] | {"sources": sources}]))
+    again = tmp_path / "again.json"
+    assert cli.main(["slot-extract", "--items", str(carried),
+                     "--out", str(again)]) == 0  # fmt: skip
+    saved = json.loads(again.read_text(encoding="utf-8"))
+    assert saved["sources"] == {"demo/q1/A1": sources}

@@ -80,6 +80,26 @@ fourth 0.07 (its quote had no document title, which real sources carry). The pro
 are then frozen at the commit that precedes the run. The five claims seen stay in the
 benchmark; they are 5 of 856.
 
+## S3: an in-domain near-miss set, labelled by construction (written before it is built)
+
+Evaluation data, never training data. From index version 17: 300 passages drawn with seed
+71, stratified by document kind (product page, data sheet, safety data sheet, guide or
+article; compiled product lists and passages under 200 characters left out). For each
+passage the generator writes, in one request that sees only the passage and its title:
+- two **answerable** questions, each with the quote (word for word) that answers it;
+- two **near-miss** questions about the same subject and topic that the passage does
+  not answer, each with the quote a careless reader would take as the answer (as SQuAD
+  2.0's unanswerable questions were written against their paragraphs).
+Quotes must be found in the passage by `verify.find_quote`, else the question is
+dropped. Gemma 4 26B then reads each question with its passage alone and says whether
+the passage answers it; a question is kept only when Gemma agrees with its label. The
+kept set is registered as `nearmiss-dev` before any use, and v5's key is never read or
+used. It serves: (i) the gate's calibration at a scale `claims-dev` lacks; (ii) a second
+test of S1's comparator on questions it was not chosen on: the rule's shares, read as
+answerable (question, answering quote) kept and near-miss (question, tempting quote)
+caught; (iii) S4's substitution rate: the answer request run on each near-miss question
+with its passage, a claim for it counting as a substitution.
+
 ## Results
 
 *(added after each run)*
