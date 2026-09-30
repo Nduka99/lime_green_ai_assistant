@@ -3,7 +3,8 @@
   "claims-dev": {
    "description": "E5 stage C: the 856 distinct claims shown in the S2b gate run's answers on heldout-v4, frozen90, heldout-v2 and heldout-v3, each with its question, search parts, quotes and claim-audit label (755 correct, 82 off the question, 8 incorrect, 11 forbidden); development material, not held out",
    "files": {
-    "items.json": "03b28cfb59eccf868610c6447f28ba05ed999f97313219230abd1ceda78fa570"
+    "items.json": "03b28cfb59eccf868610c6447f28ba05ed999f97313219230abd1ceda78fa570",
+    "slots.json": "e8d432f01ecb72b023d9f3a5ab430916164403a0337791f7f46556612ca5cdd4"
    }
   },
   "conv-v1": {

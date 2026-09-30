@@ -102,4 +102,24 @@ with its passage, a claim for it counting as a substitution.
 
 ## Results
 
-*(added after each run)*
+**S1 extraction** (`78e0d29`; 30 September, 2,046 s on the generator alone): 379
+distinct parts and 572 distinct sources read; saved as `claims-dev/slots.json` and
+registered before any comparator was scored.
+
+**S1, comparators (a) and (b): neither qualifies.**
+
+| Comparator | AUC | Correct withheld (seed 5) | Not correct caught | Qualifies (seeds 1–20) |
+|---|---|---|---|---|
+| (a) product check | 0.547 | 0 of 370 | 0 of 30 | no (0) |
+| (b) reranker on slot phrases | 0.680 | 27 of 370 | 3 of 30 | no (0) |
+| (a) then (b) | 0.680 | 0 of 370 | 0 of 30 | no (0) |
+
+The product check fails 71 of 755 correct claims and only 19 of the 101 not correct:
+correct answers often cite articles and system pages that name the product without
+belonging to it, so a product's scope is too blunt a rule (its binary score also gives
+the conformal threshold nothing to cut between). The reranker reads short slot phrases
+no better than whole texts (0.680 against 0.717). Read while the judge ran (its prompts
+and code frozen): the extracted slots do expose the mismatches in words ("year new
+production plant was built" against "plant: opening date"; "iso 9001 certificate:
+scope" against "the business: ISO certification"; "Mesh Coat: incompatible materials"
+against "Meshcoat: mixing instructions"), which is what the judge is asked to read.
