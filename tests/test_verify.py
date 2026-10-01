@@ -2,7 +2,7 @@
 
 from limespec import lists, prices
 from limespec.models import Claim, DraftClaim, DraftEvidence, Passage, Rejection
-from limespec.verify import check_claim, find_quote, quote_link, verify
+from limespec.verify import check_claim, find_quote, quote_link, source_link, verify
 
 MORTAR = Passage(
     11,
@@ -133,6 +133,18 @@ def test_a_quote_from_a_pdf_links_to_its_page() -> None:
     assert quote_link("https://example.test/a.pdf", "lime", 3) == (
         "https://example.test/a.pdf#page=3"
     )
+
+
+def test_a_picture_opens_its_page_where_it_is_shown_with_no_text_fragment() -> None:
+    page = Passage(
+        1, "https://example.test/duro", "Duro", "Image", "HIT", "", image="p"
+    )
+    figure = Passage(
+        2, "https://example.test/a b.pdf", "A", "Image", "", "", 4, image="q"
+    )
+
+    assert source_link(page, "HIT") == "https://example.test/duro"
+    assert source_link(figure, "") == "https://example.test/a%20b.pdf#page=4"
 
 
 def test_an_address_with_spaces_is_percent_encoded_once() -> None:

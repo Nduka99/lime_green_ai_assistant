@@ -170,11 +170,16 @@ def quote_link(url: str, quote: str, page: int | None = None) -> str:
 
 def source_link(passage: Passage, quote: str) -> str:
     """Where a citation opens: the quote highlighted on its page, except for a compiled
-    product list, whose sentence is not on the page, so the page opens as it is."""
+    product list, whose sentence is not on the page, so the page opens as it is, and
+    a picture, whose words (alt text, text read in it) are not the page's text, so its
+    page opens where it is shown (X44 G6)."""
     if passage.heading == lists.HEADING:
         return passage.url
     if urlsplit(passage.url).path.lower().endswith(".docx"):
         return encoded(passage.url)  # a Word file has no pages and no text fragments
+    if passage.image:
+        page = f"#page={passage.page}" if passage.page is not None else ""
+        return encoded(passage.url) + page
     return quote_link(passage.url, quote, passage.page)
 
 
