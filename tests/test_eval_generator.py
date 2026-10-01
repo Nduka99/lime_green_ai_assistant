@@ -107,6 +107,22 @@ def test_a_request_is_sent_with_the_assistant_s_body_and_its_timings_kept(
     assert plain["timings"] == {} and plain["finish"] == "length"
 
 
+def test_a_request_s_pictures_are_read_from_their_files(tmp_path: Path) -> None:
+    (tmp_path / "a.png").write_bytes(b"x")
+    sent: list[dict[str, Any]] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.append(kwargs["json"])
+        return chat_response("{}")
+
+    request = {"id": "r1", "system": "s", "user": "u", "schema": {},
+               "images": [str(tmp_path / "a.png")]}  # fmt: skip
+    generator.send(URL, request, False, post)
+
+    picture = sent[0]["messages"][1]["content"][1]
+    assert picture["image_url"]["url"] == "data:image/png;base64,eA=="
+
+
 def test_gpu_memory_is_read_from_nvidia_smi(monkeypatch: pytest.MonkeyPatch) -> None:
     def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         assert command[0] == "nvidia-smi"

@@ -46,6 +46,16 @@ def test_chat_sends_the_fixed_request_and_returns_parsed_json(
     assert "model" not in payload
 
 
+def test_pictures_follow_the_user_s_text_as_png_addresses() -> None:
+    payload = llm.chat_payload("s", "user text", SCHEMA, [b"\x89PNG", b"x"])
+
+    assert payload["messages"][1]["content"] == [
+        {"type": "text", "text": "user text"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw=="}},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,eA=="}},
+    ]
+
+
 @pytest.mark.parametrize("content", ['{"claims": [{"evid', '{"claims": []}'])
 def test_a_cut_off_reply_is_a_clear_error_even_if_it_is_valid_json(
     monkeypatch: pytest.MonkeyPatch, content: str

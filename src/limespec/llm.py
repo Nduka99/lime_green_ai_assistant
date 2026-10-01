@@ -1,7 +1,9 @@
 """A small client for the llama.cpp servers' OpenAI-compatible API."""
 
+import base64
 import json
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -124,16 +126,25 @@ def rerank(query: str, documents: list[str], url: str = "") -> list[float]:
     return [score for _, score in sorted(zip(indices, scores, strict=True))]
 
 
-def chat_payload(system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]:
-    """The body of one chat request whose reply must follow `schema`.
+def chat_payload(
+    system: str, user: str, schema: dict[str, Any], images: Sequence[bytes] = ()
+) -> dict[str, Any]:
+    """The body of one chat request whose reply must follow `schema`, with any
+    `images` (PNG bytes) after the user's text, in order (X43 B4).
 
     The request names no model: the server answers with whichever GGUF it has
     loaded, which lets the same client work with any model.
     """
+    content: str | list[dict[str, Any]] = user
+    if images:
+        content = [{"type": "text", "text": user}]
+        for png in images:
+            address = "data:image/png;base64," + base64.b64encode(png).decode()
+            content.append({"type": "image_url", "image_url": {"url": address}})
     return {
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user", "content": content},
         ],
         "temperature": config.TEMPERATURE,
         "seed": config.SEED,

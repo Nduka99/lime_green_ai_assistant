@@ -147,3 +147,43 @@ def test_the_command_line_embeds_pictures_and_scores_each_arm(
     assert "Success@8 1.000" in capsys.readouterr().out
     assert fused == ([[[5, 6]]] if arm == "pool" else [None])  # one ranking more
     assert json.loads(out.read_text())["arm"] == f"T+S {arm}"
+
+
+def test_the_serving_check_replays_text_then_asks_with_pictures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    images = tmp_path / "images"
+    images.mkdir()
+    places = [
+        {"id": "a", "source": "https://x.test/a", "alt": ""},
+        {"id": "a", "source": "https://x.test/b", "alt": "A wall in lime render"},
+        {"id": "b", "source": "https://x.test/c", "alt": "Duro bags"},
+    ]
+    (images / "places.json").write_text(json.dumps(places), encoding="utf-8")
+    monkeypatch.setattr(config, "IMAGES", images)
+    monkeypatch.setattr(visual, "PER_REQUEST", 2)
+    folder = tmp_path / "eval" / "image-facts"
+    folder.mkdir(parents=True)
+    items = [{"id": "q1", "question": "Show me a wall", "picture": "a"},
+             {"id": "q2", "question": "Show me Duro", "picture": "b"}]  # fmt: skip
+    (folder / "questions.json").write_text(json.dumps({"questions": items}))
+    registry = tmp_path / "sets.json"
+    sets.register("image-facts", "", tmp_path / "eval", registry)
+    replay = {
+        "warm_up": [{"id": "w"}],
+        "requests": [{"id": f"r{n}"} for n in range(12)],
+    }
+    (tmp_path / "replay.json").write_text(json.dumps(replay))
+    out = tmp_path / "requests.json"
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+
+    command = ["image-requests", "--replay", str(tmp_path / "replay.json")]
+    assert cli.main([*common, *command, "--out", str(out)]) == 0
+
+    found = json.loads(out.read_text())
+    assert found["warm_up"] == [{"id": "w"}]
+    assert [r["id"] for r in found["requests"]][9:] == ["r9", "image-q1", "image-q2"]
+    second = found["requests"][-1]
+    assert [Path(p).name for p in second["images"]] == ["b.png", "a.png"]
+    assert "Duro bags" in second["user"] and "A wall in lime render" in second["user"]
+    assert "12 requests, 4 images" in capsys.readouterr().out

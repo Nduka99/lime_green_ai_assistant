@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -44,7 +45,8 @@ MAX_EVIDENCE = 4  # so that 8 passages keep at least half distractors
 DEPTH = 100  # candidates per search method and reranked, for distractors
 BUDGET_MARGIN = -0.10  # the lowest acceptable loss against 8 passages (M3's rule)
 
-Request = dict[str, Any]  # id, system, user, schema; optionally max_tokens and data
+# id, system, user, schema; optionally max_tokens, data, and images (PNG file paths)
+Request = dict[str, Any]
 Reply = dict[str, Any]
 Post = Callable[..., httpx.Response]
 Sample = Callable[[], dict[str, float]]
@@ -86,7 +88,10 @@ def send(
     `cache_prompt` false makes the server process the whole prompt, so timings are
     comparable and a reply does not depend on the request before it.
     """
-    payload = llm.chat_payload(request["system"], request["user"], request["schema"])
+    images = [Path(path).read_bytes() for path in request.get("images", [])]
+    payload = llm.chat_payload(
+        request["system"], request["user"], request["schema"], images
+    )
     payload["cache_prompt"] = cache_prompt
     if "max_tokens" in request:
         payload["max_tokens"] = request["max_tokens"]

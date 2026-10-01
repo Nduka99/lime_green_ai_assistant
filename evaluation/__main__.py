@@ -493,6 +493,11 @@ def parser() -> argparse.ArgumentParser:
     )
     picture_embedded.add_argument("--out", type=Path, required=True)
     picture_embedded.add_argument("--model", type=Path, default=visual.SIGLIP)
+    served_pictures = commands.add_parser(
+        "image-requests", help="the serving check's requests, with images (X43 B4)"
+    )
+    served_pictures.add_argument("--replay", type=Path, required=True, help="X39's")
+    served_pictures.add_argument("--out", type=Path, required=True)
     web_linked = commands.add_parser(
         "web-links", help="the link of every passage of a version checked (X42 W4)"
     )
@@ -1679,6 +1684,18 @@ def run_image_vectors(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_image_requests(args: argparse.Namespace) -> int:
+    folder = sets.require("image-facts", args.root, args.registry)
+    items = grades.read_json(folder / "questions.json")["questions"]
+    places = grades.read_json(config.IMAGES / "places.json")
+    replay = grades.read_json(args.replay)
+    found = visual.serving_requests(replay, items, places, config.IMAGES)
+    write_json(args.out, found)
+    images = sum(len(request.get("images", [])) for request in found["requests"])
+    print(f"{len(found['requests'])} requests, {images} images, in {args.out}")
+    return 0
+
+
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
     for path in args.arms:
@@ -2382,6 +2399,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_image_retrieval(args)
         if args.command == "image-vectors":
             return run_image_vectors(args)
+        if args.command == "image-requests":
+            return run_image_requests(args)
         if args.command == "web-links":
             return run_web_links(args)
         if args.command == "web-compare":
