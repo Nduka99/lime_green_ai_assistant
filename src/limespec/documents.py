@@ -216,6 +216,29 @@ def summary(files: dict[str, list[str]], out: Path) -> dict[str, Any]:
     return {"totals": dict(totals), "flagged": flagged}
 
 
+def page_breaks(sha256: str) -> dict[int, list[tuple[str, str]]]:
+    """Each page's number ranges broken after their hyphen in the document's own text
+    layer (`layout.number_breaks`): a Word file's as laid out, a PDF's as stored."""
+    import pypdfium2
+
+    path = acquire.store_path(sha256)
+    if not path.exists():
+        return {}
+    if is_word(path):
+        path = OUT / "rendered" / f"{sha256}.pdf"
+    document = pypdfium2.PdfDocument(str(path))
+    try:
+        found = {}
+        for number in range(len(document)):
+            text = document[number].get_textpage().get_text_range()
+            breaks = layout.number_breaks(text)
+            if breaks:
+                found[number + 1] = breaks
+        return found
+    finally:
+        document.close()
+
+
 def index_documents(
     form: str, titles: dict[str, str], folder: Path = OUT
 ) -> list[tuple[store.PageRow, list[store.PassageRow]]]:
@@ -246,10 +269,13 @@ def index_documents(
                 f"{EXTERNAL_PUBLISHER} — {title}"  # general guidance, not Lime Green's
             )
         page_row: store.PageRow = (urls[0], title, fetched[sha256], sha256)
+        breaks = page_breaks(sha256)
+        mended = [
+            e | {"text": layout.kept_hyphens(e["text"], breaks.get(e.get("page"), []))}
+            for e in reading["elements"]
+        ]
         # A label and its value on one line are read together (X43 A3a).
-        lines = layout.side_by_side(
-            [layout.from_record(e) for e in reading["elements"]]
-        )
+        lines = layout.side_by_side([layout.from_record(e) for e in mended])
         elements = [asdict(element) for element in lines]
         rows: list[store.PassageRow] = []
         for heading, context, text, page in pdf_passages(elements, form):

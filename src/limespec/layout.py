@@ -3,9 +3,11 @@
 A key-value box (a label on the left, its value on the right) is drawn as one line,
 but a layout model can read its columns as separate blocks and put the values after
 all the labels. Text blocks that sit side by side on the same line of a page are read
-as one line, left to right, where the first of them stood in reading order.
+as one line, left to right, where the first of them stood in reading order. A number
+range a line break cuts after its hyphen keeps the hyphen the reader dropped (X44).
 """
 
+import re
 from typing import Any
 
 from limespec.elements import Element
@@ -17,6 +19,32 @@ OVERLAP = 0.5  # of the shorter block's height: how far apart two first lines ma
 # Points: one line of text. A label is one line and its value at most two, so two
 # columns of running text, whose paragraphs are taller, are never joined.
 ONE_LINE = 20.0
+
+
+# A number range cut by a line break after its hyphen, as the PDF's text layer has it
+# ("12-" at a line's end, "36hrs" starting the next).
+NUMBER_BREAK = re.compile(r"(\w*\d)-[ \t]*\r?\n[ \t]*(\d\w*)")
+
+
+def number_breaks(page_text: str) -> list[tuple[str, str]]:
+    """Each number range a page's text layer breaks after its hyphen, as its two
+    halves; left out when the page also shows the halves joined as a word of its own,
+    which then cannot tell the two apart."""
+    found = []
+    for left, right in NUMBER_BREAK.findall(page_text):
+        if not re.search(rf"(?<![\w.]){re.escape(left + right)}(?!\w)", page_text):
+            found.append((left, right))
+    return found
+
+
+def kept_hyphens(text: str, breaks: list[tuple[str, str]]) -> str:
+    """The text with each such range the reader joined given back its hyphen: a
+    hyphen after a digit never splits a word, so "1236hrs" was "12-36hrs" (X44). Only
+    a whole token is mended, so "2023" is never read as a range."""
+    for left, right in breaks:
+        joined = re.compile(rf"(?<![\w.]){re.escape(left + right)}(?!\w)")
+        text = joined.sub(f"{left}-{right}", text)
+    return text
 
 
 def same_line(left: Element, right: Element) -> bool:

@@ -1,5 +1,6 @@
 """Reading order across columns of one line (X43 A3a). Invented boxes."""
 
+from limespec import layout
 from limespec.elements import Element
 from limespec.layout import same_line, side_by_side
 
@@ -43,3 +44,14 @@ def test_two_columns_of_running_text_are_not_joined() -> None:
     assert not same_line(above, right)  # not on the same line
     assert not same_line(right, left)  # left of it, not right
     assert side_by_side([left, right, above]) == [left, right, above]
+
+
+def test_a_number_range_cut_after_its_hyphen_gets_its_hyphen_back() -> None:
+    page = "Drying time is 12-\r\n36hrs. EN 13501-\n1 class. Apply 2-\n3 coats, 23 mm."
+
+    breaks = layout.number_breaks(page)
+
+    assert breaks == [("12", "36hrs"), ("13501", "1")]  # "23" stands alone too
+    assert layout.kept_hyphens("Drying is 1236hrs; EN 135011; 2023.", breaks) == (
+        "Drying is 12-36hrs; EN 13501-1; 2023."
+    )

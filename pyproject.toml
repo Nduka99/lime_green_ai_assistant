@@ -19,6 +19,10 @@ dependencies = [
     "opentelemetry-sdk>=1.45.0",
     "psycopg[binary]>=3.3.6",
     "pypdf>=6.19.0",
+    # SigLIP2's text tower ranks pictures by what they show at search time (X44 F2);
+    # torch comes from the CPU index below.
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
     "uvicorn>=0.52.4",
 ]
 

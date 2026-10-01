@@ -292,3 +292,48 @@ def test_a_word_file_is_laid_out_before_it_is_read(
     assert read == [tmp_path / "dop.pdf"]
     (tmp_path / "x.pdf").write_bytes(b"%PDF-1.7")
     assert documents.is_word(stored) and not documents.is_word(tmp_path / "x.pdf")
+
+
+def test_page_breaks_read_the_stored_text_layer_a_word_file_as_laid_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pypdfium2
+
+    files = tmp_path / "files"
+    files.mkdir()
+    (files / "pdf").write_bytes(b"%PDF-1.7")
+    (files / "doc").write_bytes(b"PK\x03\x04 a Word package")
+    monkeypatch.setattr(config, "FILE_STORE", files)
+    monkeypatch.setattr(documents, "OUT", tmp_path / "out")
+    opened: list[str] = []
+
+    class Page:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def get_textpage(self) -> "Page":
+            return self
+
+        def get_text_range(self) -> str:
+            return self.text
+
+    class Document:
+        def __init__(self, path: str) -> None:
+            opened.append(Path(path).name)
+            self.pages = [Page("no range here"), Page("Dry in 12-\r\n36hrs.")]
+
+        def __len__(self) -> int:
+            return len(self.pages)
+
+        def __getitem__(self, number: int) -> Page:
+            return self.pages[number]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(pypdfium2, "PdfDocument", Document)
+
+    assert documents.page_breaks("pdf") == {2: [("12", "36hrs")]}
+    assert documents.page_breaks("doc") == {2: [("12", "36hrs")]}
+    assert documents.page_breaks("missing") == {}
+    assert opened == ["pdf", "doc.pdf"]
