@@ -21,7 +21,8 @@ class Passage:
     fetched_at: str  # when the page was captured, ISO 8601 UTC
     page: int | None = None  # a PDF passage's page
     # Searched and embedded with the text, never quoted: a PDF passage's section
-    # path, table caption and column headers (X9). Empty for web passages.
+    # path, table caption and column headers (X9); a web passage's section path in
+    # the packed forms (X42 W3), else empty.
     context: str = ""
 
 

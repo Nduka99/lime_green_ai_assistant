@@ -12,13 +12,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
-from limespec import config, lists, prices, store
+from limespec import config, lists, passages, prices, store, webpage
 from limespec.models import described
 from limespec.passages import pieces
 from limespec.retrieve import Embed
@@ -46,6 +47,9 @@ BOILERPLATE = ", ".join(
     ]
 )
 TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: the <h1>, a label, a date
+# X42 W3: web passages from `limespec.webpage`, by section (as `page_passages`) or
+# sections packed with their section path as context (`passages.merge`), repeats once.
+WEB_FORMS = ("sections", "page", "page-once")
 
 
 class IngestError(RuntimeError):
@@ -275,6 +279,51 @@ def page_passages(raw_html: str) -> tuple[str, list[tuple[str, str]]]:
     return title, passages
 
 
+def web_sections(
+    title: str, elements: list[dict[str, Any]]
+) -> list[tuple[str, list[str]]]:
+    """A page's elements as (heading, paragraphs) sections, as `extract_sections`
+    gives them: a heading starts a section, and a list is one paragraph."""
+    sections: list[tuple[str, list[str]]] = []
+    heading = title
+    paragraphs: list[str] = []
+    previous = ""
+    for element in elements:
+        if element["kind"] == "heading":
+            if paragraphs:
+                sections.append((heading, paragraphs))
+            heading, paragraphs = element["text"], []
+        elif element["kind"] == "list_item" and previous == "list_item":
+            paragraphs[-1] += "\n" + element["text"]
+        else:
+            paragraphs.append(element["text"])
+        previous = element["kind"]
+    if paragraphs:
+        sections.append((heading, paragraphs))
+    return sections
+
+
+def web_passages(raw_html: str, form: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """A page read by `limespec.webpage` as (heading, context, text) passages in a
+    W3 form: by section, or sections packed into passages of at most
+    MAX_PASSAGE_CHARS, each with its first section's path as context
+    (`passages.merge`, as X9 packs a PDF's sections). Image alt texts are not
+    indexed (X42 W5)."""
+    title, found = webpage.read_page(raw_html)
+    kept = [e | {"page": 0} for e in found if e["kind"] != "figure"]
+    if form == "sections":
+        rows = []
+        for heading, paragraphs in web_sections(title, kept):
+            rows += [(heading, "", text) for text in split_section(heading, paragraphs)]
+        return title, rows
+    if not kept:
+        return title, []
+    packed = passages.page_passages(kept, "table")  # no tables: sections merged
+    return title, [
+        (heading or title, context, text) for heading, context, text, _ in packed
+    ]
+
+
 def corpus_hash(page_hashes: Sequence[tuple[str, str]]) -> str:
     """One fingerprint for the whole corpus, from sorted (url, sha256) pairs."""
     lines = "".join(f"{url} {sha256}\n" for url, sha256 in sorted(page_hashes))
@@ -314,18 +363,31 @@ def prepare_index(
     pages: Sequence[tuple[str, bytes, str]],
     embed: Embed,
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
+    web_form: str = "",
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
-    documents whose passages are already built (PDFs, limespec.passages)."""
+    documents whose passages are already built (PDFs, limespec.passages). With a
+    `web_form` (WEB_FORMS) the pages are read by `limespec.webpage`; in "page-once" a
+    passage whose text an earlier page already holds is left out."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
+    seen: set[str] = set()
     for url, raw, fetched_at in pages:
         try:
-            title, passages = page_passages(raw.decode("utf-8"))
+            if web_form:
+                title, found = web_passages(raw.decode("utf-8"), web_form)
+            else:
+                title, old = page_passages(raw.decode("utf-8"))
+                found = [(heading, "", text) for heading, text in old]
         except (UnicodeDecodeError, ValueError) as error:
             raise IngestError(f"{url}: {error}") from error
         page_rows.append((url, title, fetched_at, hashlib.sha256(raw).hexdigest()))
-        rows += [(url, title, heading, text, "", None) for heading, text in passages]
+        for heading, context, text in found:
+            key = clean(text).casefold()
+            if web_form == "page-once" and key in seen:
+                continue
+            seen.add(key)
+            rows.append((url, title, heading, text, context, None))
         # A product grid also becomes one passage holding its whole list (X12).
         products = lists.grid_products(raw.decode("utf-8"))
         if products:
@@ -379,18 +441,19 @@ def ingest(
     live: bool = True,
     all_pages: bool = False,
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
+    web_form: str = "",
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
-    `documents.index_documents`).
+    `documents.index_documents`); `web_form` reads pages by `limespec.webpage`.
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
     left not live can be evaluated first (`LIMESPEC_INDEX_VERSION`).
     """
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
-    prepared = prepare_index(cached_pages(urls), embed, documents)
+    prepared = prepare_index(cached_pages(urls), embed, documents, web_form)
     version = store.write_version(
         conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
     )

@@ -94,6 +94,7 @@ from limespec import (
     scope,
     store,
     tables,
+    webpage,
 )
 from limespec.models import Passage, described
 
@@ -419,6 +420,20 @@ def parser() -> argparse.ArgumentParser:
     web_scored.add_argument("arm", choices=webpages.ARMS)
     web_scored.add_argument("--set", default="web-pages", help="a registered truth")
     web_scored.add_argument("--out", type=Path, required=True)
+    web_facted = commands.add_parser(
+        "web-facts", help="one question per web-pages truth block (X42 W3)"
+    )
+    web_facted.add_argument("--out-set", type=Path, required=True, help="a folder")
+    web_retrieved = commands.add_parser(
+        "web-retrieval", help="score an index version's search on web-facts (X42 W3)"
+    )
+    web_retrieved.add_argument("--version", type=int, required=True)
+    web_retrieved.add_argument("--out", type=Path, required=True)
+    web_compared = commands.add_parser(
+        "web-compare", help="web-facts arms against the baseline (X42 W3)"
+    )
+    web_compared.add_argument("baseline", type=Path, help="a web-retrieval file")
+    web_compared.add_argument("arms", type=Path, nargs="+")
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1369,6 +1384,64 @@ def run_web_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_web_facts(args: argparse.Namespace) -> int:
+    """W3's set from the registered truth; each fact's holders are the pages whose
+    text (`limespec.webpage`) holds its evidence."""
+    truth = grades.read_json(
+        sets.require("web-pages", args.root, args.registry) / "truth.json"
+    )
+    texts = {}
+    for slug, raw in cached_html().items():
+        _, found = webpage.read_page(raw)
+        texts[ingest.page_url(slug)] = "\n".join(element["text"] for element in found)
+    items = webpages.fact_items(truth, texts)
+    args.out_set.mkdir(parents=True, exist_ok=True)
+    write_json(args.out_set / "questions.json", {"questions": items})
+    shared = sum(len(item["holders"]) > 1 for item in items)
+    print(f"{len(items)} facts ({shared} held by more than one page) in {args.out_set}")
+    return 0
+
+
+def run_web_retrieval(args: argparse.Namespace) -> int:
+    folder = sets.require("web-facts", args.root, args.registry)
+    items = grades.read_json(folder / "questions.json")["questions"]
+    results = []
+    anywhere: dict[str, list[Passage]] = {}
+    with assistant.connect() as conn:
+        for item in items:
+            for url in item["holders"]:
+                if url not in anywhere:
+                    anywhere[url] = store.document_passages(conn, args.version, url)
+            ranked = store.search(
+                conn, args.version, item["question"], llm.embed, llm.rerank
+            )
+            held = [p for url in item["holders"] for p in anywhere[url]]
+            results.append(webpages.fact_result(item, ranked, held))
+        passages = store.passage_count(conn, args.version)
+    found = lookups.summary(results)["web-facts"]
+    record = {"version": args.version, "passages": passages, "summary": found}
+    write_json(args.out, {**record, "results": results})
+    print(
+        f"web-facts: {found['count']:.0f} facts, Success@{lookups.TOP} "
+        f"{found['success']:.3f}, MRR {found['mrr']:.3f}, ceiling "
+        f"{found['ceiling']:.3f}; {passages} passages in version {args.version}"
+    )
+    return 0
+
+
+def run_web_compare(args: argparse.Namespace) -> int:
+    baseline = grades.read_json(args.baseline)
+    for path in args.arms:
+        arm = grades.read_json(path)
+        change = lookups.compare(arm["results"], baseline["results"], "web-facts")
+        print(
+            f"{path.name}: Success@{lookups.TOP} {arm['summary']['success']:.3f} vs "
+            f"{baseline['summary']['success']:.3f}, difference "
+            f"{change['difference']:+.3f} [{change['low']:+.3f}, {change['high']:+.3f}]"
+        )
+    return 0
+
+
 def run_nearmiss_answer(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -2041,6 +2114,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_truth(args)
         if args.command == "web-score":
             return run_web_score(args)
+        if args.command == "web-facts":
+            return run_web_facts(args)
+        if args.command == "web-retrieval":
+            return run_web_retrieval(args)
+        if args.command == "web-compare":
+            return run_web_compare(args)
         if args.command == "nearmiss-answer":
             return run_nearmiss_answer(args)
         if args.command == "slot-gate":

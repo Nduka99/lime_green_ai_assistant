@@ -221,6 +221,12 @@
     "labels.json": "975c73e12600f6ac176c3094fa35d12c7af0e00370c44d09c44e1baef184ddb4"
    }
   },
+  "web-facts": {
+   "description": "X42 W3: one question per W1 truth paragraph or list, evidence and holder pages",
+   "files": {
+    "questions.json": "d76702d81ce236ef95f109717ddfd48886335a038a1f071dbfec844dccae04e8"
+   }
+  },
   "web-pages": {
    "description": "X42 W1: 30 rendered site pages (seed 42), judged outlines over their visible text, truth with section paths",
    "files": {

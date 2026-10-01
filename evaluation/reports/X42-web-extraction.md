@@ -327,3 +327,34 @@ these pages; `data/runs/x42/w2b-<arm>.json`).
 
 **W2 decision:** the web side reads pages with `limespec.webpage`. Ingestion switches
 to it in W6, with the passage form W3 selects.
+
+**W3 details, fixed before any index version is built.**
+- **Set `web-facts`** (`evaluation web-facts`, from the registered W1 truth): one fact
+  per truth paragraph or list, 354 in all.
+  - Asked as "What does the {title} page say about {heading › heading}?", or "What does
+    the {title} page say?" when no heading is above it. This is the web form of X9's
+    lookups (row label and column header).
+  - Evidence: a paragraph's first sentence, or every item of a list.
+  - Holders: the site pages whose text (`limespec.webpage`) holds all the evidence. Its
+    own page holds every fact; 39 facts sit on more than one page.
+- **Relevance:** a top-8 passage (the full search, hybrid and reranked, as served)
+  that comes from a holder page and in which `verify.find_quote` finds all the
+  evidence, the rule that keeps a claim at answer time. Ceiling: any passage of a
+  holder page holds it.
+- **Arms:** index versions built with `limespec ingest --all-pages --pdf-form page
+  --web-form FORM`; the PDFs, the price fence, the compiled lists and the 4B embedder
+  are the same as version 17's.
+  - `sections`: the new reader, each section its own passages with its heading first,
+    as today's form. **The baseline.**
+  - `page`: the new reader, consecutive sections packed into passages of at most 1,500
+    characters, each with its first section's path as context (`passages.merge`).
+    - The design named X9's page form. That form gives every passage the context of
+      the page's first element, which suits a short PDF page but leaves a long web
+      page's later passages with an empty context (probe: all six FAQ passages). The
+      section-merged packing, X9's form for a PDF's sections, gives each passage its
+      path.
+  - `page-once`: as `page`, but a passage whose text an earlier page already holds is
+    left out.
+  - Reported for reference: version 17, the old extractor's passages.
+- **Rule:** the arm with the highest Success@8 whose interval against `sections` lies
+  above zero (pages resampled) is selected; otherwise `sections`, the simplest.

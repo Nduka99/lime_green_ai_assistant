@@ -507,3 +507,87 @@ def test_the_command_line_scores_each_arm_on_the_registered_truth(
         assert cli.main([*common, "web-score", arm, "--out", str(out)]) == 0
         saved = json.loads(out.read_text())
         assert set(saved) == {"rates", "total", "pages", "readings"}
+
+
+def holder_texts() -> dict[str, str]:
+    """Two site pages' text by URL: the fact's own page and one repeating a part."""
+    return {
+        "https://www.lime-green.co.uk/duro": "A base coat. Repointing Rendering",
+        "https://www.lime-green.co.uk/other": "Repointing and Rendering",
+    }
+
+
+def test_facts_are_asked_by_title_and_headings_with_their_holder_pages() -> None:
+    items = webpages.fact_items({"duro": TRUTH_PAGE}, holder_texts())
+
+    assert [item["question"] for item in items] == [
+        "What does the Duro page say?",
+        "What does the Duro page say about Uses?",
+        "What does the Duro page say about Uses › Mixing?",
+        "What does the Duro page say about Uses › Mixing?",
+    ]
+    assert items[0]["evidence"] == ["A base coat."]
+    assert items[1]["evidence"] == ["Repointing", "Rendering"]
+    assert len(items[1]["holders"]) == 2 and items[2]["holders"] == []
+
+
+def test_a_fact_is_found_in_a_holder_page_passage_quoting_its_evidence() -> None:
+    from limespec.models import Passage
+
+    item = webpages.fact_items({"duro": TRUTH_PAGE}, holder_texts())[1]
+    other = "https://www.lime-green.co.uk/other"
+    elsewhere = Passage(
+        1, "https://example.test/x", "X", "", "Repointing Rendering", ""
+    )
+    held = Passage(2, other, "Other", "", "Uses\nRepointing\nRendering", "")
+
+    found = webpages.fact_result(item, [elsewhere, held], [held])
+
+    assert found["success"] == 1.0 and found["reciprocal"] == 0.5
+    assert found["ceiling"] == 1.0
+    missed = webpages.fact_result(item, [elsewhere], [])
+    assert (missed["success"], missed["reciprocal"], missed["ceiling"]) == (0, 0, 0)
+
+
+def test_the_command_line_builds_web_facts_and_scores_and_compares_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+
+    from limespec import assistant, store
+    from limespec.models import Passage
+
+    (tmp_path / "duro.html").write_text(PAGE, encoding="utf-8")
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path)
+    root = tmp_path / "eval"
+    (root / "web-pages").mkdir(parents=True)
+    mixing = {"kind": "p", "text": "Mix well.", "path": ["Uses", "Mixing"]}
+    truth = {"duro": TRUTH_PAGE | {"blocks": [mixing]}}
+    (root / "web-pages" / "truth.json").write_text(json.dumps(truth))
+    registry = tmp_path / "sets.json"
+    sets.register("web-pages", "", root, registry)
+    common = ["--root", str(root), "--registry", str(registry)]
+
+    assert cli.main([*common, "web-facts", "--out-set", str(root / "web-facts")]) == 0
+    assert "1 facts" in capsys.readouterr().out
+    sets.register("web-facts", "", root, registry)
+
+    @contextmanager
+    def connect() -> Iterator[None]:
+        yield None
+
+    url = "https://www.lime-green.co.uk/duro"
+    rows = [Passage(1, url, "Duro", "Mixing", "Mixing\nMix well.", "")]
+    monkeypatch.setattr(assistant, "connect", connect)
+    monkeypatch.setattr(store, "search", lambda conn, version, question, e, r: rows)
+    monkeypatch.setattr(store, "document_passages", lambda conn, version, url: rows)
+    monkeypatch.setattr(store, "passage_count", lambda conn, version: 3)
+    run = tmp_path / "run.json"
+
+    command = [*common, "web-retrieval", "--version", "18", "--out", str(run)]
+    assert cli.main(command) == 0
+    saved = json.loads(run.read_text())
+    assert saved["passages"] == 3 and saved["summary"]["success"] == 1.0
+    assert cli.main(["web-compare", str(run), str(run)]) == 0
+    assert "difference +0.000" in capsys.readouterr().out

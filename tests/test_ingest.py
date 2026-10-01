@@ -538,3 +538,34 @@ def test_every_cached_page_and_a_pdf_can_be_indexed(
         "AND page IS NOT NULL",
         (version,),
     ).fetchall() == [(2, "Performance")]
+
+
+def test_web_forms_read_pages_by_the_new_reader(fake_embed: Embed) -> None:
+    html = (
+        "<body><main><h1>Duro</h1><p>Intro.</p><h2>Uses</h2><p>Walls.</p>"
+        "<ul><li>Brick</li><li>Stone</li></ul>"
+        "<img alt='A wall pointed with lime mortar'><h3>Indoors</h3><p>Plaster.</p>"
+        "</main></body>"
+    )
+    stamp = "2026-01-01T00:00:00+00:00"
+    page = (SITE + "duro", html.encode(), stamp)
+    copy = (SITE + "duro-copy", html.encode(), stamp)
+    empty = (SITE + "empty", b"<body><main><h1>Empty</h1></main></body>", stamp)
+
+    sections = prepare_index([page], fake_embed, web_form="sections").passages
+    packed = prepare_index([page, copy, empty], fake_embed, web_form="page").passages
+    once = prepare_index([page, copy], fake_embed, web_form="page-once").passages
+
+    assert [(row[2], row[3]) for row in sections] == [
+        ("Duro", "Duro\nIntro."),
+        ("Uses", "Uses\nWalls.\nBrick\nStone"),
+        ("Indoors", "Indoors\nPlaster."),
+    ]
+    # One page-sized passage per page, the alt text left out; the copy's text is the
+    # same, so "page-once" keeps it once.
+    whole = "Intro.\nUses\nWalls.\nBrick\nStone\nIndoors\nPlaster."
+    assert [(row[0], row[2], row[3]) for row in packed] == [
+        (SITE + "duro", "Duro", whole),
+        (SITE + "duro-copy", "Duro", whole),
+    ]
+    assert [row[0] for row in once] == [SITE + "duro"]

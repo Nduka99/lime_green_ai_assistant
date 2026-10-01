@@ -20,7 +20,14 @@ from limespec import (
     weights,
 )
 from limespec.app import app
-from limespec.ingest import IngestError, cache_path, ingest, pdf_titles, site_html
+from limespec.ingest import (
+    WEB_FORMS,
+    IngestError,
+    cache_path,
+    ingest,
+    pdf_titles,
+    site_html,
+)
 from limespec.passages import FORMS
 from limespec.view import AnswerView, view
 
@@ -65,13 +72,19 @@ def report(results: list[acquire.Record]) -> None:
 
 
 def run_ingest(
-    sources: Path | None, live: bool, all_pages: bool = False, pdf_form: str = ""
+    sources: Path | None,
+    live: bool,
+    all_pages: bool = False,
+    pdf_form: str = "",
+    web_form: str = "",
 ) -> None:
     found = []
     if pdf_form:
         found = documents.index_documents(pdf_form, pdf_titles(site_html()))
     with assistant.connect() as conn:
-        version, manifest = ingest(conn, llm.embed, sources, live, all_pages, found)
+        version, manifest = ingest(
+            conn, llm.embed, sources, live, all_pages, found, web_form
+        )
     if live:
         print(f"index version: {version} (live)")
     else:
@@ -200,6 +213,12 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="add every saved PDF reading, its tables in this form (X9)",
     )
+    ingest_parser.add_argument(
+        "--web-form",
+        choices=WEB_FORMS,
+        default="",
+        help="read the pages by limespec.webpage, passages in this form (X42 W3)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -248,7 +267,9 @@ def main(argv: list[str] | None = None) -> int:
             made = acquire.browse()
             print(f"{made} new readable names in {config.FILE_STORE.parent / 'browse'}")
         elif args.command == "ingest":
-            run_ingest(args.sources, args.live, args.all_pages, args.pdf_form)
+            run_ingest(
+                args.sources, args.live, args.all_pages, args.pdf_form, args.web_form
+            )
         elif args.command == "ask":
             run_ask(args.question)
         elif args.command == "serve":

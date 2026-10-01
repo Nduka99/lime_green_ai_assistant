@@ -22,7 +22,11 @@ from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
+from evaluation.lookups import TOP
 from limespec import config, ingest, webpage
+from limespec.models import Passage
+from limespec.passages import SENTENCE_END
+from limespec.verify import find_quote
 
 LEVELS = ["h1", "h2", "h3", "h4", "h5", "h6"]
 VIEWPORT = {"width": 1280, "height": 900}
@@ -519,3 +523,71 @@ def scores(
         "alts": total["alts_kept"] / total["alts"],
     }
     return {"rates": rates, "total": dict(total), "pages": pages}
+
+
+def fact_question(title: str, path: Sequence[str]) -> str:
+    """W3's question for a truth block: the page's title and the headings above it."""
+    if not path:
+        return f"What does the {title} page say?"
+    return f"What does the {title} page say about {' › '.join(path)}?"
+
+
+def fact_items(
+    truth: Mapping[str, Any], texts: Mapping[str, str]
+) -> list[dict[str, Any]]:
+    """W3's `web-facts`: one question per truth paragraph or list. The evidence is a
+    paragraph's first sentence or a list's items; its holders are the site pages
+    (`texts`: each page's text by URL) that hold all of it, so the same fact found on
+    another page counts as found."""
+    found = []
+    for slug, page in truth.items():
+        for number, block in enumerate(page["blocks"]):
+            if block["kind"] == "p":
+                evidence = [SENTENCE_END.split(block["text"].strip())[0]]
+            elif block["kind"] == "list":
+                evidence = list(block["items"])
+            else:
+                continue
+            holders = [
+                url
+                for url, text in texts.items()
+                if all(find_quote(part, text) for part in evidence)
+            ]
+            found.append({
+                "id": f"{slug}/{number}",
+                "set": "web-facts",
+                "question": fact_question(page["title"], block["path"]),
+                "url": ingest.page_url(slug),
+                "evidence": evidence,
+                "holders": holders,
+                "cluster": slug,
+            })  # fmt: skip
+    return found
+
+
+def fact_relevant(passage: Passage, item: Mapping[str, Any]) -> bool:
+    """Whether a passage holds the fact, as a claim would quote it, from a page that
+    holds it."""
+    return passage.url in item["holders"] and all(
+        find_quote(part, passage.text) for part in item["evidence"]
+    )
+
+
+def fact_result(
+    item: Mapping[str, Any], ranked: Sequence[Passage], anywhere: Sequence[Passage]
+) -> dict[str, Any]:
+    """One fact's result: its first relevant rank in the top passages, and whether
+    any passage of its holder pages holds it at all (the ceiling)."""
+    rank = None
+    for position, passage in enumerate(ranked[:TOP], 1):
+        if fact_relevant(passage, item):
+            rank = position
+            break
+    return {
+        "id": item["id"],
+        "set": item["set"],
+        "cluster": item["cluster"],
+        "success": 1.0 if rank else 0.0,
+        "reciprocal": 1 / rank if rank else 0.0,
+        "ceiling": 1.0 if any(fact_relevant(p, item) for p in anywhere) else 0.0,
+    }
