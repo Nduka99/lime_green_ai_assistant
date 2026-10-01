@@ -3,36 +3,47 @@
 Every answer's audit record keeps the ids of the passages its model saw, so reach is
 measured from what actually reached the model in any arm, a search per part included,
 without repeating the search. A part is reached when each of its evidence quotes is
-found in some given passage by the matcher claims are verified with (`find_quote`).
-The ceiling says whether the index version holds the quotes at all.
+found in some given passage by the matcher claims are verified with (`find_quote`),
+and each picture it cites as what it shows (held-out v6) is a given passage's
+picture. The ceiling says whether the index version holds them at all.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any
 
 from evaluation import grades
 from limespec.models import Passage
 from limespec.verify import find_quote
 
-# Image alt text is not indexed yet (S3), so only text evidence can be reached.
-TEXT_EVIDENCE = {"page_text", "pdf_text"}
+# Evidence matched as quotes: a page's, PDF's or Word file's text, and a picture's
+# own words (X43). A picture cited as what it shows is matched by its id.
+TEXT_EVIDENCE = {"page_text", "pdf_text", "docx_text", "image_text"}
+VISUAL = "image_visual"
 # Joins a version's passages into one text that no quote can match across: a quote
 # pattern allows only whitespace and cell marks between its words.
 BOUNDARY = "\n\x00\n"
 
 
-def part_quotes(case: dict[str, Any]) -> list[tuple[str, list[str]]]:
-    """Each part of a case that has text evidence, as (part id, its quotes)."""
+def part_evidence(case: dict[str, Any]) -> list[tuple[str, list[str], list[str]]]:
+    """Each part of a case with evidence to reach, as (part id, its quotes, the
+    pictures it cites as what they show)."""
     found = []
     for number, part in enumerate(case.get("parts", []), 1):
-        quotes = [
-            evidence["quote"]
-            for evidence in part.get("evidence", [])
-            if evidence.get("kind", "page_text") in TEXT_EVIDENCE
-        ]
-        if quotes:
-            found.append((part.get("id", f"p{number}"), quotes))
+        quotes, pictures = [], []
+        for evidence in part.get("evidence", []):
+            kind = evidence.get("kind", "page_text")
+            if kind in TEXT_EVIDENCE:
+                quotes.append(evidence["quote"])
+            elif kind == VISUAL:
+                pictures.append(evidence["image"])
+        if quotes or pictures:
+            found.append((part.get("id", f"p{number}"), quotes, pictures))
     return found
+
+
+def part_quotes(case: dict[str, Any]) -> list[tuple[str, list[str]]]:
+    """Each part of a case that has text evidence, as (part id, its quotes)."""
+    return [(part, quotes) for part, quotes, _ in part_evidence(case) if quotes]
 
 
 def holds(texts: Sequence[str], quotes: Sequence[str]) -> bool:
@@ -45,10 +56,12 @@ def score(
     questions: list[dict[str, str]],
     given: dict[str, list[Passage]],
     version_texts: Sequence[str],
+    version_pictures: Collection[str] = (),
 ) -> list[dict[str, Any]]:
     """One row per keyed part of every question the key expects answered: whether the
     passages given for that question (`given`, by question id) hold its evidence, and
-    whether the version does (`version_texts`, its searchable passages)."""
+    whether the version does (`version_texts`, its searchable passages, and
+    `version_pictures`, the pictures they were made from)."""
     cases = grades.cases_by_question(key, questions)
     everything = BOUNDARY.join(version_texts)
     rows = []
@@ -57,13 +70,15 @@ def score(
         if "answered" not in grades.expected_statuses(case):
             continue
         texts = [passage.text for passage in given.get(row["id"], [])]
-        for part_id, quotes in part_quotes(case):
+        seen = {passage.image for passage in given.get(row["id"], [])}
+        for part_id, quotes, pictures in part_evidence(case):
             rows.append({
                 "id": row["id"],
                 "case": case["id"],
                 "part": part_id,
-                "reached": holds(texts, quotes),
-                "ceiling": holds([everything], quotes),
+                "reached": holds(texts, quotes) and set(pictures) <= seen,
+                "ceiling": holds([everything], quotes)
+                and set(pictures) <= set(version_pictures),
             })  # fmt: skip
     return rows
 

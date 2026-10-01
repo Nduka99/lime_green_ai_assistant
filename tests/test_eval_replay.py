@@ -81,6 +81,7 @@ def test_the_command_line_replays_and_scores_reach(
     monkeypatch.setattr(assistant, "retriever", lambda conn, version: retrieve)
     monkeypatch.setattr(answer, "understand", lambda q, chat: understand(q))
     monkeypatch.setattr(store, "searchable_texts", lambda conn, v: [DURO.text])
+    monkeypatch.setattr(store, "picture_passages", lambda conn, version: {})
     out = tmp_path / "replay.json"
     command = [*base, "replay", "keyed", "--version", "12", "--out", str(out)]
 

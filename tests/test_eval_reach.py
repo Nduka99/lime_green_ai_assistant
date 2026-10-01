@@ -67,6 +67,25 @@ def test_a_part_is_reached_when_every_quote_is_in_a_given_passage() -> None:
     }  # fmt: skip
 
 
+def test_a_picture_cited_as_what_it_shows_is_reached_by_its_own_passage() -> None:
+    evidence = [{"kind": "image_visual", "image": "pic", "quote": ""},
+                {"kind": "docx_text", "quote": "Class A1"}]  # fmt: skip
+    wordings = [{"style": "original", "text": "What does it look like?"}]
+    case = {"id": "c9", "expected_status": "answered", "wordings": wordings,
+            "parts": [{"id": "p1", "evidence": evidence}]}  # fmt: skip
+    key = {"cases": [case]}
+    questions = [{"id": "q9", "question": "What does it look like?"}]
+    seen = Passage(5, "u", "T", "Image", "", "", image="pic")
+
+    shown = reach.score(key, questions, {"q9": [seen, passage(6, "Class A1")]},
+                        ["Class A1"], {"pic"})  # fmt: skip
+    hidden = reach.score(key, questions, {"q9": [passage(6, "Class A1")]}, ["Class A1"])
+
+    assert (shown[0]["reached"], shown[0]["ceiling"]) == (True, True)
+    assert (hidden[0]["reached"], hidden[0]["ceiling"]) == (False, False)
+    assert reach.part_quotes(case) == [("p1", ["Class A1"])]
+
+
 def test_a_quote_cannot_match_across_two_passages_of_the_version() -> None:
     rows = reach.score(KEY, QUESTIONS[:1], {}, ["Duro is free of", "cement. 3 to 6 mm"])
 
@@ -115,6 +134,7 @@ def test_reach_reads_each_answer_s_given_passages_from_its_audit_record(
     monkeypatch.setattr(
         store, "searchable_texts", lambda conn, version: ["Duro is free of cement."]
     )
+    monkeypatch.setattr(store, "picture_passages", lambda conn, version: {})
     out = tmp_path / "reach.json"
 
     assert cli.main([*base, "reach", "keyed", str(run), "--out", str(out)]) == 0

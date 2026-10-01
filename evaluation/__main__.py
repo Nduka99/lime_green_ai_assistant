@@ -1199,8 +1199,10 @@ def run_reach(args: argparse.Namespace) -> int:
             raise ValueError(
                 f"the run must use one index version, not {sorted(versions)}"
             )
-        texts = store.searchable_texts(conn, versions.pop())
-    rows = reach.score(key, questions, given, texts)
+        version = versions.pop()
+        texts = store.searchable_texts(conn, version)
+        pictures = store.picture_passages(conn, version)
+    rows = reach.score(key, questions, given, texts, pictures)
     found = reach.summary(rows)
     if args.out:
         write_json(args.out, {"summary": found, "rows": rows})
@@ -1223,7 +1225,8 @@ def run_replay(args: argparse.Namespace) -> int:
             assistant.scoped_retriever(conn, args.version) if args.scoped else None,
         )
         texts = store.searchable_texts(conn, args.version)
-    rows = reach.score(key, questions, given, texts)
+        pictures = store.picture_passages(conn, args.version)
+    rows = reach.score(key, questions, given, texts, pictures)
     found = reach.summary(rows)
     passages = {qid: [p.id for p in shown] for qid, shown in given.items()}
     saved = {"summary": found, "rows": rows, "parts": written, "passages": passages}
