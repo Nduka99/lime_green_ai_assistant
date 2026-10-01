@@ -102,6 +102,31 @@ def test_cards_grids_and_downloads_are_read_as_lists_of_names() -> None:
     ]
 
 
+def test_a_link_card_s_description_is_read_where_no_other_page_holds_it() -> None:
+    held = webpage.held_by(["Duro is a base coat for walls.", "Other text"])
+    unheld = webpage.held_by(["Nothing about it."])
+
+    assert held("A base coat…") and held("a BASE coat.") and not held("A coat")
+    assert not held("") and not held("…")
+    with_held = [e["text"] for e in webpage.read_page(LISTING, held=held)[1]]
+    with_unheld = [e["text"] for e in webpage.read_page(LISTING, held=unheld)[1]]
+    assert with_held[:2] == ["Duro", "Simon Ayres"]  # held elsewhere: the name only
+    assert with_unheld[:2] == ["Duro", "A base coat."]
+
+
+def test_a_slideshow_of_text_slides_is_content_and_one_of_link_cards_is_not() -> None:
+    page = """<main><h1>Home</h1>
+    <div class="flickity-slideshow"><div class="ss-slide"><p>Our long standing
+    collaboration with Lime Green.</p></div></div>
+    <div class="flickity-slideshow cardbox blog-feed"><article class="card">
+    <a class="portal-item" href="/news/x"><h1 class="title">A news post</h1></a>
+    </article></div></main>"""
+
+    assert [e["text"] for e in webpage.read_page(page)[1]] == [
+        "Our long standing collaboration with Lime Green."
+    ]
+
+
 def test_a_callout_is_content_only_on_the_page_it_is_about() -> None:
     callout = '<section class="find-supplier"><h2>Find a supplier</h2></section>'
     own = f"<main><h1>Find a supplier</h1>{callout}</main>"

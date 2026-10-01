@@ -21,6 +21,7 @@ from limespec import (
 )
 from limespec.app import app
 from limespec.ingest import (
+    CARD_FORMS,
     PICTURE_VECTORS,
     WEB_FORMS,
     IngestError,
@@ -80,6 +81,7 @@ def run_ingest(
     web_form: str = "",
     with_pictures: bool = False,
     with_descriptions: bool = False,
+    cards: str = "unique",
 ) -> None:
     found = []
     if pdf_form:
@@ -95,6 +97,7 @@ def run_ingest(
             web_form,
             with_pictures,
             with_descriptions,
+            cards,
         )
     if live:
         print(f"index version: {version} (live)")
@@ -300,6 +303,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="search each picture by its description too (X44 F6)",
     )
+    ingest_parser.add_argument(
+        "--cards",
+        choices=CARD_FORMS,
+        default="unique",
+        help="where a listing's card descriptions go (X44 F3)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -369,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.web_form,
                 args.images,
                 args.descriptions,
+                args.cards,
             )
         elif args.command == "ask":
             run_ask(args.question)

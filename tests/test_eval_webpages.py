@@ -509,6 +509,53 @@ def test_the_command_line_scores_each_arm_on_the_registered_truth(
         assert set(saved) == {"rates", "total", "pages", "readings"}
 
 
+def test_a_truth_is_corrected_by_the_card_rule_as_a_new_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    listing = """<main><h1>Products</h1><div class="cardbox">
+    <article class="card"><a class="portal-item" href="/silic8">
+    <h1 class="title">Silic8</h1><div class="desc">We use no acrylics.</div></a>
+    </article>
+    <article class="card"><a class="portal-item" href="/duro">
+    <h1 class="title">Duro</h1><div class="desc">A base coat.</div></a></article>
+    <article class="card"><a class="portal-item" href="/solo">
+    <h1 class="title">Solo</h1></a></article>
+    </div></main>"""
+    duro = "<main><h1>Duro</h1><p>A base coat.</p></main>"
+    (tmp_path / "products.html").write_text(listing, encoding="utf-8")
+    (tmp_path / "products__duro.html").write_text(duro, encoding="utf-8")
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path)
+    folder = tmp_path / "eval" / "web-pages"
+    folder.mkdir(parents=True)
+    names = {"kind": "list", "items": ["Silic8", "Duro", "Solo"], "path": []}
+    page = {"title": "Products", "headings": [], "blocks": [names]}
+    other = {"title": "Duro", "headings": [], "blocks": [{"kind": "p", "text": "x"}]}
+    truth = {"products": page, "products__duro": other}
+    (folder / "truth.json").write_text(json.dumps(truth))
+    registry = tmp_path / "sets.json"
+    sets.register("web-pages", "", tmp_path / "eval", registry)
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+    out = tmp_path / "eval" / "web-pages-v2"
+
+    command = [*common, "web-truth-cards", "--set", "web-pages", "--out-set", str(out)]
+    assert cli.main(command) == 0
+
+    found = json.loads((out / "truth.json").read_text())
+    assert found["products"]["blocks"][0]["items"] == [
+        "Silic8",
+        "We use no acrylics.",  # no other page holds it
+        "Duro",
+        "Solo",
+    ]
+    assert "2 pages, 1 card descriptions added" in capsys.readouterr().out
+    reading = webpages.fixed_reading(listing, webpages.site_held(webpages_pages()))
+    assert reading["sections"][0]["texts"][:2] == ["Silic8", "We use no acrylics."]
+
+
+def webpages_pages() -> dict[str, str]:
+    return {"duro": "<main><h1>Duro</h1><p>A base coat.</p></main>"}
+
+
 def holder_texts() -> dict[str, str]:
     """Two site pages' text by URL: the fact's own page and one repeating a part."""
     return {

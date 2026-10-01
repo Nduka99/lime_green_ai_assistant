@@ -342,10 +342,10 @@ def current_reading(raw: str) -> dict[str, Any]:
     return {"title": title, "headings": headings, "sections": sections}
 
 
-def fixed_reading(raw: str) -> dict[str, Any]:
-    """Arm (a) fixed (`limespec.webpage`): consecutive elements under the same path
-    form a section."""
-    title, found = webpage.read_page(raw)
+def fixed_reading(raw: str, held: webpage.Held | None = None) -> dict[str, Any]:
+    """Arm (a) fixed (`limespec.webpage`, with `held` as the build reads it):
+    consecutive elements under the same path form a section."""
+    title, found = webpage.read_page(raw, held=held)
     headings = [e["text"] for e in found if e["kind"] == "heading"]
     sections: list[dict[str, Any]] = []
     for element in found:
@@ -595,6 +595,37 @@ def fact_result(
         "reciprocal": 1 / rank if rank else 0.0,
         "ceiling": 1.0 if any(fact_relevant(p, item) for p in anywhere) else 0.0,
     }
+
+
+def site_held(pages: Mapping[str, str]) -> webpage.Held:
+    """What the build's first pass holds: every page's own text (`webpage.held_by`)."""
+    texts = [e["text"] for raw in pages.values() for e in webpage.read_page(raw)[1]]
+    return webpage.held_by(texts)
+
+
+def with_card_descriptions(
+    page: Mapping[str, Any], raw: str, held: webpage.Held
+) -> dict[str, Any]:
+    """A truth page corrected by X44's rule: a link card's description that no other
+    page holds is content, read after the card's name in the list of names (X42's
+    truth judged every description furniture)."""
+    soup = BeautifulSoup(raw, "html.parser")
+    root = soup.find("main") or soup.body
+    added = {}
+    for card in root.select(".cardbox article.card") if root else []:
+        name = webpage.text_of(card.select_one(".title"))
+        description = webpage.text_of(card.select_one(".desc"))
+        if card.select_one("a.portal-item") and description and not held(description):
+            added[name] = description
+    blocks = []
+    for block in page["blocks"]:
+        if block["kind"] == "list":
+            items = []
+            for item in block["items"]:
+                items += [item, added[item]] if item in added else [item]
+            block = {**block, "items": items}
+        blocks.append(block)
+    return {**page, "blocks": blocks}
 
 
 def link_problems(link: str, rendered: str | None) -> list[str]:

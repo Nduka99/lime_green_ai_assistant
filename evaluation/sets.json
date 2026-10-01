@@ -408,6 +408,18 @@
     "visible/terms.txt": "20703b53dc3596615b83f28da6818d084458445eed3913644d158ba0546d5a23"
    }
   },
+  "web-pages-holdout-v2": {
+   "description": "X44 F3a: web-pages-holdout by the same card rule (0 added)",
+   "files": {
+    "truth.json": "67ab15984d11226f2546fb504893da8bdad8ca5d89ab5efb8a2411919cac44f2"
+   }
+  },
+  "web-pages-v2": {
+   "description": "X44 F3a: web-pages with every link-card description no other page holds marked content (6 added on products), by the rule registered in X44 before the reader change was scored",
+   "files": {
+    "truth.json": "1da30b2025f060f5ac699573ad3f18d963a5ad2f581195cc5174cd6e2763fc65"
+   }
+  },
   "x8-pages": {
    "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
    "files": {

@@ -446,6 +446,11 @@ def parser() -> argparse.ArgumentParser:
     web_scored.add_argument("arm", choices=webpages.ARMS)
     web_scored.add_argument("--set", default="web-pages", help="a registered truth")
     web_scored.add_argument("--out", type=Path, required=True)
+    web_corrected = commands.add_parser(
+        "web-truth-cards", help="a web truth with unique card descriptions (X44 F3a)"
+    )
+    web_corrected.add_argument("--set", required=True, help="a registered truth")
+    web_corrected.add_argument("--out-set", type=Path, required=True)
     web_facted = commands.add_parser(
         "web-facts", help="one question per web-pages truth block (X42 W3)"
     )
@@ -1478,12 +1483,13 @@ def run_web_score(args: argparse.Namespace) -> int:
     )
     pages = cached_html()
     converter = webpages.docling_converter() if args.arm == "docling" else None
+    held = webpages.site_held(pages) if args.arm == "fixed" else None
     readings = {}
     for slug in truth:
         if args.arm == "current":
             readings[slug] = webpages.current_reading(pages[slug])
         elif args.arm == "fixed":
-            readings[slug] = webpages.fixed_reading(pages[slug])
+            readings[slug] = webpages.fixed_reading(pages[slug], held)
         elif args.arm == "docling":
             readings[slug] = webpages.docling_reading(pages[slug], converter)
         else:
@@ -1491,6 +1497,29 @@ def run_web_score(args: argparse.Namespace) -> int:
     found = webpages.scores(truth, readings)
     write_json(args.out, found | {"readings": readings})
     print(json.dumps({name: round(rate, 4) for name, rate in found["rates"].items()}))
+    return 0
+
+
+def run_web_truth_cards(args: argparse.Namespace) -> int:
+    """A registered web truth corrected by X44's card rule, written as a new set."""
+    truth = grades.read_json(
+        sets.require(args.set, args.root, args.registry) / "truth.json"
+    )
+    pages = cached_html()
+    held = webpages.site_held(pages)
+    found = {
+        slug: webpages.with_card_descriptions(page, pages[slug], held)
+        for slug, page in truth.items()
+    }
+    args.out_set.mkdir(parents=True, exist_ok=True)
+    write_json(args.out_set / "truth.json", found)
+    added = sum(
+        len(new["items"]) - len(old["items"])
+        for slug in truth
+        for old, new in zip(truth[slug]["blocks"], found[slug]["blocks"], strict=True)
+        if old["kind"] == "list"
+    )
+    print(f"{len(found)} pages, {added} card descriptions added, in {args.out_set}")
     return 0
 
 
@@ -2517,6 +2546,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_render(args)
         if args.command == "web-truth":
             return run_web_truth(args)
+        if args.command == "web-truth-cards":
+            return run_web_truth_cards(args)
         if args.command == "web-score":
             return run_web_score(args)
         if args.command == "web-facts":

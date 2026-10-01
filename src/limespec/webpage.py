@@ -8,11 +8,14 @@ starts or ends and at `<br>`, so no text is lost because its tag was not expecte
 What counts as the page's own content follows the main-content rule fixed before
 the extractors were scored (X42 report): site furniture is removed by component,
 cards that are not links are content, and a listing's link cards are read as the
-names of what they list. Callouts are content on a page that holds nothing else:
-the page they are about (X43 A2).
+names of what they list, with a card's description when no other page holds it
+(X44 F3a). Callouts are content on a page that holds nothing else: the page they are
+about (X43 A2). A slideshow of link cards lists related pages; a slideshow of text
+slides (testimonials) is content (X44 F4).
 """
 
 import re
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
@@ -26,7 +29,7 @@ FURNITURE = ", ".join(
         ".maf-bc",  # breadcrumb trail
         ".tabs",  # product tab bar
         ".gal",  # photo gallery
-        ".associated, .blog-highlight, .flickity-slideshow",  # related cards
+        ".associated, .blog-highlight, .flickity-slideshow.cardbox",  # related cards
         ".blog-detail .maf-col-2",  # an article's sidebar: related cards
         ".page-content-section .maf-col-2",  # a page's side box (the FAQ's AI box)
         ".clr-col-1 p, .clr-col-2, .clr .link",  # colour-chart help, samples box
@@ -72,6 +75,9 @@ LARGE = "page-lead"  # the site's class for larger text
 LEAD_IN = (":", ";")  # a line ending so introduces what follows: not a heading
 ONE_LINE = 100  # characters: a heading fits on one line of the content column
 DESCRIBED = 5  # words: an image's alt text this long describes it (X42 truth rule)
+WORDS = re.compile(r"\w+")
+CUT = " .…"  # the site cuts a long card description short with an ellipsis
+Held = Callable[[str], bool]  # whether some page already holds a text
 
 
 def names_list(soup: BeautifulSoup, names: list[str]) -> Tag:
@@ -88,9 +94,22 @@ def text_of(tag: Tag | None) -> str:
     return " ".join(tag.get_text(" ").split()) if tag else ""
 
 
-def listings(soup: BeautifulSoup, root: Tag) -> None:
+def held_by(texts: Sequence[str]) -> Held:
+    """Whether a text is already held by one of `texts`, compared as words in order,
+    case folded, without the ellipsis that cuts a card's description short."""
+    known = " " + " ".join(" ".join(WORDS.findall(t.casefold())) for t in texts) + " "
+
+    def held(text: str) -> bool:
+        words = " ".join(WORDS.findall(text.rstrip(CUT).casefold()))
+        return bool(words) and f" {words} " in known
+
+    return held
+
+
+def listings(soup: BeautifulSoup, root: Tag, held: Held | None = None) -> None:
     """Cards and grids read as lists. Link cards left in the page's own column are its
-    listing: their names. A card that is not a link carries content: its title and
+    listing: their names, each followed by its description where `held` says no other
+    page holds it (X44 F3a). A card that is not a link carries content: its title and
     text, each an item. Colour grids and download buttons are lists of names."""
     for box in root.select(".cardbox"):
         cards = box.select("article.card")
@@ -98,6 +117,9 @@ def listings(soup: BeautifulSoup, root: Tag) -> None:
         for card in cards:
             if card.select_one("a.portal-item"):
                 names.append(text_of(card.select_one(".title")))
+                description = text_of(card.select_one(".desc"))
+                if held is not None and description and not held(description):
+                    names.append(description)
             else:
                 names += [
                     text_of(card.select_one(".title")),
@@ -229,20 +251,21 @@ def elements(
 
 
 def read_page(
-    raw_html: str, every_image: bool = False
+    raw_html: str, every_image: bool = False, held: Held | None = None
 ) -> tuple[str, list[dict[str, Any]]]:
     """The page's title and its main content's elements in reading order; with
     `every_image`, every image of the main content is a figure, not only those whose
-    alt text describes them. A page left with no content once its callouts are
+    alt text describes them; with `held`, a link card's description no other page
+    holds is read after its name. A page left with no content once its callouts are
     removed is read with them: it is the page they are about."""
-    title, found = read_main(raw_html, every_image, f"{FURNITURE}, {CALLOUTS}")
+    title, found = read_main(raw_html, every_image, f"{FURNITURE}, {CALLOUTS}", held)
     if any(element["kind"] != "meta" for element in found):
         return title, found
-    return read_main(raw_html, every_image, FURNITURE)
+    return read_main(raw_html, every_image, FURNITURE, held)
 
 
 def read_main(
-    raw_html: str, every_image: bool, furniture: str
+    raw_html: str, every_image: bool, furniture: str, held: Held | None = None
 ) -> tuple[str, list[dict[str, Any]]]:
     """`read_page` with the given furniture removed."""
     soup = BeautifulSoup(raw_html, "html.parser")
@@ -251,7 +274,7 @@ def read_main(
         raise ValueError("page has no <body>")
     for element in root.select(furniture):
         element.decompose()
-    listings(soup, root)
+    listings(soup, root, held)
     heading = root.find("h1")
     title = text_of(heading) if heading else text_of(soup.title)
     if heading:
