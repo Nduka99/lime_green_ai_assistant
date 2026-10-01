@@ -343,6 +343,42 @@ for the user's serving decision:
 The startup-line change is the user's decision. After it come the arms for the winner
 (quantization, thinking) and the concurrency check before the freeze.
 
+## Serving check for Gemma (the user chose "Gemma, after a serving check"; written before any run)
+
+**Why.** In G1, Gemma with one slot and a 16k context, beside the support servers, took
+the GPU to 7,675–7,707 MiB, at or over the 7,680 MiB ceiling X39 and X41 used, and X41's
+second slot has not been tried. The candidate path does not use 8081 (the 0.6B embedder):
+index version 17 searches with the 4B embedder on the CPU (8084). Only version 4 (live
+today) and the 8090 page (the submitted v5) use 8081. So Gemma is measured both beside
+8081 and without it.
+
+**Setup.** As X41:
+- 8080 stopped; Gemma on 8083 with the G1 flags, but `--cache-ram 2048` (the live line,
+  D95) instead of 0.
+- 8082 and 8084 kept running.
+- X39's 40 replayed answer requests (`requests-r40.json`), `cache_prompt` false, through
+  `evaluation generator-pass` with the server's process id for memory, no `-v`.
+- GPU total sampled each second (peak); minimum available RAM.
+- Servers restored by the startup script afterwards.
+
+**Passes.**
+1. `S1-with-8081`: one slot (`-c 16384 -np 1`), R40 one at a time.
+2. `S1`: the same with 8081 stopped.
+3. `S2`: 8081 stopped, two slots (`-c 32768 -np 2 --no-kv-unified`, X41's arm):
+   (a) R40 one at a time; (b) R40 two at a time.
+
+**Rules.**
+- A configuration is servable only if its GPU peak (all processes) is at most 7,680 MiB
+  and at least 8,192 MB of RAM stays available throughout.
+- Two slots are recommended only if, as in X41: one at a time they give the same 40
+  replies as `S1`, not slower beyond noise; and two at a time finish all 40 in at most
+  0.9 × `S1`'s one-at-a-time time.
+- Reported beside: seconds per answer against Qwen3.6's 13.0 s (X41 `K`), and two-at-a-time
+  median and p95.
+- The recommendation (with or without 8081, one or two slots), and with it the exact
+  startup lines, goes to the user. Keeping 8081 would mean keeping version 4 and the 8090
+  page served beside Gemma; dropping it means starting them only when needed.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
