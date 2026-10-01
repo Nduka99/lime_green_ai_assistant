@@ -43,6 +43,7 @@ import shutil
 import sys
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict
 from functools import cache
 from pathlib import Path
@@ -83,6 +84,7 @@ from evaluation import (
     slotbench,
     support,
     versions,
+    visual,
     webpages,
 )
 from limespec import (
@@ -482,6 +484,15 @@ def parser() -> argparse.ArgumentParser:
     )
     picture_retrieved.add_argument("--version", type=int, required=True)
     picture_retrieved.add_argument("--out", type=Path, required=True)
+    picture_retrieved.add_argument(
+        "--visual", type=Path, help="picture vectors (image-vectors): an arm T+S"
+    )
+    picture_retrieved.add_argument("--arm", choices=["pool", "quota"], default="pool")
+    picture_embedded = commands.add_parser(
+        "image-vectors", help="every stored picture's SigLIP2 vector (X43 B3)"
+    )
+    picture_embedded.add_argument("--out", type=Path, required=True)
+    picture_embedded.add_argument("--model", type=Path, default=visual.SIGLIP)
     web_linked = commands.add_parser(
         "web-links", help="the link of every passage of a version checked (X42 W4)"
     )
@@ -1612,19 +1623,59 @@ def run_image_ocr_score(args: argparse.Namespace) -> int:
 def run_image_retrieval(args: argparse.Namespace) -> int:
     folder = sets.require("image-facts", args.root, args.registry)
     items = grades.read_json(folder / "questions.json")["questions"]
+    arm = f"T+S {args.arm}" if args.visual else "T"
     results = []
     with assistant.connect() as conn:
+        search = picture_search(conn, args) if args.visual else plain_search(conn)
         for item in items:
-            ranked = store.search(
-                conn, args.version, item["question"], llm.embed, llm.rerank
-            )
+            ranked = search(args.version, item["question"])
             results.append(imagesets.picture_result(item, ranked))
     found = lookups.summary(results)["image-facts"]
-    write_json(
-        args.out, {"version": args.version, "summary": found, "results": results}
-    )
+    write_json(args.out, {"version": args.version, "arm": arm, "summary": found,
+                          "results": results})  # fmt: skip
     print(f"image-facts: Success@{lookups.TOP} {found['success']:.3f}, MRR "
-          f"{found['mrr']:.3f}; version {args.version}")  # fmt: skip
+          f"{found['mrr']:.3f}; version {args.version}, arm {arm}")  # fmt: skip
+    return 0
+
+
+Search = Callable[[int, str], list[Passage]]  # (version, question) -> best first
+
+
+def plain_search(conn: store.Connection) -> Search:
+    """Search as the assistant searches (arm T)."""
+    return lambda version, question: store.search(
+        conn, version, question, llm.embed, llm.rerank
+    )
+
+
+def picture_search(conn: store.Connection, args: argparse.Namespace) -> Search:
+    """Search with SigLIP2's picture ranking placed as `args.arm` says (B3's T+S)."""
+    vectors = grades.read_json(args.visual)
+    _, embed_texts = visual.siglip_model(visual.SIGLIP)
+
+    def search(version: int, question: str) -> list[Passage]:
+        by_picture = store.picture_passages(conn, version)
+        found = visual.picture_ranking(embed_texts([question])[0], vectors, by_picture)
+        if args.arm == "pool":
+            pool = found[: config.CANDIDATES_PER_METHOD]
+            return store.search(
+                conn, version, question, llm.embed, llm.rerank, also=[pool]
+            )
+        ranked = store.search(conn, version, question, llm.embed, llm.rerank)
+        pictures = store.load_passages(conn, found[: config.TOP_K + visual.QUOTA])
+        return visual.with_quota(ranked, pictures)
+
+    return search
+
+
+def run_image_vectors(args: argparse.Namespace) -> int:
+    places = grades.read_json(config.IMAGES / "places.json")
+    ids = sorted({place["id"] for place in places})
+    known = grades.read_json(args.out) if args.out.exists() else {}
+    embed_pictures, _ = visual.siglip_model(args.model)
+    vectors = visual.picture_vectors(ids, config.IMAGES, embed_pictures, known)
+    write_json(args.out, vectors)
+    print(f"{len(vectors)} picture vectors in {args.out} ({len(known)} kept)")
     return 0
 
 
@@ -2329,6 +2380,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_image_candidates(args)
         if args.command == "image-retrieval":
             return run_image_retrieval(args)
+        if args.command == "image-vectors":
+            return run_image_vectors(args)
         if args.command == "web-links":
             return run_web_links(args)
         if args.command == "web-compare":

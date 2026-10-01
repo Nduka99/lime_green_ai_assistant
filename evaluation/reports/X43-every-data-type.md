@@ -167,6 +167,23 @@ around them: their captions can be downloaded only with the owner's authorisatio
     the top 8. A copy is a thumbnail differing by at most 5 per colour value
     (`imagesets.copies`; copies measured 0.2–2.3, different pictures 8.7 or more).
     One drawing found twice among the drawn pictures is accepted as either.
+- **Amendment 2, before any arm (1 October).** UniDoc-Bench's fusion is not a rank
+  fusion: "MM (T+I): A fusion baseline that selects the top-5 candidates from Text and
+  the top-5 from Image retrieval", with no reranker (arXiv 2510.03663, §4.1). Our text
+  path ends in a reranker that reads only text, so where a picture ranking joins
+  decides what it can do. T+S becomes two arms, both with SigLIP2 so400m patch14-384 on
+  the CPU (picture vectors from the stored PNGs; the question padded to 64 tokens, as
+  the model card does), each picture standing for its passage:
+  - **T+S pool:** the picture ranking joins the keyword and vector rankings in the RRF
+    before the reranker (candidates per method and reranked candidates as today);
+  - **T+S quota:** UniDoc's split scaled to our 8 places: the reranked top 6, then
+    SigLIP2's best 2 pictures not already among them.
+  - The rule is unchanged (the highest Success@8 among arms whose interval against T
+    lies above zero). An adopted arm must still pass C's gates on the text sets: the
+    quota arm gives two places of every answer to pictures.
+  - T+D waits for B4: describing every picture needs a vision generator, which means
+    stopping 8080 for hours, beyond the serving check the user approved. It is asked
+    when reached.
 
 **B4. The generators see images.**
 - The F16 projectors of the two generators are downloaded (Qwen3.6 899 MB, Gemma 4 26B

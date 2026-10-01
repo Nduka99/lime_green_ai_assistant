@@ -266,12 +266,14 @@ def search(
     rerank: Rerank,
     top: int | None = None,
     scope: Sequence[str] = (),
+    also: Sequence[list[int]] = (),
 ) -> list[Passage]:
     """The top passages of one index version for a question, best first: `top` of
     them, or `config.TOP_K`; only passages of the named `scope`, if one is given.
 
-    Keyword and vector rankings, fused, then the reranker orders the best
-    candidates (`retrieve.rerank_top`).
+    Keyword and vector rankings, and any rankings `also` given (passage ids, best
+    first), fused, then the reranker orders the best candidates
+    (`retrieve.rerank_top`).
     """
     query_vector = embed([config.QUERY_INSTRUCTION + question])[0]
     limit = config.CANDIDATES_PER_METHOD
@@ -279,6 +281,7 @@ def search(
         [
             keyword_ranking(conn, version_id, question, limit, scope),
             vector_ranking(conn, version_id, query_vector, limit, scope),
+            *also,
         ]
     )
     candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
@@ -391,6 +394,17 @@ def passage_count(conn: Connection, version_id: int) -> int:
     ).fetchone()
     assert row is not None  # count(*) always yields a row
     return int(row[0])
+
+
+def picture_passages(conn: Connection, version_id: int) -> dict[str, int]:
+    """The passage each picture of an index version became, by picture id (not those
+    with a price, X16)."""
+    rows = conn.execute(
+        "SELECT image, id FROM passages WHERE index_version_id = %s "
+        "AND image IS NOT NULL AND NOT commercial ORDER BY id",
+        (version_id,),
+    ).fetchall()
+    return {image: passage_id for image, passage_id in rows}
 
 
 def searchable_passages(conn: Connection, version_id: int) -> list[Passage]:
