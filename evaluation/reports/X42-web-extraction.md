@@ -91,6 +91,20 @@ of body, and passages whose body repeats on another page. Its first run is the b
 - A web link's text fragment must match the page as rendered, or the plain page address
   is used.
 - Checked by tests, and over every answer of the G3 runs.
+- **As built (1 October, before W6's checks):**
+  - `verify.encoded` percent-encodes the path and query (RFC 3986) and keeps the
+    escapes an address already has.
+  - A text directive matches inside one block of the page (WICG Text Fragments). So a
+    quote whose wording spans lines of its passage (paragraphs, list items, a heading
+    and its text) is linked as a range, `text=first line,last line`. This replaces the
+    plain-address fallback: the range still opens at the quote.
+  - The G3 answers' links were built by the old code, so the check runs instead over
+    every passage of the W6 index version (`evaluation web-links`). Each passage is
+    linked by its first line and by its first two lines.
+    - Every link must be an https address of the site or of the OGL gov.uk documents
+      and hold no character an address cannot hold.
+    - For the 40 rendered pages, each directive must be found in the page as drawn:
+      its start, then its end after it.
 
 **W5, content not collected.** For the NBS widget, its terms and content are read before
 any collection (the user's decision). Descriptive alt texts become image passages only if

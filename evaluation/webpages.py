@@ -18,7 +18,7 @@ from io import BytesIO
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
@@ -55,6 +55,7 @@ ARMS = ("current", "docling", "trafilatura", "fixed")
 WORD = re.compile(r"\w+")
 BLANK_LINE = re.compile(r"\n\s*\n")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")  # a Markdown heading: its marks, its text
+SOURCE_HOSTS = ("lime-green.co.uk", "gov.uk")  # the site and the OGL documents
 LIST_ITEM = re.compile(r"^([-*+]|\d+\.)(\s+|$)")  # a Markdown list item's marker
 
 
@@ -591,3 +592,27 @@ def fact_result(
         "reciprocal": 1 / rank if rank else 0.0,
         "ceiling": 1.0 if any(fact_relevant(p, item) for p in anywhere) else 0.0,
     }
+
+
+def link_problems(link: str, rendered: str | None) -> list[str]:
+    """What is wrong with a link a customer receives (X42 W4): not an https address
+    of the site or of the OGL gov.uk documents; a character an address cannot hold;
+    or, where the page's rendering is at hand, a text directive the page as drawn
+    does not hold (its start, and its end after it)."""
+    problems = []
+    parts = urlsplit(link)
+    if parts.scheme != "https" or not parts.netloc.endswith(SOURCE_HOSTS):
+        problems.append("not an online source address")
+    if any(char.isspace() or not char.isascii() for char in link):
+        problems.append("a character an address cannot hold")
+    _, _, directive = parts.fragment.partition(":~:text=")
+    if directive and rendered is not None:
+        start, _, end = (unquote(part) for part in directive.partition(","))
+        lines = visible_lines(rendered)
+        first = next(
+            (n for n, line in enumerate(lines) if find_quote(start, line)), None
+        )
+        later = lines[first:] if first is not None else []
+        if first is None or (end and not any(find_quote(end, x) for x in later)):
+            problems.append("a text directive the rendered page does not hold")
+    return problems

@@ -114,17 +114,33 @@ def test_spacing_between_letters_or_digits_and_within_numbers_is_kept() -> None:
 
 
 def test_the_quote_link_escapes_text_fragment_syntax() -> None:
-    link = quote_link("https://example.test/p", "low-carbon, lime & sand\nmix")
+    link = quote_link("https://example.test/p", "low-carbon, lime  & sand mix")
 
     assert link == (
         "https://example.test/p#:~:text=low%2Dcarbon%2C%20lime%20%26%20sand%20mix"
     )
 
 
+def test_a_quote_over_several_lines_links_as_a_range() -> None:
+    # A text directive matches inside one block of the page: a heading and its text,
+    # or two list items, are linked from the first line to the last.
+    link = quote_link("https://example.test/p", "Uses\n\nRepointing, brick-work")
+
+    assert link == "https://example.test/p#:~:text=Uses,Repointing%2C%20brick%2Dwork"
+
+
 def test_a_quote_from_a_pdf_links_to_its_page() -> None:
     assert quote_link("https://example.test/a.pdf", "lime", 3) == (
         "https://example.test/a.pdf#page=3"
     )
+
+
+def test_an_address_with_spaces_is_percent_encoded_once() -> None:
+    url = "https://example.test/Documents/carbon footprint - solo.pdf?v=1 2"
+    done = "https://example.test/Documents/carbon%20footprint%20-%20solo.pdf?v=1%202"
+
+    assert quote_link(url, "lime", 3) == f"{done}#page=3"
+    assert quote_link(done, "lime", 3) == f"{done}#page=3"  # escapes kept as they are
 
 
 def test_an_unknown_source_id_is_rejected() -> None:

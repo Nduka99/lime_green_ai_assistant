@@ -591,3 +591,56 @@ def test_the_command_line_builds_web_facts_and_scores_and_compares_versions(
     assert saved["passages"] == 3 and saved["summary"]["success"] == 1.0
     assert cli.main(["web-compare", str(run), str(run)]) == 0
     assert "difference +0.000" in capsys.readouterr().out
+
+
+def test_a_customer_link_must_be_an_online_source_the_rendered_page_holds() -> None:
+    shown = "Uses\nRepointing brick\nRendering"
+    good = "https://www.lime-green.co.uk/duro#:~:text=Uses,Rendering"
+
+    assert webpages.link_problems(good, shown) == []
+    assert webpages.link_problems(good, None) == []
+    assert webpages.link_problems(
+        "https://www.lime-green.co.uk/duro#:~:text=Rendering,Uses", shown
+    ) == ["a text directive the rendered page does not hold"]
+    assert webpages.link_problems(
+        "https://www.lime-green.co.uk/duro#:~:text=Plaster", shown
+    ) == ["a text directive the rendered page does not hold"]
+    assert webpages.link_problems("http://example.test/a b.pdf#page=2", None) == [
+        "not an online source address",
+        "a character an address cannot hold",
+    ]
+
+
+def test_the_command_line_checks_every_passage_link_of_a_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+
+    from limespec import assistant, store
+    from limespec.models import Passage
+
+    @contextmanager
+    def connect() -> Iterator[None]:
+        yield None
+
+    site = "https://www.lime-green.co.uk/"
+    rows = [
+        Passage(1, site + "duro", "Duro", "Uses", "Uses\nRepointing brick", ""),
+        Passage(2, site + "Documents/a b.pdf", "A", "", "Lime", "", 3),
+    ]
+    monkeypatch.setattr(assistant, "connect", connect)
+    monkeypatch.setattr(store, "searchable_passages", lambda conn, version: rows)
+    render = tmp_path / "render"
+    render.mkdir()
+    (render / "duro.txt").write_text("Uses\nRepointing", encoding="utf-8")
+    out = tmp_path / "links.json"
+
+    command = ["web-links", "--version", "18", "--rendered", str(render)]
+    assert cli.main([*command, "--out", str(out)]) == 0
+    saved = json.loads(out.read_text())
+    assert saved["links"] == 4
+    assert [p["problem"] for p in saved["problems"]] == [
+        "a text directive the rendered page does not hold"
+    ]
+    assert "4 links from 2 passages" in capsys.readouterr().out

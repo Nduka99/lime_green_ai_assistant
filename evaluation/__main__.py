@@ -94,6 +94,7 @@ from limespec import (
     scope,
     store,
     tables,
+    verify,
     webpage,
 )
 from limespec.models import Passage, described
@@ -434,6 +435,14 @@ def parser() -> argparse.ArgumentParser:
     )
     web_compared.add_argument("baseline", type=Path, help="a web-retrieval file")
     web_compared.add_argument("arms", type=Path, nargs="+")
+    web_linked = commands.add_parser(
+        "web-links", help="the link of every passage of a version checked (X42 W4)"
+    )
+    web_linked.add_argument("--version", type=int, required=True)
+    web_linked.add_argument(
+        "--rendered", type=Path, nargs="*", default=[], help="web-render folders"
+    )
+    web_linked.add_argument("--out", type=Path, required=True)
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1429,6 +1438,31 @@ def run_web_retrieval(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_web_links(args: argparse.Namespace) -> int:
+    """Each passage linked as a claim would be, by its first line and by its first
+    two lines (a range), every link checked; pages rendered by `web-render` are
+    checked against their rendering too."""
+    rendered = {}
+    for folder in args.rendered:
+        for path in sorted(folder.glob("*.txt")):
+            rendered[ingest.page_url(path.stem)] = path.read_text(encoding="utf-8")
+    with assistant.connect() as conn:
+        found = store.searchable_passages(conn, args.version)
+    problems: list[dict[str, str]] = []
+    checked = 0
+    for passage in found:
+        lines = [line for line in passage.text.split("\n") if line.strip()]
+        for quote in (lines[0], "\n".join(lines[:2])):
+            link = verify.source_link(passage, quote)
+            checked += 1
+            for problem in webpages.link_problems(link, rendered.get(passage.url)):
+                problems.append({"problem": problem, "link": link})
+    write_json(args.out, {"links": checked, "problems": problems})
+    kinds = Counter(problem["problem"] for problem in problems)
+    print(f"{checked} links from {len(found)} passages; problems: {dict(kinds)}")
+    return 0
+
+
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
     for path in args.arms:
@@ -2118,6 +2152,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_facts(args)
         if args.command == "web-retrieval":
             return run_web_retrieval(args)
+        if args.command == "web-links":
+            return run_web_links(args)
         if args.command == "web-compare":
             return run_web_compare(args)
         if args.command == "nearmiss-answer":

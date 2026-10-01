@@ -27,6 +27,7 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from urllib.parse import quote as percent_encode
+from urllib.parse import urlsplit, urlunsplit
 
 from limespec import lists, prices
 from limespec.models import Claim, DraftClaim, Evidence, Passage, Rejection
@@ -133,15 +134,35 @@ def find_quote(quote: str, text: str) -> str | None:
     return text[where[match.start()] : where[match.end() - 1] + 1]
 
 
+def encoded(url: str) -> str:
+    """The address with its path and query percent-encoded (RFC 3986), escapes it
+    already has kept: a path with spaces ("carbon footprint - solo.pdf") is cut at
+    the first space wherever text is turned into links."""
+    parts = urlsplit(url)
+    path = percent_encode(parts.path, safe="/%!$&'()*+,;=:@-._~")
+    query = percent_encode(parts.query, safe="/?%!$&'()*+,;=:@-._~")
+    return urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
+
+
+def directive_text(text: str) -> str:
+    """Words for a text directive: percent-encoded, '-' included, as it is syntax."""
+    return percent_encode(" ".join(text.split()), safe="").replace("-", "%2D")
+
+
 def quote_link(url: str, quote: str, page: int | None = None) -> str:
     """A link that opens the page with the quote highlighted (a URL text fragment),
     or a PDF at the quote's page (RFC 8118 `page=`: browsers do not find text
-    fragments in PDFs)."""
+    fragments in PDFs). A text directive matches inside one block of the page, so a
+    quote whose wording spans lines of its passage (paragraphs, list items, a heading
+    and its text) is linked as a range from its first line to its last."""
+    address = encoded(url)
     if page is not None:
-        return f"{url}#page={page}"
-    text = " ".join(quote.split())
-    # Percent-encoding leaves '-' alone, but inside a text fragment it is syntax.
-    return f"{url}#:~:text={percent_encode(text, safe='').replace('-', '%2D')}"
+        return f"{address}#page={page}"
+    lines = [line for line in quote.split("\n") if line.strip()]
+    if len(lines) > 1:
+        start, end = directive_text(lines[0]), directive_text(lines[-1])
+        return f"{address}#:~:text={start},{end}"
+    return f"{address}#:~:text={directive_text(quote)}"
 
 
 def source_link(passage: Passage, quote: str) -> str:
