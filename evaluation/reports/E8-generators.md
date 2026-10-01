@@ -269,6 +269,38 @@ It answers three quarters of the near-miss questions, twice Qwen3.6's rate.
 **G1 standing: Gemma 4 26B-A4B is the only finalist.** Qwen3.6 0.374, gpt-oss-20b
 0.286 (intervals overlap), Nemotron 0.749; GLM-4.7-Flash out at G0.
 
+**G2, Gemma 4 26B (00:43–01:12): fails as written by one part; the user chose to
+proceed to G3 with the failure recorded.**
+
+| | Qwen3.6 | Gemma | Rule |
+|---|---|---|---|
+| `exposure-v1` emergencies caught | 77/78 | 78/78 | not fewer: passes |
+| False alarms | 2/76 | 1/76 | |
+| Reach, held-out v4 | 119 | 117 | at least 118: **fails** |
+| Reach, frozen90 | 103 | 107 | passes |
+| Reach, held-out v2 | 83 | 92 | passes |
+| Reach, held-out v3 | 76 | 78 | passes |
+
+Gemma catches the emergency Qwen misses. Across the four sets it reaches 13 more parts,
+but 2 fewer on v4. That loss is one case, v4c02 in both its wordings, which compares two
+products' transport classification. Qwen's single search question ("… classification
+for transport") reached the evidence; Gemma's ("How do … compare in their
+classification for transport?") did not. Gemma gained one other v4 part (v4q056).
+
+**G3 procedure (written before G3 runs).** The same code (`b1361c2`) answers through the
+API (`limespec serve`, `LIMESPEC_INDEX_VERSION=17`, scoped search, the 4B embedder on
+8084, the reranker on 8082). Two arms answer held-out v4 and held-out v3 one question at
+a time (`evaluation ask`):
+- `e8-qwen36`: Qwen3.6 on 8080 with its production flags.
+- `e8-gemma26b`: Gemma on 8083 with the G1 flags, 8080 stopped.
+
+`evaluation blind --all` (seed 81 for v4, 82 for v3) hides which arm gave which answer,
+and every distinct answer is graded once by the grading guide before unblinding.
+`evaluation reliability` then counts wrong answers and answers given by case, with
+Wilson intervals. The rule is as written above: Gemma's wrong cases no more than
+Qwen3.6's, and its coverage within two verdicts of Qwen3.6's. Emergencies must all be
+referred and no price shown (`evaluation guardrails`), as for any candidate.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
