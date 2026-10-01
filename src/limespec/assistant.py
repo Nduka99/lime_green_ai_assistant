@@ -132,7 +132,8 @@ def ask_and_record(
         retrieve, chat = with_stages(retriever(conn, version_id), llm.chat, on_stage)
         see = seer(conn, on_stage) if config.PICTURES else None
         scoped = scoped_retriever(conn, version_id)
-        result = answer(question, retrieve, chat, scoped, see)
+        describe = config.PICTURES == "claims"
+        result = answer(question, retrieve, chat, scoped, see, describe)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(

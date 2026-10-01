@@ -210,7 +210,10 @@ around them: their captions can be downloaded only with the owner's authorisatio
 
 **B5. Two evidence modes, both measured.**
 - **Text in images:** claims quote an image's own words, verified as every quote is.
-- **Picture claims** (only with `LIMESPEC_PICTURES=1`):
+- **Seeing pictures** (`LIMESPEC_PICTURES=see`, E's "sees images, text claims" arm):
+  the pictures of the first 4 picture passages given are attached and numbered in
+  the prompt; every claim still quotes.
+- **Picture claims** (only with `LIMESPEC_PICTURES=claims`):
   - A claim of kind "picture" cites an attached image and states only what it visibly
     shows.
   - Verification checks that the image was attached. The price, number and regulation

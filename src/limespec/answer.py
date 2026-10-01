@@ -141,21 +141,22 @@ reader as "you", do not say whether the reader's work meets regulations, and do 
 not diagnose problems with the reader's building.
 7. If the passages do not answer the question, return an empty claims list."""
 
-# Added to the answer prompt when pictures are attached (X43 B5).
-PICTURE_PROMPT = """
+# Added to the answer prompt when pictures are attached (X43 B5), and, when claims
+# from pictures are allowed, the rule for them.
+SEE_PROMPT = """
 
 Pictures: each passage with a picture number comes with its picture, attached \
-after the question in that order. A claim may state what one of these pictures \
-plainly shows instead of quoting: give that passage's source_id as "picture" and \
-no evidence. Such a claim states only what can be seen (a colour, a finish, a \
-texture, a shape, what a drawing shows). Any number or regulation in it must be \
-written in that passage's own text."""
+after the question in that order."""
+DESCRIBE_PROMPT = """ A claim may state what one of these pictures plainly shows \
+instead of quoting: give that passage's source_id as "picture" and no evidence. \
+Such a claim states only what can be seen (a colour, a finish, a texture, a shape, \
+what a drawing shows). Any number or regulation in it must be written in that \
+passage's own text."""
+PICTURE_PROMPTS = {"": "", "see": SEE_PROMPT, "claims": SEE_PROMPT + DESCRIBE_PROMPT}
 
 # Which prompts produced an answer: recorded with every answer, so a change to either
 # prompt shows up in the audit records and can be tied to its evaluation run.
-PROMPTS = (
-    UNDERSTAND_PROMPT + ANSWER_PROMPT + (PICTURE_PROMPT if config.PICTURES else "")
-)
+PROMPTS = UNDERSTAND_PROMPT + ANSWER_PROMPT + PICTURE_PROMPTS[config.PICTURES]
 PROMPT_SHA256 = hashlib.sha256(PROMPTS.encode()).hexdigest()
 
 
@@ -397,10 +398,12 @@ def answer(
     chat: Chat,
     scoped: Retrieve | None = None,
     see: See | None = None,
+    describe: bool = False,
 ) -> Answer:
     """Answer one question from the indexed pages (`scoped`: see `gather`). Given
     `see`, the answer request carries the pictures of the first MAX_PICTURES picture
-    passages, and a claim may state what one of them shows (X43 B5)."""
+    passages; with `describe` too, a claim may state what one of them shows (X43
+    B5)."""
     exposed, parts = understand(question, chat)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
@@ -409,15 +412,18 @@ def answer(
     sources = {f"S{number}": passage for number, passage in enumerate(passages, 1)}
     pictures = [source_id for source_id, p in sources.items() if p.image]
     attached = pictures[: config.MAX_PICTURES] if see else []
-    system = ANSWER_PROMPT + (PICTURE_PROMPT if attached else "")
+    described = attached if describe else []
+    system = ANSWER_PROMPT
+    if attached:
+        system += SEE_PROMPT + (DESCRIBE_PROMPT if describe else "")
     user = user_prompt(parts, sources, attached)
-    schema = answer_schema(list(sources), len(parts), attached)
+    schema = answer_schema(list(sources), len(parts), described)
     if see and attached:
         output = see(system, user, schema, [sources[s] for s in attached])
     else:
         output = chat(system, user, schema)
-    drafts = read_output(output, list(sources), len(parts), attached)
-    claims, rejected = verify(drafts, sources, attached)
+    drafts = read_output(output, list(sources), len(parts), described)
+    claims, rejected = verify(drafts, sources, described)
     if not claims:
         return Answer(
             question, "insufficient_evidence", INSUFFICIENT, (), passages, rejected

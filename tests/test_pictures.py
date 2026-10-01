@@ -50,11 +50,12 @@ def test_pictures_are_attached_numbered_and_may_be_described(
         return {"claims": [picture, quoted]}
 
     found = answer.answer(
-        "Duro?", lambda q: [WALL, PHOTO, FIGURE], understanding, see=see
+        "Duro?", lambda q: [WALL, PHOTO, FIGURE], understanding, see=see, describe=True
     )
 
     system, user, schema, given = seen[0]
-    assert system.endswith(answer.PICTURE_PROMPT) and given == [PHOTO]
+    assert system.endswith(answer.SEE_PROMPT + answer.DESCRIBE_PROMPT)
+    assert given == [PHOTO]
     assert 'section="Image" picture="1">' in user and user.count("picture=") == 1
     item = schema["properties"]["claims"]["items"]["anyOf"][1]
     assert item["properties"]["picture"]["enum"] == ["S2"]
@@ -64,6 +65,36 @@ def test_pictures_are_attached_numbered_and_may_be_described(
     shown = view(found)
     assert shown["claims"][0]["picture"] == PICTURE
     assert "picture" not in shown["claims"][1]
+
+
+def test_seeing_pictures_alone_keeps_every_claim_quoted() -> None:
+    seen: list[Any] = []
+
+    def see(system: str, user: str, schema: dict[str, Any], given: Any) -> object:
+        seen.append((system, user, schema))
+        return {"claims": [{"part": 1, "picture": "S2", "text": "Ochre."}]}
+
+    with pytest.raises(ModelServerError):  # a picture claim is not allowed here
+        answer.answer("Duro?", lambda q: [WALL, PHOTO], understanding, see=see)
+
+    system, user, schema = seen[0]
+    assert system.endswith(answer.SEE_PROMPT) and 'picture="1"' in user
+    assert "anyOf" not in schema["properties"]["claims"]["items"]
+
+
+def test_the_picture_setting_is_checked_when_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    monkeypatch.setenv("LIMESPEC_PICTURES", "yes")
+    with pytest.raises(ValueError):
+        importlib.reload(config)
+    monkeypatch.setenv("LIMESPEC_PICTURES", "claims")
+    importlib.reload(config)
+    assert config.PICTURES == "claims"
+    monkeypatch.delenv("LIMESPEC_PICTURES")
+    importlib.reload(config)
 
 
 def test_without_a_way_to_see_no_picture_is_attached() -> None:

@@ -98,10 +98,12 @@ SCOPED_TOP = 4
 PASSAGE_BUDGET = 32
 MAX_QUOTES_PER_CLAIM = 3
 CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
-# The generator sees the pictures among the passages it is given, at most
-# MAX_PICTURES of them, and may state what one shows (X43 B5). Off unless set to "1":
-# kept only if the image strata show picture claims are reliable.
-PICTURES = os.environ.get("LIMESPEC_PICTURES", "") == "1"
+# "see": the generator sees the pictures among the passages it is given, at most
+# MAX_PICTURES of them; "claims": it may also state what one shows (X43 B5). Off
+# unless set: kept only if the image strata show it is reliable.
+PICTURES = os.environ.get("LIMESPEC_PICTURES", "")
+if PICTURES not in {"", "see", "claims"}:
+    raise ValueError('LIMESPEC_PICTURES must be "see", "claims" or unset')
 MAX_PICTURES = 4
 
 # `limespec serve` listens on this machine only: the page is a local demo. 8090
