@@ -11,6 +11,7 @@ tower, loaded once per process. Needs torch and transformers.
 from collections.abc import Callable
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 from limespec import config
 
@@ -29,10 +30,6 @@ def siglip_model(folder: Path) -> tuple[EmbedPictures, EmbedTexts]:
     model = AutoModel.from_pretrained(folder).eval()
     processor = AutoProcessor.from_pretrained(folder)  # type: ignore[no-untyped-call]
 
-    def unit(found: torch.Tensor) -> list[list[float]]:
-        vectors: list[list[float]] = (found / found.norm(dim=-1, keepdim=True)).tolist()
-        return vectors
-
     def pictures(paths: list[Path]) -> list[list[float]]:
         images = [Image.open(path).convert("RGB") for path in paths]
         batch = processor(images=images, return_tensors="pt")
@@ -40,17 +37,33 @@ def siglip_model(folder: Path) -> tuple[EmbedPictures, EmbedTexts]:
             return unit(model.get_image_features(**batch).pooler_output)
 
     def texts(found: list[str]) -> list[list[float]]:
-        batch = processor(
-            text=[text.lower() for text in found],
-            padding="max_length",
-            max_length=config.SIGLIP_TEXT_TOKENS,
-            truncation=True,
-            return_tensors="pt",
-        )
-        with torch.no_grad():
-            return unit(model.get_text_features(**batch).pooler_output)
+        return text_vectors(processor, model.get_text_features, found)
 
     return pictures, texts
+
+
+def unit(found: Any) -> list[list[float]]:
+    """A batch of vectors (a torch tensor) scaled to length 1, as lists."""
+    vectors: list[list[float]] = (found / found.norm(dim=-1, keepdim=True)).tolist()
+    return vectors
+
+
+def text_vectors(
+    processor: Any, run: Callable[..., Any], found: list[str]
+) -> list[list[float]]:
+    """Texts through SigLIP2's text side as its model card shows: lowercased, padded
+    to SIGLIP_TEXT_TOKENS tokens; `run` is the model call giving the pooled output."""
+    import torch
+
+    batch = processor(
+        text=[text.lower() for text in found],
+        padding="max_length",
+        max_length=config.SIGLIP_TEXT_TOKENS,
+        truncation=True,
+        return_tensors="pt",
+    )
+    with torch.no_grad():
+        return unit(run(**batch).pooler_output)
 
 
 def picture_vectors(
@@ -69,8 +82,14 @@ def picture_vectors(
 
 @cache
 def text_encoder() -> EmbedTexts:
-    """The text encoder, loaded once per process on first use."""
-    return siglip_model(config.SIGLIP)[1]
+    """The text tower alone, loaded once per process on first use: it gives the
+    whole model's text vectors exactly and holds 2.7 GB of RAM, not 4.4 (X44 G7)."""
+    from transformers import AutoProcessor, SiglipTextModel
+
+    model = SiglipTextModel.from_pretrained(config.SIGLIP)
+    model.eval()  # type: ignore[no-untyped-call]
+    processor = AutoProcessor.from_pretrained(config.SIGLIP)  # type: ignore[no-untyped-call]
+    return lambda found: text_vectors(processor, model, found)
 
 
 def text_vector(question: str) -> list[float]:

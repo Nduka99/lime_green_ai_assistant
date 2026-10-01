@@ -62,18 +62,35 @@ def test_the_model_gives_unit_vectors_and_reads_text_lowercased(
 def test_a_question_s_vector_comes_from_the_text_tower_loaded_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    loaded: list[Path] = []
+    loaded: list[Any] = []
 
-    def model(folder: Path) -> Any:
+    class TextModel:
+        def eval(self) -> "TextModel":
+            return self
+
+        def __call__(self, **batch: Any) -> Any:
+            rows = len(batch["input_ids"])
+            return type(
+                "Output", (), {"pooler_output": torch.tensor([[0.0, 3.0]] * rows)}
+            )
+
+    def text_model(folder: Path) -> TextModel:
         loaded.append(folder)
-        return (lambda paths: [], lambda texts: [[0.0, 1.0] for _ in texts])
+        return TextModel()
 
-    monkeypatch.setattr(siglip, "siglip_model", model)
+    def processor(**options: Any) -> dict[str, Any]:
+        loaded.append(options["text"])
+        return {"input_ids": [0] * len(options["text"])}
+
+    monkeypatch.setattr(transformers.SiglipTextModel, "from_pretrained", text_model)
+    monkeypatch.setattr(
+        transformers.AutoProcessor, "from_pretrained", lambda f: processor
+    )
     siglip.text_encoder.cache_clear()
 
     assert siglip.text_vector("Show me York") == [0.0, 1.0]
     assert siglip.text_vector("Show me Bath") == [0.0, 1.0]
-    assert loaded == [config.SIGLIP]
+    assert loaded == [config.SIGLIP, ["show me york"], ["show me bath"]]  # loaded once
     siglip.text_encoder.cache_clear()
 
 
