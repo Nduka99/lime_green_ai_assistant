@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Annotated, TypedDict
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Path as PathParameter
 from fastapi.responses import HTMLResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.templating import Jinja2Templates
@@ -29,6 +30,7 @@ app = FastAPI(title="Lime Green Assistant")
 telemetry.instrument(app)
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+IMAGE_ID = "^[0-9a-f]{64}$"  # a stored picture's name: the SHA-256 of its PNG
 
 
 class AnswerRequest(BaseModel):
@@ -115,6 +117,19 @@ def stream_answer(request: AnswerRequest) -> Iterator[ServerSentEvent]:
         yield event
         if event.event != "stage":
             return
+
+
+@app.get("/api/v1/images/{image_id}")
+def picture(image_id: Annotated[str, PathParameter(pattern=IMAGE_ID)]) -> Response:
+    """A picture a claim describes (X43 B5): the stored copy of a picture from the
+    company's public site or documents, by the SHA-256 of its PNG."""
+    try:
+        png = assistant.picture(image_id)
+    except IngestError as problem:
+        raise HTTPException(status_code=503, detail=str(problem)) from problem
+    if png is None:
+        raise HTTPException(status_code=404, detail="no such picture")
+    return Response(png, media_type="image/png")
 
 
 @app.get("/healthz")

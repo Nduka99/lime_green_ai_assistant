@@ -12,6 +12,9 @@ A claim is shown only if every check passes:
    control ...) is mentioned in its quotes;
 5. it states no price, whatever it quotes (the price fence, `prices`).
 
+A picture claim (X43 B5) has no quotes: it must name a passage whose picture was
+attached, and checks 3 to 5 apply with that passage's own words in place of quotes.
+
 These are evidence checks: none of them tries to judge what a sentence means,
 so they apply equally to any wording. Checks 3 and 4 stop a claim adding a
 figure or a regulation that its evidence does not contain, which is how an
@@ -24,7 +27,7 @@ repaired or regenerated.
 
 import re
 import unicodedata
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from functools import lru_cache
 from urllib.parse import quote as percent_encode
 from urllib.parse import urlsplit, urlunsplit
@@ -279,11 +282,51 @@ def check_claim(draft: DraftClaim, sources: Mapping[str, Passage]) -> Claim | Re
     return Claim(draft.text, tuple(evidence), draft.part)
 
 
+def check_picture(
+    draft: DraftClaim, sources: Mapping[str, Passage], attached: Collection[str]
+) -> Claim | Rejection:
+    """A picture claim verified: its picture was attached, and any price, number or
+    regulation in it is in that picture's passage. Its one citation opens where the
+    picture is shown."""
+    if draft.picture not in attached:
+        return Rejection(draft.text, f"not an attached picture: {draft.picture}")
+    if prices.states_price(draft.text):
+        return Rejection(draft.text, "states a price")
+    passage = sources[draft.picture]
+    words = f"{passage.title}\n{passage.heading}\n{passage.text}"
+    missing = [
+        number
+        for number in sorted(numbers(draft.text) - numbers(words))
+        if not named_number(draft.text, number, [passage])
+    ]
+    if missing:
+        return Rejection(
+            draft.text, f"number not in the picture's words: {', '.join(missing)}"
+        )
+    unworded = sorted(regulation_terms(draft.text) - regulation_terms(words))
+    if unworded:
+        return Rejection(
+            draft.text, f"regulation not in the picture's words: {', '.join(unworded)}"
+        )
+    shown = encoded(passage.url) + (f"#page={passage.page}" if passage.page else "")
+    evidence = Evidence(passage.id, passage.url, passage.title, passage.heading, "",
+                        shown, passage.fetched_at)  # fmt: skip
+    return Claim(draft.text, (evidence,), draft.part, passage.image)
+
+
 def verify(
-    drafts: Sequence[DraftClaim], sources: Mapping[str, Passage]
+    drafts: Sequence[DraftClaim],
+    sources: Mapping[str, Passage],
+    attached: Collection[str] = (),
 ) -> tuple[tuple[Claim, ...], tuple[Rejection, ...]]:
-    """Split the model's claims into those to show and those removed, keeping order."""
-    results = [check_claim(draft, sources) for draft in drafts]
+    """Split the model's claims into those to show and those removed, keeping order.
+    `attached` names the passages whose pictures the model saw (picture claims)."""
+    results = [
+        check_picture(draft, sources, attached)
+        if draft.picture
+        else check_claim(draft, sources)
+        for draft in drafts
+    ]
     claims = tuple(result for result in results if isinstance(result, Claim))
     rejected = tuple(result for result in results if isinstance(result, Rejection))
     return claims, rejected

@@ -6,13 +6,20 @@ they retrieve, which model requests they make or what they verify.
 """
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import psycopg
 
 from limespec import config, llm, scope, store, telemetry
-from limespec.answer import PROMPT_SHA256, UNDERSTAND_SCHEMA, Chat, Retrieve, answer
+from limespec.answer import (
+    PROMPT_SHA256,
+    UNDERSTAND_SCHEMA,
+    Chat,
+    Retrieve,
+    See,
+    answer,
+)
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
 from limespec.view import view
@@ -62,6 +69,28 @@ def with_stages(
     return staged_retrieve, staged_chat
 
 
+def seer(conn: store.Connection, on_stage: Callable[[str], None]) -> See:
+    """The answer request with the passages' stored pictures attached (X43 B5),
+    reporting and tracing its stages as `with_stages` does."""
+
+    def see(
+        system: str, user: str, schema: dict[str, Any], passages: Sequence[Passage]
+    ) -> object:
+        images = []
+        for passage in passages:
+            png = store.picture(conn, passage.image)
+            if png is None:
+                raise IngestError(f"picture {passage.image} is not stored")
+            images.append(png)
+        on_stage("answering")
+        with telemetry.span("answering"):
+            reply = llm.chat(system, user, schema, images)
+        on_stage("checking")
+        return reply
+
+    return see
+
+
 def retriever(conn: store.Connection, version_id: int) -> Retrieve:
     """One search of an index version with the configured model servers. It returns
     its whole reranked pool; `answer.gather` takes the top 8, or interleaves several
@@ -101,7 +130,9 @@ def ask_and_record(
         version_id = served_index(conn)
         started = time.perf_counter()
         retrieve, chat = with_stages(retriever(conn, version_id), llm.chat, on_stage)
-        result = answer(question, retrieve, chat, scoped_retriever(conn, version_id))
+        see = seer(conn, on_stage) if config.PICTURES else None
+        scoped = scoped_retriever(conn, version_id)
+        result = answer(question, retrieve, chat, scoped, see)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(
@@ -118,6 +149,12 @@ def ask_and_record(
         )
         telemetry.record_answer(result, answer_id, version_id, seconds)
     return result, answer_id
+
+
+def picture(image_id: str) -> bytes | None:
+    """A stored picture's PNG, or None when no picture has that id (X43 B5)."""
+    with connect() as conn:
+        return store.picture(conn, image_id)
 
 
 def connect() -> store.Connection:
