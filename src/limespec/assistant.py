@@ -173,16 +173,22 @@ def extras(
 def best_pictures(
     conn: store.Connection, version_id: int, query: str, embed: Embed
 ) -> list[Passage]:
-    """A search's best `config.PICTURES_PER_SEARCH` pictures: ranked by what they
-    show (SigLIP2), fused with the ranking by their own words when
-    `config.PICTURE_RANKING` is "words"."""
+    """A search's best pictures, by `config.PICTURE_RANKING`: the best
+    `config.PICTURES_PER_SEARCH` by what they show (SigLIP2); or by that ranking fused
+    with the one by their own words ("words"); or each one's best, words first
+    ("union", UniDoc-Bench's split: X44 amendment 1)."""
     limit = config.CANDIDATES_PER_METHOD
-    rankings = [
-        store.picture_ranking(conn, version_id, siglip.text_vector(query), limit)
-    ]
-    if config.PICTURE_RANKING == "words":
-        rankings.append(store.fused(conn, version_id, query, embed, channel="picture"))
-    return store.load_passages(conn, fuse(rankings)[: config.PICTURES_PER_SEARCH])
+    shown = store.picture_ranking(conn, version_id, siglip.text_vector(query), limit)
+    if config.PICTURE_RANKING == "siglip":
+        found = shown[: config.PICTURES_PER_SEARCH]
+    else:
+        words = store.fused(conn, version_id, query, embed, channel="picture")
+        if config.PICTURE_RANKING == "words":
+            found = fuse([shown, words])[: config.PICTURES_PER_SEARCH]
+        else:
+            best = config.PICTURES_PER_SEARCH
+            found = list(dict.fromkeys([*words[:best], *shown[:best]]))
+    return store.load_passages(conn, found)
 
 
 def guidance_above(

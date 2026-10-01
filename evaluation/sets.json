@@ -296,6 +296,12 @@
     "readings.json": "fd263a538b67b37bdda848ff4fd12699003d356d686836af04b5b62ddcf23e36"
    }
   },
+  "picture-probe": {
+   "description": "X44 amendment 1: 16 pictures drawn with seed 72 (none in image-facts, image-text or kb-probe), questions written from the pictures; sealed before the union arm runs",
+   "files": {
+    "questions.json": "a8cf3911269a0adcde5d623755e65bece56e9085eafd36d312091a4916010738"
+   }
+  },
   "relevance-dev": {
    "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
    "files": {

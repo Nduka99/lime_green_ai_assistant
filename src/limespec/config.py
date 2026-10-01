@@ -110,13 +110,14 @@ MAX_PICTURES = 4
 # apart and added after it, never in its place. Each search adds its best
 # PICTURES_PER_SEARCH pictures, at most MAX_PICTURES per question, and up to
 # GUIDANCE_PER_SEARCH guidance passages that the reranker puts above the company
-# channel's last place. Pictures are ranked by SigLIP2 ("siglip") or by it fused
-# with their own words ("words"), the arm X44 selects.
+# channel's last place. Pictures are ranked by SigLIP2 alone ("siglip"), by it fused
+# with their own words ("words"), or as the union of each one's best ("union"; X44
+# amendment 1): the arm X44 selects.
 PICTURES_PER_SEARCH = 2
 GUIDANCE_PER_SEARCH = 2
-PICTURE_RANKING = os.environ.get("LIMESPEC_PICTURE_RANKING", "words")
-if PICTURE_RANKING not in {"siglip", "words"}:
-    raise ValueError('LIMESPEC_PICTURE_RANKING must be "siglip" or "words"')
+PICTURE_RANKING = os.environ.get("LIMESPEC_PICTURE_RANKING", "siglip")
+if PICTURE_RANKING not in {"siglip", "words", "union"}:
+    raise ValueError('LIMESPEC_PICTURE_RANKING must be "siglip", "words" or "union"')
 # External documents are titled with their publisher first (general guidance).
 GUIDANCE_TITLE = "GOV.UK — "
 # SigLIP2 so400m (Apache-2.0): its text tower ranks pictures at query time on the

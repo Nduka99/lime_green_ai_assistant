@@ -507,6 +507,9 @@ def parser() -> argparse.ArgumentParser:
     )
     picture_retrieved.add_argument("--arm", choices=["pool", "quota"], default="pool")
     picture_retrieved.add_argument("--channels", action="store_true", help=CHANNELS)
+    picture_retrieved.add_argument(
+        "--set", default="image-facts", help="or picture-probe (X44 amendment 1)"
+    )
     probe_drawn = commands.add_parser(
         "kb-probe-draw",
         help="draw kb-probe's sources and show each to the writer (X44)",
@@ -1688,7 +1691,7 @@ def run_image_ocr_score(args: argparse.Namespace) -> int:
 
 
 def run_image_retrieval(args: argparse.Namespace) -> int:
-    folder = sets.require("image-facts", args.root, args.registry)
+    folder = sets.require(args.set, args.root, args.registry)
     items = grades.read_json(folder / "questions.json")["questions"]
     arm = f"T+S {args.arm}" if args.visual else "T"
     if args.channels:
@@ -1702,10 +1705,10 @@ def run_image_retrieval(args: argparse.Namespace) -> int:
             else:
                 ranked, top = search(args.version, item["question"]), lookups.TOP
             results.append(imagesets.picture_result(item, ranked, top))
-    found = lookups.summary(results)["image-facts"]
+    found = lookups.summary(results)[args.set]
     write_json(args.out, {"version": args.version, "arm": arm, "summary": found,
                           "results": results})  # fmt: skip
-    print(f"image-facts: Success@{lookups.TOP} {found['success']:.3f}, MRR "
+    print(f"{args.set}: Success@{lookups.TOP} {found['success']:.3f}, MRR "
           f"{found['mrr']:.3f}; version {args.version}, arm {arm}")  # fmt: skip
     return 0
 

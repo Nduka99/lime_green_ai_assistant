@@ -188,6 +188,30 @@ Diagnosis, by mechanism:
       0; otherwise S;
     - confirmation: the chosen arm must not fall below S on `kb-probe`'s picture strata.
 
+**Amendment 1 (1 October, after version 22's picture results, before the new arm
+runs).**
+- **The fusion arm was a design error.** W+S fused the word and SigLIP2 rankings into
+  one ranking (RRF). UniDoc-Bench, the evidence it cited, takes each retriever's own top
+  k and appends them; it does not fuse them. Fused, a picture ranked moderately by both
+  retrievers displaces each one's best: on version 22, `image-facts` falls from 0.650
+  (S) to 0.475 (W+S).
+- **New arm W∪S:** each search adds its 2 best pictures by their own words, then its 2
+  best by SigLIP2 that are not already added; at most 4 pictures per question, as
+  before.
+- **A fresh set decides it**, because `image-facts` and `kb-probe`'s pictures have both
+  now been seen:
+  - `picture-probe`: 16 pictures drawn with seed 72 by `imagesets.picture_draw`;
+  - none of them in `image-facts`, `image-text` or `kb-probe`;
+  - questions written from the pictures by `image-facts`' rules;
+  - sealed before W∪S runs.
+- **Rule:** W∪S replaces S if, on `image-facts` and `kb-probe`'s picture strata pooled,
+  its interval against S lies above 0, and on `picture-probe` it is not below S.
+  Otherwise S stays.
+- **G4's bar** (0.850) is unchanged.
+- **The 78 pictures F4 adds** (the four Inspirations galleries, slideshows of pictures)
+  get SigLIP2 vectors before builds X and X0. Build X0 is X without F6, so F6 is judged
+  between two builds holding the same 617 pictures.
+
 ## Gates for version 22 (it serves nothing until all pass)
 
 - **G1.** Replay (M1): every set not below version 17 (M1) by more than 1 part.
@@ -206,3 +230,114 @@ Diagnosis, by mechanism:
 ## Results
 
 *(added step by step)*
+
+**M1 baselines (1 October; `data/runs/x44/m1/`).** Evidence matched as the model reads
+it:
+
+| Measure | Version 17 | Version 19 | Version 21 |
+|---|---|---|---|
+| Replay frozen90 (parts of 125) | 103 | — | 105 |
+| Replay v2 (of 140) | 83 | — | 82 |
+| Replay v3 (of 105) | 76 | — | **80** (68 before M1) |
+| Replay v4 (of 130) | 119 | — | 114 (107 before M1) |
+| `x9-tables` Success@8 | 0.978 | — | 0.980 |
+| `web-facts` Success@8 | 0.921 | 0.969 | 0.932 |
+| `web-links` problems | — | — | 90 |
+
+- M1 removed most of the v3 and v4 drop: the evidence sat under a product's heading.
+- Version 17's numbers are unchanged under M1.
+- What remains on v4 is the 2 truly lost card descriptions plus crowding, the causes F2
+  and F3 address.
+
+**`kb-probe` sealed** (`1843bb6`, registered before any fix is scored):
+- 64 questions, seed 71: 8, 6, 8, 6, 6, 8, 6, 6, 6 and 4 per stratum, as designed.
+- Draws restricted to the indexed scope (F5): two figures first drawn from the 25-Year
+  Environment Plan were redrawn before any question was written.
+- The draw drew the guidance stratum's 6 questions with replacement: 1 Approved
+  Document L, 5 IWI guidance.
+- Nuggets: 51 text spans in 44 questions, and 20 pictures. Spans that many documents
+  share
+  ("Shelf life: 12 months", product names on a colour page) count only in their own
+  source (`own`).
+- kb05 (opening hours) is held by all 160 pages: it tests whether the footer is read.
+
+**F3a and F4, against the corrected truth** (`662afe9`):
+- `web-pages-v2` adds the 6 card descriptions no other page holds, all on `products`;
+  `web-pages-holdout-v2` adds none. Both were registered before the reader was scored
+  on them.
+
+| Truth | Recall | Precision | Headings | Section paths | Lists |
+|---|---|---|---|---|---|
+| W1 v2 (today on v1) | 1.000 (1.000) | 0.9927 (0.9926) | 0.986 | 0.967 | 1.000 |
+| W2b v2 (today on v1) | 1.000 (1.000) | 0.9875 (0.9875) | 1.000 | 0.850 | 1.000 |
+
+- The gate passes: the restored descriptions are read (recall 1.000 on v2), and every
+  measure is within 0.005 of today's.
+- F4's diagnosis narrowed the loss:
+  - of the 5 "content sentences" the sentence diff found, 3 are read (the diff joined a
+    bold lead to its paragraph);
+  - the home page's testimonial was dropped as a "related cards" slideshow, so a
+    slideshow is now furniture only when it is a slideshow of link cards;
+  - "Derek March Brick and Lime Supplies" is a link card in the news feed, and stays
+    furniture.
+
+**G6 (`a3e1953`).** All 90 `web-links` problems were picture passages: alt text and
+text read in a picture are not the page's text, so a text fragment built from them
+finds nothing. A picture's citation now opens its page, or its document at the page.
+
+**B4, the serving check** (`data/runs/x43/b4-*.json`; 8080 and 8081 stopped):
+
+| Generator | GPU | Text replies with the projector loaded | 20 requests with 4 pictures each |
+|---|---|---|---|
+| Qwen3.6 | 4.6 GB | identical, 10 of 10 (9.6 s vs 9.7 s) | all completed, 36.8 s each (pictures encoded on the CPU) |
+| Gemma 4 26B | 6.3 GB | identical, 10 of 10 (14.8 s vs 14.1 s) | all completed, 35.9 s each |
+
+Both pass B4: every request completed, peak GPU within 7.4 GB, and text answers are
+byte-identical with the projector loaded. Gemma 4 26B, the chosen generator (D107),
+describes the pictures for F6. The 6 swatch readings failed in this window: they ran
+while `layout.py` was being edited, which my edit had briefly broken on import. They
+move to the F6 window.
+
+**`kb-probe` on today's versions, plain top 8** (`data/runs/x44/kb-probe-v17.json`,
+`-v21.json`). These are the company channel only, as served, so there are no pictures
+or guidance:
+
+| Stratum | Version 17 | Version 21 (ceiling) |
+|---|---|---|
+| Web content | 0.88 | 0.75 (0.75) |
+| Listing and card pages | 1.00 | 1.00 |
+| PDF text | 0.88 | 0.75 (0.88) |
+| PDF tables | 0.83 | 0.83 (1.00) |
+| Word | 0.00 | 0.67 (0.67) |
+| Cross-type | 0.25 | 0.50 (1.00) |
+| Guidance, pictures | 0 | 0 (all in the version) |
+
+Its extraction misses are evidence the version lacks:
+- kb05, opening hours: the site footer is furniture on every page, so the facts in it
+  are nowhere;
+- kb06, free colour samples;
+- kb17, a drying time;
+- kb49 and kb54, a Word declaration's fire and strength classes.
+
+These were found on `kb-probe`. So they no longer count as unseen checks for their
+fixes, and each fix is checked on other sets:
+- **Number ranges (`9e7188e`).** Docling joined a range broken across lines after its
+  hyphen: "12-36hrs" became "1236hrs", "EN 13501-1" became "135011", and "18-25mm"
+  became "1825mm". The text layer keeps the PDF's own characters ("12-\r\n36hrs"), and
+  a hyphen after a digit never splits a word. So at passage building each such range
+  gets its hyphen back: whole tokens only, and never where the page also shows the
+  halves joined. Across the 109 documents it mends exactly those 3 numbers, each
+  checked by hand.
+- **Word declaration pairs (not fixed in X44).** Docling's layout step put the
+  right-hand value "Class B1" inside the paragraph of the next row's label ("Strength
+  Class Class B1"), so `side_by_side` never sees a separate value. Two of the 8
+  declarations, sharing one template, lose their fire class that way. This is the
+  residual behind `docx-pages`' pairs 0.965. The general fix is to read each line of
+  the Word file's own text and check the rendered reading against it; it is left for
+  the next round, with this risk recorded.
+- **The site footer and the sample cards** are left for the next round as well. Builds
+  X and Y may differ only by F3 and F6, so a company-channel change now would confound
+  them.
+  - The footer could be read once, as the site's own page.
+  - The sample page's colours are a colour grid, read as names (X42's rule). Each
+    card's "Order this colour sample / Free" is a card button and tag under that rule.

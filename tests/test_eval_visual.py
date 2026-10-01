@@ -165,7 +165,7 @@ def test_the_command_line_scores_each_arm(
     monkeypatch.setattr(assistant, "searched", lambda conn, v, q: given)
     command = [*common, "image-retrieval", "--version", "22", "--out", str(out)]
     assert cli.main([*command, "--channels"]) == 0
-    assert json.loads(out.read_text())["arm"] == "channels (words)"
+    assert json.loads(out.read_text())["arm"] == "channels (siglip)"
     assert json.loads(out.read_text())["summary"]["success"] == 1.0
 
 

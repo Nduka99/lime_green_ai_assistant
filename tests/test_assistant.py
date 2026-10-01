@@ -296,7 +296,10 @@ def text_passage(number: int) -> Passage:
     return Passage(number, "u", "T", "", f"text {number}", "")
 
 
-@pytest.mark.parametrize(("ranking", "ids"), [("words", [5, 7]), ("siglip", [5, 6])])
+@pytest.mark.parametrize(
+    ("ranking", "ids"),
+    [("words", [5, 7]), ("siglip", [5, 6]), ("union", [7, 5, 6])],
+)
 def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
     monkeypatch: pytest.MonkeyPatch, ranking: str, ids: list[int]
 ) -> None:
@@ -328,7 +331,9 @@ def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
     found = add("Show me Duro", [text_passage(1), text_passage(2)])
 
     assert [p.id for p in found] == [*ids, 30, 31]
-    assert channels == (["picture", "guidance"] if ranking == "words" else ["guidance"])
+    assert channels == (
+        ["guidance"] if ranking == "siglip" else ["picture", "guidance"]
+    )
     assert [p.id for p in add("Duro", [])] == [*ids, 30, 31]  # best guidance alone
 
 
