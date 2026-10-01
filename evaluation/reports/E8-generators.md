@@ -301,6 +301,48 @@ Wilson intervals. The rule is as written above: Gemma's wrong cases no more than
 Qwen3.6's, and its coverage within two verdicts of Qwen3.6's. Emergencies must all be
 referred and no price shown (`evaluation guardrails`), as for any candidate.
 
+**G3 result (graded 1 Oct, 04:05 onwards; sittings `sitting-e8-g3` registered in held-out
+v4 and v3): Gemma passes the rule as written.**
+- **Runs:** both arms answered every question with 0 errors. Qwen3.6 took 1,461 s on v4
+  and 1,094 s on v3; Gemma took 1,901 s and 1,369 s, about 25–30% slower.
+- **Guardrails:** no price shown and every emergency referred by either arm. Qwen3.6
+  refused 28/28 and 15/15 expected refusals, Gemma 26/28 and 15/15.
+- **Grading:** every distinct answer (226 on v4, 131 on v3) was graded blind by the
+  grading guide. Where an earlier sitting had graded the same question, its precedent was
+  followed: v3's k01, whose key forbids finishes Forte's own data sheet lists (D90), and
+  the rule that a v3 sustainability answer must name the plant's efficiency.
+
+| By case (`evaluation reliability`) | Qwen3.6 | Gemma 4 26B | Rule |
+|---|---|---|---|
+| v4 wrong ÷ answered | 4/46 = 0.087 [0.034, 0.203] | 2/46 = 0.043 [0.012, 0.145] | not above Qwen3.6: passes |
+| v4 coverage | 41/47 | 42/47 | within 2: passes |
+| v4 refusals | 14/14 | 13/14 | |
+| v4 both wordings agree | 61/64 | 58/64 | |
+| v3 wrong ÷ answered | 4/10 (k01, k05, k09, k15) | 4/9 (k01, k03, k05, k15) | not above Qwen3.6: passes |
+| v3 coverage | 6/11 | 5/11 | within 2: passes |
+| Emergencies | 3/3, 1/1 | 3/3, 1/1 | |
+
+- **Wrong cases on v4:**
+  - Qwen3.6: v4c47 (a wrong list of strategies), v4c17, v4c12 and v4c26 (Woodwool offered
+    for a roof on the walls-only premise).
+  - Gemma: v4c26, and v4c03, an absent question answered with the Warmshell board's heat
+    capacity in place of Ultra's.
+- **How firm:** the intervals overlap throughout. On 47 answerable v4 cases the difference
+  is a direction, not a proof.
+- **v3:** both arms get k01 wrong because of its flawed key.
+- **Coverage:** differs by one case on each set (p 0.65 and 0.59).
+
+**E8 outcome by the registered rules: Gemma 4 26B-A4B wins.** These costs are recorded
+for the user's serving decision:
+- G2 failed as written by one part on v4 (one comparison case).
+- One absent question was answered on v4 (refusals 13/14).
+- Answers are 25–30% slower.
+- The GPU is at 7.6 GB of 8 GB with one slot and a 16k context, so Qwen3.6's two-slot
+  production setting (X41) does not carry over without being measured.
+
+The startup-line change is the user's decision. After it come the arms for the winner
+(quantization, thinking) and the concurrency check before the freeze.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
