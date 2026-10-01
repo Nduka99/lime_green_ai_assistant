@@ -78,12 +78,25 @@ def test_only_the_sites_own_pdfs_and_images_are_collected(site: list[str]) -> No
         '<a href="/docs/a.pdf">sheet</a><a href="https://cdn.example.test/b.PDF">b</a>'
         '<a href="https://www.gov.uk/guide.pdf">gov</a><a href="/products/">page</a>'
         '<img src="/img/photo.webp"><img src="https://tracker.test/pixel.gif">'
+        '<a href="/docs/DoP Duro.docx">DoP</a>'
+        '<img class="lazy" data-src="/img/york.webp">'
+        "<img alt='no source'>"
+        "<div style=\"background-image:url('/img/banner.webp?v=1')\"></div>"
+        "<div style='background: url(https://tracker.test/x.png)'></div>"
     )
 
     documents, images = acquire.linked_files(html)
 
-    assert documents == [SITE + "docs/a.pdf", "https://cdn.example.test/b.PDF"]
-    assert images == [SITE + "img/photo.webp"]
+    assert documents == [
+        SITE + "docs/a.pdf",
+        "https://cdn.example.test/b.PDF",
+        SITE + "docs/DoP Duro.docx",
+    ]
+    assert images == [
+        SITE + "img/photo.webp",
+        SITE + "img/york.webp",
+        SITE + "img/banner.webp?v=1",
+    ]
 
 
 def test_files_are_stored_once_by_hash_and_failures_reported(site: list[str]) -> None:

@@ -14,6 +14,10 @@ PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
 FILE_STORE = Path("data/files")
 # Each stored PDF read into elements (limespec.documents); never committed.
 READINGS = Path("data/elements")
+# LibreOffice, unpacked into tools/ (never committed), lays out Word files (X43).
+LIBREOFFICE = Path(
+    os.environ.get("LIMESPEC_LIBREOFFICE", "tools/libreoffice/program/soffice.exe")
+)
 # Openly licensed external documents to collect: URL, then licence, per line.
 EXTERNAL_SOURCES = Path("sources-external.txt")
 # The Postgres index (deploy/compose.yaml). It holds a password, so it comes from the

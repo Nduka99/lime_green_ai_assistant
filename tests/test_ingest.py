@@ -488,7 +488,8 @@ def test_cached_pages_are_never_downloaded_again(
 
 PRODUCT = """<html><body><main><h1>Duro Render</h1><p>A lime render.</p>
 <a href="/Documents/duro%20tds.pdf">Data Sheet</a> <a href="/Documents/sds.pdf"> </a>
-<img src="/images/bag.png" alt="Duro bag"></main></body></html>"""
+<img src="/images/bag.png" alt="Duro bag"><a href="/Documents/DoP.docx">DoP</a>
+<img data-src="/images/york.webp" alt="York"><img alt="none"></main></body></html>"""
 QUESTIONS = """<html><body><main><h1>Questions</h1><p>Ask us.</p>
 <a href="/Documents/duro%20tds.pdf">TDS</a> <a href="/Documents/faq.pdf">FAQ sheet</a>
 </main></body></html>"""
@@ -509,11 +510,14 @@ def test_pdfs_are_titled_by_the_pages_that_link_them(
     assert file_links(PRODUCT) == [
         ("document", site + "Documents/duro%20tds.pdf", "Data Sheet"),
         ("document", site + "Documents/sds.pdf", ""),
+        ("document", site + "Documents/DoP.docx", "DoP"),
         ("image", site + "images/bag.png", "Duro bag"),
+        ("image", site + "images/york.webp", "York"),
     ]
     assert titles == {
         site + "Documents/duro%20tds.pdf": "Duro Render — Data Sheet",  # product first
         site + "Documents/sds.pdf": "Duro Render",  # the link has no text
+        site + "Documents/DoP.docx": "Duro Render — DoP",
         site + "Documents/faq.pdf": "Questions — FAQ sheet",
     }
     assert file_title(site + "Documents/duro%20tds.pdf") == "duro tds"

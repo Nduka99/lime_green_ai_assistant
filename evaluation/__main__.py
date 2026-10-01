@@ -61,6 +61,7 @@ from evaluation import (
     claims,
     conversations,
     detectors,
+    docxpages,
     drafts,
     generator,
     graders,
@@ -92,6 +93,7 @@ from limespec import (
     images,
     ingest,
     llm,
+    office,
     pdf,
     scope,
     store,
@@ -445,6 +447,12 @@ def parser() -> argparse.ArgumentParser:
     image_drawn.add_argument("--catalogue", type=Path, required=True)
     image_drawn.add_argument("--count", type=int, default=60, help="per source")
     image_drawn.add_argument("--out", type=Path, required=True, help="a folder")
+    docx_scored = commands.add_parser(
+        "docx-score", help="a Word reading against the docx-pages truth (X43 A3a)"
+    )
+    docx_scored.add_argument("arm", choices=("docling-word", "rendered-pdf"))
+    docx_scored.add_argument("--vlm", default="", help="a vision server for tables")
+    docx_scored.add_argument("--out", type=Path, required=True, help="a folder")
     image_read = commands.add_parser(
         "image-ocr", help="each image-text image read by a vision server (X43 B2)"
     )
@@ -1511,6 +1519,28 @@ def run_image_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_docx_score(args: argparse.Namespace) -> int:
+    """Each registered declaration read by one arm and scored; the readings are kept
+    beside the scores for diagnosis."""
+    folder = sets.require("docx-pages", args.root, args.registry)
+    truth = grades.read_json(folder / "truth.json")["pages"]
+    readings = {}
+    for sha256 in dict.fromkeys(page["sha256"] for page in truth):
+        stored = acquire.store_path(sha256)
+        if args.arm == "docling-word":
+            readings[sha256] = office.read_docx(stored)
+        else:
+            rendered = office.render_pdf(stored, args.out / "rendered")
+            readings[sha256] = pdf.read_pdf(rendered, vlm=args.vlm)
+    found = docxpages.scores(truth, readings)
+    saved = {sha: [asdict(e) for e in elements] for sha, elements in readings.items()}
+    args.out.mkdir(parents=True, exist_ok=True)
+    write_json(args.out / f"{args.arm}.json", found | {"readings": saved})
+    print(json.dumps({name: round(rate, 4) for name, rate in found["rates"].items()}))
+    print(json.dumps(found["passed"]))
+    return 0
+
+
 def run_image_ocr(args: argparse.Namespace) -> int:
     """Each registered image read with GLM-OCR's text prompt; a rerun keeps the
     readings already saved."""
@@ -2231,6 +2261,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_facts(args)
         if args.command == "web-retrieval":
             return run_web_retrieval(args)
+        if args.command == "docx-score":
+            return run_docx_score(args)
         if args.command == "image-ocr":
             return run_image_ocr(args)
         if args.command == "image-ocr-score":

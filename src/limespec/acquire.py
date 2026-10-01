@@ -30,6 +30,9 @@ from limespec import config
 from limespec.ingest import cache_path, load_robots, polite_client
 
 Record = dict[str, Any]  # one URL's outcome, plain JSON-compatible data
+DOCUMENT_TYPES = (".pdf", ".docx")  # the site's downloads: data sheets, declarations
+# A CSS background picture: background: url(...) or background-image: url(...).
+BACKGROUND = re.compile(r"background(?:-image)?\s*:[^;\"']*?url\(\s*['\"]?([^'\")]+)")
 
 
 def sitemap_urls(xml: str) -> list[str]:
@@ -45,16 +48,25 @@ def is_own(url: str) -> bool:
 
 
 def linked_files(raw_html: str) -> tuple[list[str], list[str]]:
-    """The site's own PDFs and images a page links to, as absolute URLs."""
+    """The site's own documents (PDF and Word) and images a page links to, as
+    absolute URLs. An image the site loads lazily names its file in `data-src`
+    (X43: 169 images, the colour swatches among them, were missed without it)."""
     soup = BeautifulSoup(raw_html, "html.parser")
     documents = []
     for link in soup.find_all("a", href=True):
         url = urljoin(config.SITE, str(link["href"]).strip())
-        if is_own(url) and urlsplit(url).path.lower().endswith(".pdf"):
+        if is_own(url) and urlsplit(url).path.lower().endswith(DOCUMENT_TYPES):
             documents.append(url)
     images = []
-    for image in soup.find_all("img", src=True):
-        url = urljoin(config.SITE, str(image["src"]).strip())
+    for image in soup.find_all("img"):
+        source = image.get("data-src") or image.get("src")
+        if not source:
+            continue
+        url = urljoin(config.SITE, str(source).strip())
+        if is_own(url):
+            images.append(url)
+    for source in BACKGROUND.findall(raw_html):  # banners set by CSS, not <img>
+        url = urljoin(config.SITE, source.strip())
         if is_own(url):
             images.append(url)
     return documents, images

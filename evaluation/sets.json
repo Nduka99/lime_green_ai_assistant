@@ -16,6 +16,24 @@
     "plan.json": "cc72b38e89cf019d851007e532144566e01b50a33594ffa6259276b18074f703"
    }
   },
+  "docx-pages": {
+   "description": "X43 A3a: the 8 Word declarations rendered by LibreOffice 26.2.6, 12 pages judged from their images: lines, label-value pairs, ruled grids, images, headings",
+   "files": {
+    "pages/31e56d05-p1.png": "dbe17bca0b032f957b4370a67e9aa1d0434aa29328e08ea514c6279d449e15e3",
+    "pages/31e56d05-p2.png": "e941089402d17971b237f7fcc4d03c2d67e6a16fe5202e02c79543fc9916d248",
+    "pages/42ba71fd-p1.png": "820a96cf0adfdf40ae2c2a647f2e2dd322949b608204dea83f492783ff16d708",
+    "pages/42ba71fd-p2.png": "498e2cdd6d3706bf715c8a28816f42d272fda4f18733dbcd5263338464cfabd5",
+    "pages/57e9a03c-p1.png": "2fa15ec8eedf564921627c395e72b054290e0e226e765873f66505f2854dad1d",
+    "pages/61d89882-p1.png": "ae244c0dec9d2bdeed3e4676e1346aa1da43add430e00119b1ee058224f44ac3",
+    "pages/61d89882-p2.png": "e62b4a5d73b66572c270f0026ae735778a50dbc6e94feec6392def7bf1e89db1",
+    "pages/8b19695e-p1.png": "01732a767db25dd7da88dda4f5d8315086e5ad2da63368f6b2f8bc8d845f44cd",
+    "pages/8f481a99-p1.png": "72f4f518d379b27ad4cf8c977b6877a6063eb53ee6ac98b501e9edf33c5b8e10",
+    "pages/8f481a99-p2.png": "1ff3a1eb4ae8581bab986fb2f73457b785088f3aab1b22b95a12b64ca8eeec97",
+    "pages/a0c468bc-p1.png": "e1348a829804ee31c6ac88a9ce3cea9e17ff88be3b9540b2c73e7aa311bb914e",
+    "pages/c5a1712c-p1.png": "bc863723b607f9f82bb14473520f9fae2f0dd8254cdb83199f43250a58d787bf",
+    "truth.json": "dcf21c19f2b2191215ce2276bc0f8dd43ac888d35bd585faed1bb72fe1d1b79c"
+   }
+  },
   "exposure-v1": {
    "description": "78 invented exposure questions and 76 look-alikes, from the dev repo's evaluation/exposure_questions.json (written 13 Sept, 20+20 held out before the separate emergency request existed); gates any change to the first model request",
    "files": {

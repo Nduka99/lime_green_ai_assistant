@@ -42,11 +42,59 @@ and the answers? And can the evaluation sets show how well each kind is used?
    are measured and shown. DOCX is read by Docling's DOCX backend into the same element
    model. The 3 gov.uk PDFs are read. Each reader keeps its own fingerprint, so no PDF
    reading is redone.
+3a. **Word documents, layout- and image-aware** (the user, 1 October). The 8
+   declarations have no heading styles. Their layout is tables (two with merged cells),
+   bold lines and embedded images: the CE mark in 7, a signature in 7. A DOCX has no
+   fixed page geometry: Word lays it out when it is opened. So "as a visitor sees it"
+   means rendered.
+   - **Truth `docx-pages`.** All 8 documents, rendered by LibreOffice 26.2.6 (MPL-2.0;
+     unpacked into the git-ignored `tools/`, no system install) to PDF, every page
+     judged from its image as X8's truth was. The truth records the text, headings,
+     table cells with their row and column headers, and the images with their words.
+   - **Arms:**
+     - (a) Docling's Word reader: headings from short bold lines, tables from the
+       file's grid, images extracted.
+     - (b) LibreOffice's PDF read by the measured PDF pipeline (Docling with GLM-OCR
+       table structure, visibility, figures cropped).
+   - **Rule:** X8's bars (text recall ≥ 0.99, numbers 1.000, table values placed
+     ≥ 0.95). Among passing arms, the better on table values; a tie goes to (b), the
+     one pipeline for all documents.
+   - **As judged (before any arm runs):** 12 pages.
+     - The truth holds every visible line in reading order and 57 label-value pairs.
+       The declarations set values beside labels inside ruled boxes, so pairs are
+       scored as X8 scores them: the value is in its label's unit or the next.
+     - It holds 18 rows of ruled grids (two mortar tables without a header row, one
+       three-column table with one).
+     - It holds 15 images: 11 CE marks and 4 signatures. "Captured" means a figure
+       element on that page. Image recall is reported, and must reach 1.0 for the
+       reading to count as image-aware. A signature carries no printed text, so it is
+       a picture passage only.
+     - Headings: each page's title or numbered heading, recall reported.
+   - A citation opens the online `.docx` at its plain address: a Word file has no
+     page fragment.
+3b. **Images the pages show without an `<img>` tag.** 41 blog banners are CSS
+   backgrounds. Their files are collected with the rest. Inline SVGs (one per page:
+   icons and the logo) are furniture.
 4. **Embedding reuse.** A build takes a stored vector when a passage's embedded text and
    embedder are unchanged. No vector changes value, so this is checked by building
    version 17's passages again and comparing every vector.
 
 ## B. Images
+
+**Every image, every source** (the user: "everything multimodal so we aren't missing a
+single evidence or context"). The same treatment covers every picture:
+- the site's images, including lazy-loaded ones and CSS backgrounds;
+- PDF figures, and the 8 low-text PDF pages;
+- images embedded in the Word declarations.
+
+Each picture is indexed by:
+- its own words: alt text, caption, and text inside it (OCR, gated in B2);
+- a vision model's description, searched but never quoted (B3's arm T+D);
+- the picture itself, given to the generator when retrieved (B4–B5).
+
+The one known gap is video. The 5 YouTube videos keep only their titles and the text
+around them: their captions can be downloaded only with the owner's authorisation
+(YouTube Data API `captions.download`).
 
 **Image passages.**
 - Images come from web pages and from PDF figures, cropped by pdfium at their box.
@@ -204,3 +252,22 @@ The set is sealed and registered before any arm answers it.
 ## Results
 
 *(added step by step)*
+
+**B2, the OCR gate: passed** (`image-text` sealed in `e482dfe` before any OCR;
+`data/runs/x43/ocr-glm.json`). GLM-OCR ran on the CPU, so no other model server had
+to stop: about 12 s per image, 8 minutes for the 40.
+
+| Source | Word recall | Precision |
+|---|---|---|
+| All 40 images | **0.971** | **0.998** |
+| 20 site images | 0.949 | 1.000 |
+| 20 PDF figures | 0.988 | 0.996 |
+
+Every miss is one of three kinds:
+- **Rotated text.** The vertical text on two bags' spines was not read (Solo, Ultra).
+- **One word broken across two lines.** "boundari / es" in an EPD table was read as
+  "boundaries".
+- **One misread word.** "Recovery" was read as "recovering", plus one "MND" dropped.
+
+No word was invented. OCR text is adopted as image passages, labelled "read from the
+image". Rotated print stays a known gap.

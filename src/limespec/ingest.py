@@ -78,16 +78,19 @@ def site_pages() -> list[str]:
 
 
 def file_links(raw_html: str) -> list[tuple[str, str, str]]:
-    """(kind, absolute URL, link or alt text) for every PDF and image a page links."""
+    """(kind, absolute URL, link or alt text) for every document (PDF, Word) and image
+    a page links; a lazily loaded image names its file in `data-src`."""
     soup = BeautifulSoup(raw_html, "html.parser")
     found = []
     for link in soup.find_all("a", href=True):
         url = urljoin(config.SITE, str(link["href"]).strip())
-        if urlsplit(url).path.lower().endswith(".pdf"):
+        if urlsplit(url).path.lower().endswith((".pdf", ".docx")):
             found.append(("document", url, " ".join(link.get_text(" ").split())))
-    for image in soup.find_all("img", src=True):
-        url = urljoin(config.SITE, str(image["src"]).strip())
-        found.append(("image", url, str(image.get("alt", "")).strip()))
+    for image in soup.find_all("img"):
+        source = image.get("data-src") or image.get("src")
+        if source:
+            url = urljoin(config.SITE, str(source).strip())
+            found.append(("image", url, str(image.get("alt", "")).strip()))
     return found
 
 

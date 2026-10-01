@@ -58,7 +58,7 @@ dev = [
 ]
 # Ingestion only (the API never installs it): Docling reads PDFs on the CPU.
 ingest = [
-    "docling-slim[convert-core,feat-chunking,format-pdf-docling,models-local]>=2.130.0",
+    "docling-slim[convert-core,feat-chunking,format-docx,format-pdf-docling,models-local]>=2.130.0",
     # The table model needs OpenCV; the headless build has no GUI libraries.
     "docling-ibm-models[opencv-python-headless]>=4.0.3",
     # 7.22.1 reads a glyph a subset font puts on code 32 instead of a word break
