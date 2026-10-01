@@ -404,6 +404,12 @@ then 8080 stays Qwen3.6, because the gate's live arm is today's system, and the 
 arm serves Gemma from a scratch port (`LIMESPEC_CHAT_URL`), as G3 did. No startup line
 changes before the gate.
 
+**Arm (a), quantization: skipped (user's decision, 1 Oct).** The higher-precision files
+are Q8_0 (26.9 GB), UD-Q6_K_XL (23.3 GB) and UD-Q8_K_XL (27.6 GB), against 17.0 GB for
+the UD-Q4_K_XL in use. With the experts in RAM they would cost mostly RAM (about +10 GB
+for Q8) and output speed, plus 1–1.5 GB of GPU for the shared layers. The user judged
+them too large; Gemma stays at UD-Q4_K_XL.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
