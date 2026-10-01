@@ -27,7 +27,7 @@ general change fixes it?
 ## Steps and rules
 
 **W0, the audit as code.** `evaluation web-audit` computes, per page and in total: words
-not extracted, glued words, heading levels used, passages, passages under 120 characters
+not extracted, heading levels used, passages, passages under 120 characters
 of body, and passages whose body repeats on another page. Its first run is the baseline.
 
 **W1, ground truth.**
@@ -129,3 +129,62 @@ and fonts its pages name). It blocks only trackers and embedded widgets: analyti
 reCAPTCHA, YouTube, the NBS widget. It then dismisses the cookie notice ("Essential
 only") and scrolls through the page so that scroll-triggered content appears. The probe
 page then shows its full content, title-block date, sidebar and footer.
+
+**What counts as main content (fixed before any page is judged).**
+- **Main content** is what a visitor reads about the page's own subject:
+  - the title, and the title block's label and date;
+  - the body text, lists and tables;
+  - on a product page, its own uses, the colours it comes in, and the names of its own
+    downloadable documents.
+- **Furniture** is what the site repeats on many pages or what only points elsewhere:
+  - the header, menus and colour pickers in the menu;
+  - breadcrumbs and tab labels;
+  - generic help and supplier boxes;
+  - cards for related products, case studies and articles;
+  - gallery prompts, link buttons ("More products >", "Read case study >") and the
+    footer.
+- **Recording.** The truth is written as an outline over the numbered lines of the
+  rendered visible text: the title, title-block lines, headings with their visual levels
+  (the title is level 1), paragraphs, lists, table rows, and descriptive alt texts (from
+  the HTML, five words or more). Lines left out are furniture. `evaluation web-truth`
+  turns the outlines into blocks, each with its section path.
+
+**Clarifications made while judging, each applied to every page (before any arm).**
+- **Listings.** On a page that lists other pages (a category, a colour, the news index,
+  a system's products), the names of the items listed are content, as one list. Each
+  card's blurb and link are furniture: the blurbs repeat the item's own page, and the
+  colour pages, judged first, had been recorded this way. A case study's "Materials used
+  in this project" cards stand in the sidebar beside the "More case studies" cards and
+  are furniture.
+- **Bold labels and kickers.** A bold line standing alone above the text it names is a
+  heading at its visual level ("The Requirement", a numbered regulation clause, a
+  question). A bold line ending in a colon that introduces a list is a paragraph. A small
+  capitals label ("QUALITY ASSURED LIME PRODUCTS") is a heading when it is the only name
+  of its section, and a paragraph when a heading follows it.
+- **Closing paragraphs.** A conclusion that speaks for the whole article after its last
+  section (the sales close, references, the "Education Guide" label) stands outside the
+  last section (outline entry `end`). Paragraphs that continue the last section's topic
+  stay in it.
+- **Body sentences with links** ("Find your nearest stockist here") are content. Styled
+  link buttons ("Vote Here >", "Read case study >") are furniture.
+
+**Amendment to W1's rendering: answers behind an accordion (1 October, before the FAQ
+page was judged).** The FAQ page's answers sit in a definition-list accordion that opens
+one answer at a time, so the first rendering kept the questions and no answers. The
+rendering now clicks each term whose answer is hidden, marks each answer that opens, and
+then shows every marked answer, so the text holds each answer a visitor can open, in
+place. Only answers that opened on a click are shown; nothing hidden by other means is
+revealed (D86, D87). All 30 pages were rendered again. The visible text of the other 29
+is byte for byte the same, so their outlines stand. Four of the 160 cached pages hold
+definition lists: the FAQ, the glossary and two case studies.
+
+**W1 truth** (registered as `web-pages`: 30 outlines, the 30 visible texts they number,
+`truth.json`):
+- 384 blocks: 315 paragraphs, 39 lists, 26 title-block lines, 4 descriptive alt texts.
+- 145 headings below the titles (76 at level 2, 60 at level 3, 9 at level 4); 14 pages
+  use two or more levels.
+- 82 blocks sit under two or more headings, so their section path needs the parent
+  heading.
+- 13,046 content words, alt texts apart.
+- No page holds a table (none of the 160 cached pages has an HTML table), so W2's table
+  measure has nothing to score.

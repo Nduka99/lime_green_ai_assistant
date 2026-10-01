@@ -12,6 +12,7 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -35,6 +36,7 @@ BLOCKED = (
 )
 CONSENT = "Essential only"  # the site's cookie notice: the least a visitor accepts
 SETTLE_MS = 150  # after each scroll step, for scroll-triggered animations
+OPEN_MS = 400  # after each click on an accordion term, for its slide animation
 TINY = 120  # characters below a passage's heading: a passage this short holds little
 REPEAT = 40  # shorter bodies ("Find a supplier") are not counted as repeated text
 RICH = 8  # structure-rich pages drawn first
@@ -166,8 +168,29 @@ def reveal(page: Any) -> None:
     for top in range(0, height + VIEWPORT["height"], VIEWPORT["height"] // 2):
         page.evaluate(f"window.scrollTo(0, {top})")
         page.wait_for_timeout(SETTLE_MS)
+    open_answers(page)
     page.evaluate("window.scrollTo(0, 0)")
     page.wait_for_timeout(SETTLE_MS)
+
+
+def open_answers(page: Any) -> None:
+    """Open each hidden answer of a definition-list accordion (the FAQ) as a visitor
+    does, by clicking its term. The site's accordion shows one answer at a time, so
+    each answer that opened is marked, then all marked answers are shown together:
+    the kept text and screenshot hold every answer a visitor can open, in place."""
+    for term in page.locator("dl > dt").all():
+        answer = term.locator("xpath=following-sibling::dd[1]")
+        if not term.is_visible() or answer.is_visible():
+            continue
+        term.click()
+        page.wait_for_timeout(OPEN_MS)
+        if answer.is_visible():
+            answer.evaluate("e => e.dataset.opened = 'yes'")
+    page.wait_for_timeout(OPEN_MS)
+    page.evaluate(
+        "document.querySelectorAll('[data-opened]')"
+        ".forEach(e => e.style.display = 'block')"
+    )
 
 
 def render(
@@ -203,3 +226,69 @@ def chromium() -> Iterator[Any]:
         browser = playwright.chromium.launch()
         yield browser
         browser.close()
+
+
+def visible_lines(text: str) -> list[str]:
+    """A rendered page's visible text as the outlines number it: non-empty lines."""
+    return [line.strip() for line in text.split("\n") if line.strip()]
+
+
+def outline_lines(outline: Mapping[str, Any]) -> list[int]:
+    """The visible lines an outline's blocks use (the title apart), in its order."""
+    used: list[int] = []
+    for entry in outline["blocks"]:
+        kind = entry[0]
+        if kind == "h":
+            used.append(entry[2])
+        elif kind in ("p", "meta"):
+            used += range(entry[1], entry[-1] + 1)
+        elif kind == "list":
+            step = entry[3] if len(entry) > 3 else 1
+            used += range(entry[1], entry[2] + 1, step)
+    return used
+
+
+def outline_problems(outline: Mapping[str, Any], count: int) -> list[str]:
+    """Lines an outline uses beyond the page's `count` lines, twice or out of
+    reading order: slips made while judging."""
+    used = outline_lines(outline)
+    title = outline["title"]
+    problems = [f"line {n} beyond the page" for n in [title, *used] if n >= count]
+    problems += [f"line {b} after line {a}" for a, b in pairwise(used) if b <= a]
+    if title in used:
+        problems.append(f"title line {title} used again")
+    return problems
+
+
+def build_truth(outline: Mapping[str, Any], lines: Sequence[str]) -> dict[str, Any]:
+    """A page's truth from its outline over `lines`: the title, the headings with their
+    levels, and the main content's blocks in order, each with its section path (the
+    headings above it, outermost first). Entries: ["h", level, line], ["meta", line],
+    ["p", first, last] (one paragraph per line), ["list", first, last, step] (one
+    block; the step, 1 if left out, skips link lines between items), ["alt", text]
+    and ["end", level] (closes the sections at that level and below: a block after
+    it stands outside them). The site has no HTML tables, so no table kind."""
+    path: list[tuple[int, str]] = []
+    headings = []
+    blocks: list[dict[str, Any]] = []
+    for entry in outline["blocks"]:
+        kind = entry[0]
+        if kind == "end":
+            path = [(n, h) for n, h in path if n < entry[1]]
+            continue
+        if kind == "h":
+            level, text = entry[1], lines[entry[2]]
+            path = [(n, h) for n, h in path if n < level] + [(level, text)]
+            headings.append({"level": level, "text": text})
+            continue
+        section = [heading for _, heading in path]
+        if kind == "alt":
+            blocks.append({"kind": kind, "text": entry[1], "path": section})
+        elif kind in ("p", "meta"):
+            for number in range(entry[1], entry[-1] + 1):
+                blocks.append({"kind": kind, "text": lines[number], "path": section})
+        else:
+            step = entry[3] if len(entry) > 3 else 1
+            rows = list(lines[entry[1] : entry[2] + 1 : step])
+            blocks.append({"kind": kind, "items": rows, "path": section})
+    return {"title": lines[outline["title"]], "headings": headings, "blocks": blocks}

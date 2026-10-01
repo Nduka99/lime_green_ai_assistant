@@ -403,6 +403,13 @@ def parser() -> argparse.ArgumentParser:
     )
     web_rendered.add_argument("sample", type=Path, help="a web-sample file")
     web_rendered.add_argument("--out", type=Path, required=True, help="a folder")
+    web_truthed = commands.add_parser(
+        "web-truth", help="ground truth from judged page outlines (X42 W1)"
+    )
+    web_truthed.add_argument("render", type=Path, help="a web-render folder")
+    web_truthed.add_argument(
+        "--set", type=Path, required=True, help="the set's folder, holding outlines/"
+    )
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1298,6 +1305,33 @@ def run_web_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_web_truth(args: argparse.Namespace) -> int:
+    """Each outline over its page's rendered text becomes the page's truth; the
+    texts are copied into the set beside the outlines that number their lines."""
+    texts = {}
+    truth = {}
+    problems = []
+    for path in sorted((args.set / "outlines").glob("*.json")):
+        text = (args.render / f"{path.stem}.txt").read_text(encoding="utf-8")
+        lines = webpages.visible_lines(text)
+        outline = grades.read_json(path)
+        found = webpages.outline_problems(outline, len(lines))
+        problems += [f"{path.stem}: {problem}" for problem in found]
+        if not found:
+            texts[path.stem] = text
+            truth[path.stem] = webpages.build_truth(outline, lines)
+    if problems:
+        print("\n".join(problems))
+        return 1
+    (args.set / "visible").mkdir(exist_ok=True)
+    for slug, text in texts.items():
+        (args.set / "visible" / f"{slug}.txt").write_text(text, encoding="utf-8")
+    write_json(args.set / "truth.json", truth)
+    blocks = sum(len(page["blocks"]) for page in truth.values())
+    print(f"{len(truth)} pages, {blocks} blocks in {args.set / 'truth.json'}")
+    return 0
+
+
 def run_nearmiss_answer(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -1966,6 +2000,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_sample(args)
         if args.command == "web-render":
             return run_web_render(args)
+        if args.command == "web-truth":
+            return run_web_truth(args)
         if args.command == "nearmiss-answer":
             return run_nearmiss_answer(args)
         if args.command == "slot-gate":
