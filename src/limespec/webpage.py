@@ -8,7 +8,8 @@ starts or ends and at `<br>`, so no text is lost because its tag was not expecte
 What counts as the page's own content follows the main-content rule fixed before
 the extractors were scored (X42 report): site furniture is removed by component,
 cards that are not links are content, and a listing's link cards are read as the
-names of what they list.
+names of what they list. Callouts are content on a page that holds nothing else:
+the page they are about (X43 A2).
 """
 
 import re
@@ -25,7 +26,6 @@ FURNITURE = ", ".join(
         ".maf-bc",  # breadcrumb trail
         ".tabs",  # product tab bar
         ".gal",  # photo gallery
-        ".sup-call, .caller-section, .con-callout, .find-supplier, .call",  # callouts
         ".associated, .blog-highlight, .flickity-slideshow",  # related cards
         ".blog-detail .maf-col-2",  # an article's sidebar: related cards
         ".page-content-section .maf-col-2",  # a page's side box (the FAQ's AI box)
@@ -34,6 +34,7 @@ FURNITURE = ", ".join(
         ".card-button, .maf-input, p.up-link",  # card buttons, pickers, back links
     ]
 )
+CALLOUTS = ".sup-call, .caller-section, .con-callout, .find-supplier, .call"
 TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: a label, a date, the <h1>
 # Elements that start and end a line (block-level in the site's CSS).
 BLOCKS = {
@@ -232,12 +233,23 @@ def read_page(
 ) -> tuple[str, list[dict[str, Any]]]:
     """The page's title and its main content's elements in reading order; with
     `every_image`, every image of the main content is a figure, not only those whose
-    alt text describes them."""
+    alt text describes them. A page left with no content once its callouts are
+    removed is read with them: it is the page they are about."""
+    title, found = read_main(raw_html, every_image, f"{FURNITURE}, {CALLOUTS}")
+    if any(element["kind"] != "meta" for element in found):
+        return title, found
+    return read_main(raw_html, every_image, FURNITURE)
+
+
+def read_main(
+    raw_html: str, every_image: bool, furniture: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """`read_page` with the given furniture removed."""
     soup = BeautifulSoup(raw_html, "html.parser")
     root = soup.find("main") or soup.body
     if root is None:
         raise ValueError("page has no <body>")
-    for element in root.select(FURNITURE):
+    for element in root.select(furniture):
         element.decompose()
     listings(soup, root)
     heading = root.find("h1")

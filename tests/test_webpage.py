@@ -102,6 +102,17 @@ def test_cards_grids_and_downloads_are_read_as_lists_of_names() -> None:
     ]
 
 
+def test_a_callout_is_content_only_on_the_page_it_is_about() -> None:
+    callout = '<section class="find-supplier"><h2>Find a supplier</h2></section>'
+    own = f"<main><h1>Find a supplier</h1>{callout}</main>"
+    elsewhere = f"<main><h1>About</h1><p>Founded in 2002.</p>{callout}</main>"
+
+    assert webpage.read_page(own)[1] == [
+        {"kind": "heading", "text": "Find a supplier", "level": 2, "section": []}
+    ]
+    assert [e["text"] for e in webpage.read_page(elsewhere)[1]] == ["Founded in 2002."]
+
+
 def test_a_page_without_a_body_or_a_title_tag() -> None:
     with pytest.raises(ValueError):
         webpage.read_page("")

@@ -38,6 +38,18 @@ and the answers? And can the evaluation sets show how well each kind is used?
      applied as stated.
    - **A callout** (the supplier finder) is content on the page that is its subject,
      and furniture elsewhere.
+   - **Result (1 October).** The callout rule, made general as "a page left with no
+     content once its callouts are removed is read with them", passes: W1 and W2b
+     unchanged on every measure. `find-a-supplier` read as nothing before; it now reads
+     its heading, text and the stockists' names. **The blurb rule fails as written:**
+     precision −0.027 on W1 and −0.043 on W2b (bar 0.005); recall unchanged. Every
+     added line is a blurb, mostly on colour pages, whose cards link to per-colour
+     product pages that were never collected (154 of the 312 link-card blurbs), so the
+     linked-page test calls them new though each repeats its product's own page. Of
+     the rest, 134 are held by their linked page and 19 are not. The X42 truth judges
+     every blurb furniture, so this gate cannot pass any rule that keeps some. The
+     blurb code is removed. The quotes earlier keys took from blurbs stay outside the
+     index, and C's replay gate on v4 and v5 will show their cost.
 3. **Collection.** `data-src` images and `.docx` links are collected after their sizes
    are measured and shown. DOCX is read by Docling's DOCX backend into the same element
    model. The 3 gov.uk PDFs are read. Each reader keeps its own fingerprint, so no PDF
