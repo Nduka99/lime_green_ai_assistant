@@ -376,6 +376,7 @@ def prepare_index(
         {},
         {},
     ),
+    descriptions: Mapping[str, str] | None = None,
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
     documents whose passages are already built (PDFs, limespec.passages). With a
@@ -384,7 +385,8 @@ def prepare_index(
     (title, context, text) is in `known` (`store.known_vectors`, same embedder) takes
     its stored vector instead of being embedded again (X43 A4). `pictures` holds the
     places pictures are shown, the text read in each and their PNGs (X43 B):
-    each picture becomes one passage (`images.picture_passages`)."""
+    each picture becomes one passage (`images.picture_passages`), searched also by
+    its description where `descriptions` holds one (X44 F6)."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
     seen: set[str] = set()
@@ -422,7 +424,8 @@ def prepare_index(
         for row in rows:
             place = (row[0], row[5])
             shown[place] = shown.get(place, "") + " " + row[3]
-        for row, identity in picture_passages(places, read, shown, titles):
+        by_picture = dict(descriptions or {})
+        for row, identity in picture_passages(places, read, shown, titles, by_picture):
             rows.append(row)
             images.append(identity)
     kept = [
@@ -468,10 +471,23 @@ def stored_pictures() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, b
     pngs = {}
     for identity in dict.fromkeys(place["id"] for place in places):
         reading = config.IMAGES / f"{identity}.json"
-        if reading.exists():
-            read[identity] = json.loads(reading.read_text(encoding="utf-8"))["ocr"]
+        saved = (
+            json.loads(reading.read_text(encoding="utf-8")) if reading.exists() else {}
+        )
+        if "ocr" in saved:
+            read[identity] = saved["ocr"]
         pngs[identity] = (config.IMAGES / f"{identity}.png").read_bytes()
     return places, read, pngs
+
+
+def stored_descriptions() -> dict[str, str]:
+    """Each stored picture's description (`limespec read-images --describe`), by id."""
+    found = {}
+    for path in config.IMAGES.glob("*.json"):
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(saved, dict) and saved.get("description"):
+            found[saved["id"]] = saved["description"]
+    return found
 
 
 def fetched_at(path: Path) -> str:
@@ -499,12 +515,14 @@ def ingest(
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
     with_pictures: bool = False,
+    with_descriptions: bool = False,
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
     `documents.index_documents`); `web_form` reads pages by `limespec.webpage`;
-    `with_pictures` adds a passage per picture `limespec read-images` stored and read.
+    `with_pictures` adds a passage per picture `limespec read-images` stored and read;
+    `with_descriptions` searches each also by its description (X44 F6).
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
@@ -513,8 +531,9 @@ def ingest(
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
     known = store.known_vectors(conn, config.EMBEDDING_MODEL)
     pictures = stored_pictures() if with_pictures else ([], {}, {})
+    descriptions = stored_descriptions() if with_descriptions else {}
     prepared = prepare_index(
-        cached_pages(urls), embed, documents, web_form, known, pictures
+        cached_pages(urls), embed, documents, web_form, known, pictures, descriptions
     )
     version = store.write_version(
         conn,

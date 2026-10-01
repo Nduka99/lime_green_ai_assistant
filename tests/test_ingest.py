@@ -26,6 +26,7 @@ from limespec.ingest import (
     site_html,
     site_pages,
     split_section,
+    stored_descriptions,
     stored_pictures,
 )
 from limespec.retrieve import Embed
@@ -617,17 +618,25 @@ def test_pictures_become_passages_beside_the_text(
         "section": [],
     }
     (tmp_path / "places.json").write_text(json.dumps([place]), encoding="utf-8")
-    (tmp_path / "p1.json").write_text(json.dumps({"id": "p1", "ocr": "Fixing 40mm"}))
+    saved = {"id": "p1", "ocr": "Fixing 40mm", "description": "A pointed wall."}
+    (tmp_path / "p1.json").write_text(json.dumps(saved))
     (tmp_path / "p1.png").write_bytes(b"png")
     monkeypatch.setattr(settings, "IMAGES", tmp_path)
 
     prepared = prepare_index(
-        [page], fake_embed, web_form="page", pictures=stored_pictures()
+        [page],
+        fake_embed,
+        web_form="page",
+        pictures=stored_pictures(),
+        descriptions=stored_descriptions(),
     )
 
     assert prepared.images == ["", "p1"]
     assert (
         prepared.passages[1][3] == "A wall pointed with Duro lime mortar\nFixing 40mm"
     )
+    assert prepared.passages[1][4] == "Image\nA pointed wall."
+    (tmp_path / "p1.json").write_text(json.dumps({"id": "p1"}))  # not read yet
+    assert stored_pictures()[1] == {} and stored_descriptions() == {}
     assert prepared.pictures == {"p1": b"png"}
     assert prepared.manifest["pictures"] == "1"

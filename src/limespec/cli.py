@@ -78,13 +78,22 @@ def run_ingest(
     pdf_form: str = "",
     web_form: str = "",
     with_pictures: bool = False,
+    with_descriptions: bool = False,
 ) -> None:
     found = []
     if pdf_form:
         found = documents.index_documents(pdf_form, pdf_titles(site_html()))
     with assistant.connect() as conn:
         version, manifest = ingest(
-            conn, llm.embed, sources, live, all_pages, found, web_form, with_pictures
+            conn,
+            llm.embed,
+            sources,
+            live,
+            all_pages,
+            found,
+            web_form,
+            with_pictures,
+            with_descriptions,
         )
     if live:
         print(f"index version: {version} (live)")
@@ -141,16 +150,21 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
-def run_read_images(vlm: str) -> int:
+def run_read_images(vlm: str, describer: str = "") -> int:
     """Store every picture of the pages and documents once, then read the text in
-    each with a vision model (GLM-OCR); readings already saved are kept (X43 B)."""
+    each with a vision model (GLM-OCR at `vlm`, X43 B) and describe each with a
+    vision generator (at `describer`, X44 F6); what is already saved is kept."""
     from PIL import Image
 
     from limespec import images
 
-    if not llm.healthy(vlm):
-        print(f"error: no vision model ready at {vlm}", file=sys.stderr)
+    if not vlm and not describer:
+        print("error: give --vlm, --describe or both", file=sys.stderr)
         return 1
+    for server in (vlm, describer):
+        if server and not llm.healthy(server):
+            print(f"error: no vision model ready at {server}", file=sys.stderr)
+            return 1
     readings = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted(documents.OUT.glob("*.json"))
@@ -165,17 +179,24 @@ def run_read_images(vlm: str) -> int:
     places = images.collect(dict(site_html()), readings, stored, config.IMAGES)
     text = json.dumps(places, indent=1, ensure_ascii=False)
     (config.IMAGES / "places.json").write_text(text + "\n", encoding="utf-8")
-    read = 0
+    read = described = 0
     for identity in dict.fromkeys(place["id"] for place in places):
         target = config.IMAGES / f"{identity}.json"
-        if target.exists():
-            continue
-        with Image.open(config.IMAGES / f"{identity}.png") as picture:
-            words = images.read_text(picture.convert("RGB"), vlm)
-        target.write_text(json.dumps({"id": identity, "ocr": words}), encoding="utf-8")
-        read += 1
+        png = config.IMAGES / f"{identity}.png"
+        saved = (
+            json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
+        )
+        saved["id"] = identity
+        if vlm and "ocr" not in saved:
+            with Image.open(png) as picture:
+                saved["ocr"] = images.read_text(picture.convert("RGB"), vlm)
+            read += 1
+        if describer and "description" not in saved:
+            saved["description"] = images.describe(png.read_bytes(), describer)
+            described += 1
+        target.write_text(json.dumps(saved), encoding="utf-8")
     print(f"{len(places)} places of {len(set(p['id'] for p in places))} pictures; "
-          f"{read} read now")  # fmt: skip
+          f"{read} read and {described} described now")  # fmt: skip
     return 0
 
 
@@ -263,6 +284,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="add a passage per picture `read-images` stored and read (X43)",
     )
+    ingest_parser.add_argument(
+        "--descriptions",
+        action="store_true",
+        help="search each picture by its description too (X44 F6)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -281,7 +307,10 @@ def main(argv: list[str] | None = None) -> int:
         "read-images",
         help="store every picture once and read its text (needs the ingest group)",
     )
-    images_parser.add_argument("--vlm", required=True, help="a vision model server")
+    images_parser.add_argument("--vlm", default="", help="GLM-OCR's server")
+    images_parser.add_argument(
+        "--describe", default="", help="a vision generator's server (X44 F6)"
+    )
     one_parser = commands.add_parser(
         "read-pdf", help="read one stored PDF into a JSON file (used by read-pdfs)"
     )
@@ -298,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "read-pdfs":
         return run_read_pdfs(args.vlm)
     if args.command == "read-images":
-        return run_read_images(args.vlm)
+        return run_read_images(args.vlm, args.describe)
     if args.command == "read-pdf":
         reading = documents.read_one(args.sha256, args.vlm)
         text = json.dumps(reading, indent=1, ensure_ascii=False) + "\n"
@@ -325,6 +354,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.pdf_form,
                 args.web_form,
                 args.images,
+                args.descriptions,
             )
         elif args.command == "ask":
             run_ask(args.question)

@@ -1,5 +1,6 @@
 """Images as the index keeps them (X43 B). Invented images and a blank PDF."""
 
+import json
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -106,27 +107,31 @@ def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
          "alt": "A wall pointed with lime mortar", "section": ["Build-up"]},
         {"id": "p3", "source": site + "duro", "page": None, "alt": "Duro bag",
          "section": []},
+        {"id": "p4", "source": site + "york", "page": None, "alt": "",
+         "section": []},
     ]  # fmt: skip
     read = {
         "p2": "Solo 2nd pass\n\n<b>Duro</b> $25\\mathrm{kg}$",
         "p3": "Duro\nlime green",  # all of it shown on its page already
+        "p4": "```markdown\n\n```\n---",  # GLM-OCR's replies when it reads nothing
     }
     shown: dict[tuple[str, int | None], str] = {
         (site + "duro", None): "Duro lime green base coat"
     }
     titles = {site + "duro": "Duro", site + "sheet.pdf": "Duro — Data Sheet"}
 
-    found = images.picture_passages(places, read, shown, titles)
+    found = images.picture_passages(places, read, shown, titles, {"p2": "A wall."})
 
     assert found == [
-        ((site + "duro", "Duro", "Image", "", "Image › Colours › York", None), "p1"),
+        ((site + "duro", "Duro", "Image", "", "Image › Colours\nYork", None), "p1"),
         (
             (site + "sheet.pdf", "Duro — Data Sheet", "Image",
              "A wall pointed with lime mortar\nSolo 2nd pass\nDuro 25kg",
-             "Image › Build-up", 2),
+             "Image › Build-up\nA wall.", 2),
             "p2",
         ),
-        ((site + "duro", "Duro", "Image", "", "Image › Duro bag", None), "p3"),
+        ((site + "duro", "Duro", "Image", "", "Image\nDuro bag", None), "p3"),
+        ((site + "york", site + "york", "Image", "", "Image", None), "p4"),
     ]  # fmt: skip
     assert images.new_words("", "x") == 0.0
 
@@ -154,6 +159,54 @@ def test_only_a_reading_the_model_finished_is_text(
     url, body = sent[0]
     assert url == "http://vlm/v1/chat/completions"
     assert body["messages"][0]["content"][1]["text"] == "Text Recognition:"
+
+
+@pytest.mark.parametrize(
+    ("finish", "found"), [("stop", "A wall pointed in lime."), ("length", "")]
+)
+def test_a_description_is_kept_only_when_the_model_finished_it(
+    monkeypatch: pytest.MonkeyPatch, finish: str, found: str
+) -> None:
+    import httpx
+
+    from limespec import llm
+
+    sent: list[Any] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.append((url, kwargs["json"]))
+        reply = json.dumps({"text": " A wall  pointed in lime. "})
+        choice = {"finish_reason": finish, "message": {"content": reply}}
+        return httpx.Response(
+            200, json={"choices": [choice]}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(llm.CLIENT, "post", post)
+
+    assert images.describe(b"png", "http://gen") == found
+    url, body = sent[0]
+    assert url == "http://gen/v1/chat/completions"
+    assert body["messages"][0]["content"] == images.DESCRIBE_PROMPT
+    assert body["messages"][1]["content"][1]["type"] == "image_url"
+
+
+def test_a_description_that_is_not_json_is_a_model_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from limespec import llm
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        choice = {"finish_reason": "stop", "message": {"content": "not json"}}
+        return httpx.Response(
+            200, json={"choices": [choice]}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(llm.CLIENT, "post", post)
+
+    with pytest.raises(llm.ModelServerError):
+        images.describe(b"png", "http://gen")
 
 
 def test_a_failed_reading_is_a_model_server_error(
