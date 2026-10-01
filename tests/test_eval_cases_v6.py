@@ -63,16 +63,16 @@ def test_a_word_file_offers_the_pdf_libreoffice_laid_it_out_as(
 
 
 def test_v6_plans_visual_and_structure_cases_from_their_sources(tmp_path: Path) -> None:
-    entries = [picture(tmp_path, f"p{n}") for n in range(4)]
+    entries = [picture(tmp_path, f"p{n}") for n in range(3)]
     entries += [
         {"id": f"page:p{n}", "format": "page:knowledge", "topic": "faq",
          "source": f"p{n}.html", "url": SITE + f"p{n}"}
-        for n in range(4)
+        for n in range(5)
     ]  # fmt: skip
     texts = {e["id"]: "Words to quote here. " * 20 for e in entries}
     design = {
         "prefix": "v6c",
-        "counts": {"visual": 2, "structure": 2, "out_of_domain": 1},
+        "counts": {"visual": 2, "structure": 2, "condition": 1, "out_of_domain": 1},
         "reuse": False,
         "styles": [["original"]],
         "unindexed": ["image"],
@@ -83,9 +83,13 @@ def test_v6_plans_visual_and_structure_cases_from_their_sources(tmp_path: Path) 
 
     formats = {e["id"]: e["format"] for e in entries}
     kinds = {c["type"]: formats[c["sources"][0]] for c in planned if c["sources"]}
-    assert kinds == {"visual": "image:visual", "structure": "page:knowledge"}
+    assert kinds == {
+        "visual": "image:visual",
+        "structure": "page:knowledge",
+        "condition": "page:knowledge",  # a condition is stated in words
+    }
     assert (
-        cases.usable_pool(entries, {e["id"]: "" for e in entries}, set()) == entries[:4]
+        cases.usable_pool(entries, {e["id"]: "" for e in entries}, set()) == entries[:3]
     )
 
 
@@ -95,7 +99,7 @@ def test_a_picture_may_be_cited_as_what_it_shows_and_is_sealed_so(
     shown = {"v6c01-s1": {"entry": "picture:p1", "text": "Alt text: (none)"}}
     plan = {"plan": [{"id": "v6c01", "type": "visual", "sources": ["picture:p1"],
                       "styles": ["original"]}], "sources": shown}  # fmt: skip
-    case = {
+    case: dict[str, Any] = {
         "id": "v6c01", "type": "visual", "expected_status": "answered",
         "expected_answer": "A grey-green bag.", "must_not": [],
         "wordings": [{"style": "original", "text": "What colour is the bag?"}],
@@ -109,6 +113,11 @@ def test_a_picture_may_be_cited_as_what_it_shows_and_is_sealed_so(
     assert problems == [
         "v6c01 part 1 quote 1: only a picture can be cited as what it shows"
     ]
+    case["wordings"][0]["text"] = "What colour is the bag in p1.png?"
+    assert cases.key_problems({"cases": [case]}, plan, set(), [], pictures) == [
+        "v6c01: a wording names a source id, marker, file or excerpt"
+    ]
+    case["wordings"][0]["text"] = "What colour is the bag?"
 
     entry = picture(tmp_path)
     assert cases.sealed_evidence({"visual": True}, entry)["kind"] == "image_visual"
@@ -122,6 +131,25 @@ def test_a_picture_may_be_cited_as_what_it_shows_and_is_sealed_so(
     assert (
         cases.sealed_evidence({"quote": "A1", "page": 2}, docx)["kind"] == "docx_text"
     )
+
+
+def test_an_earlier_key_took_its_quotes_from_the_page_not_its_pictures(
+    tmp_path: Path,
+) -> None:
+    from evaluation import __main__ as cli
+
+    page = {"id": "page:duro", "format": "page:product", "url": SITE + "duro"}
+    entries = [page, picture(tmp_path)]  # the picture is shown on the same page
+    shown = {"v5c01-s1": {"entry": "page:duro", "text": "t"}}
+    (tmp_path / "plan.json").write_text(json.dumps({"plan": [], "sources": shown}))
+    evidence = [{"url": SITE + "duro", "quote": "Duro is breathable."}]
+    key = {"cases": [{"parts": [{"evidence": evidence}]}]}
+    (tmp_path / "key.json").write_text(json.dumps(key))
+
+    served, taken = cli.earlier_use([tmp_path], entries)
+
+    assert served == frozenset({"page:duro"})
+    assert taken == {"page:duro": ["Duro is breathable."]}
 
 
 def test_the_bundle_shows_pictures_screenshots_and_document_pages(
@@ -199,5 +227,6 @@ def test_the_catalogue_files_word_downloads_and_every_picture(
     )  # fmt: skip
     assert found["picture:b"]["format"] == "image:text"
     assert found["picture:b"]["topic"] == "lime-render"
+    assert found["picture:a"]["pages"] == ["page:products__lime-render__duro"]
     monkeypatch.setattr(config, "IMAGES", tmp_path / "none")
     assert catalogue.pictures([]) == []

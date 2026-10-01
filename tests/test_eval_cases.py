@@ -98,6 +98,11 @@ def test_formats_get_a_floor_then_a_share_by_size() -> None:
 
     assert slots == {"big": 6, "mid": 4, "small": 2}  # 0.64 left over beats 0.2
     assert sum(cases.allocate({"a": 5, "b": 5, "c": 5}, 10).values()) == 10
+    rooted = cases.allocate({"big": 40, "mid": 8, "small": 2}, 12, power=0.5)
+    assert rooted == {"big": 5, "mid": 4, "small": 3}  # by 6.3, 2.8 and 1.4
+    assert cases.allocate({"a": 2, "b": 10}, 8, least=4) == {"a": 2, "b": 6}
+    # A source that may serve twice lets a small format reach the floor.
+    assert cases.allocate({"a": 2, "b": 10}, 8, 4, reuse=True) == {"a": 4, "b": 4}
 
 
 def test_types_needing_a_kind_of_source_get_it_first() -> None:
@@ -305,7 +310,7 @@ def test_each_case_follows_its_type() -> None:
     assert found == [
         "v4c01: type is simple, planned multi_part",
         "v4c01: wordings are ['original', 'messy'], not ['original', 'rushed']",
-        "v4c01: a wording names a source id, page marker or excerpt",
+        "v4c01: a wording names a source id, marker, file or excerpt",
         "v4c01: a multi_part case needs 2+ parts",
         "v4c01: v4c01-s2 is never quoted",
         "v4c02: a absent case is insufficient_evidence",

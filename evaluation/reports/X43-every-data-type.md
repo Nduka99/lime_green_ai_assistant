@@ -250,6 +250,35 @@ one wording, and a third get a rushed second wording.
 
 The set is sealed and registered before any arm answers it.
 
+**Design, fixed before the plan is drawn** (`evaluation/briefs/heldout-v6.json`, brief
+`heldout-v6.md`, writer's instructions `heldout-v6-agents.md`; plan seed 61):
+- **Counts:** simple 32, condition 18, set 22, comparison 18, multi-part 28, structure
+  16, visual 30, false premise 8, injection 8 (180 answered); absent 14, price 8,
+  out-of-domain 8 (30 refusals); emergency 10. One wording each, both wordings for every
+  third case.
+- **Sources:** the catalogue with every picture once (`image:text` when GLM-OCR read 3+
+  words in it, else `image:visual`; filed where its alt text says most, joined to the
+  pages showing it), the 8 Word declarations and the 3 GOV.UK documents. The per-file
+  `image` entries are left out (the pictures replace them). Sources v4 and v5 used wait
+  their turn, and their quotes are listed as taken.
+- **Cases per format:** at least 6 each (a source may serve twice, so small formats
+  reach it), the rest in proportion to the square root of the format's sources. By
+  count alone the 463 pictures would take about 60% of the set; power allocation with
+  p = ½ (Bankier 1988, *The American Statistician* 42(3); used by BLS's OEWS and
+  Statistics Canada's IBSP) is the standard compromise between measuring each stratum
+  and the whole. On the 1 October draft catalogue: pictures 52 (30 of them `visual`),
+  pages 76, PDFs 66, Word 10, GOV.UK 8.
+- **Types by source:** `visual` takes a picture; `structure` a page, guide, technical
+  sheet or Word declaration; `condition` and `set` any source but a picture (both are
+  stated in words, and a flagged case is redrawn from its own format, so a picture there
+  would be flagged again).
+- **Writer's view:** pages as Chromium's visible text plus a full screenshot; PDFs, Word
+  declarations (as LibreOffice lays them out) and GOV.UK documents as pypdf layout text
+  by page plus each shown page drawn at 108 DPI; pictures as the file with its alt text
+  and the machine-read text (marked as possibly wrong). A picture may be cited as what it
+  shows (`"visual": true`); `check-cases` rejects that for any other source, and a
+  wording naming an image file.
+
 ## E. The all-pairs run
 
 - **Arms:**

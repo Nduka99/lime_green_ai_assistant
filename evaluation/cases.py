@@ -69,6 +69,7 @@ V6_FORMATS = {
     "structure": {"page:product", "page:knowledge", "page:case-study", "page:company",
                   "pdf:guide", "pdf:technical", "docx:declaration"},
 }  # fmt: skip
+IN_WORDS = ("condition", "set")  # stated in words, so never asked of a picture
 STYLES = ["original", "rushed"]
 # A plan's design: the prefix of its case ids, its cases per type, whether a source may
 # serve more than one case, and the wordings its cases get in turn. Held-out v4's:
@@ -81,8 +82,11 @@ V4: dict[str, Any] = {
 # What a source is seen by, written into the bundle: (entry, source id, text) -> names.
 Show = Callable[[Entry, str, str], list[str]]
 PAGE_MARK = re.compile(r"^\[page (\d+)\]$", re.MULTILINE)
-# A customer never sees the bundle, so never names its source ids or page markers.
-BUNDLE_WORDS = re.compile(r"\bv\d+c\d+-s\d+\b|\[page \d+\]|\bexcerpt\b", re.IGNORECASE)
+# A customer never sees the bundle, so never names its source ids, page markers or
+# image files.
+BUNDLE_WORDS = re.compile(
+    r"\bv\d+c\d+-s\d+\b|\[page \d+\]|\bexcerpt\b|\.png\b", re.IGNORECASE
+)
 CASE_ID = re.compile(r"v(\d+)c\d+")  # a case id names its key's version
 CASE_FIELDS: dict[str, type] = {
     "id": str,
@@ -156,14 +160,22 @@ def page_texts(text: str) -> dict[int, str]:
 
 
 def allocate(
-    counts: dict[str, int], total: int, least: int = MIN_PER_FORMAT
+    counts: dict[str, int],
+    total: int,
+    least: int = MIN_PER_FORMAT,
+    power: float = 1,
+    reuse: bool = False,
 ) -> dict[str, int]:
-    """Cases per format: `least` each (fewer if the format has fewer sources), the
-    rest in proportion to the sources, largest remainders first."""
-    slots = {name: min(least, count) for name, count in counts.items()}
+    """Cases per format: `least` each (without `reuse`, no more than its sources),
+    the rest in proportion to the sources raised to `power`, largest remainders
+    first. A power of 1/2 moves cases from the largest formats to the smaller ones,
+    so each format's own result is measured well as well as the whole (Bankier
+    1988)."""
+    slots = {name: least if reuse else min(least, n) for name, n in counts.items()}
     left = total - sum(slots.values())
-    size = sum(counts.values())
-    shares = {name: left * count / size for name, count in counts.items()}
+    weights = {name: count**power for name, count in counts.items()}
+    size = sum(weights.values())
+    shares = {name: left * weight / size for name, weight in weights.items()}
     for name, share in shares.items():
         slots[name] += int(share)
     rest = total - sum(slots.values())
@@ -280,12 +292,16 @@ def plan(
     pool = usable_pool(entries, texts, unindexed)
     total = sum(n for kind, n in counts.items() if SOURCES.get(kind, 1))
     least = design.get("min_per_format", MIN_PER_FORMAT)
-    slots = allocate(dict(Counter(e["format"] for e in pool)), total, least)
+    found = dict(Counter(e["format"] for e in pool))
+    slots = allocate(found, total, least, design.get("power", 1), reuse)
     groups = conversations.subjects(pool)
     used = Counter(served)
     topics: Counter[str] = Counter()
     firsts = []
-    needs = FORMATS | (V6_FORMATS if "visual" in counts else {})
+    needs = FORMATS
+    if "visual" in counts:
+        words = set(found) - PICTURES
+        needs = FORMATS | V6_FORMATS | dict.fromkeys(IN_WORDS, words)
     # Every case's own source first, so second sources never exhaust a small format.
     for kind, name in assign(slots, rng, counts, needs):
         named = [e for e in pool if e["format"] == name]
@@ -583,7 +599,7 @@ def case_problems(
         if not str(wording.get("text", "")).strip():
             found.append(f"{cid}: an empty wording")
         elif BUNDLE_WORDS.search(str(wording["text"])):
-            found.append(f"{cid}: a wording names a source id, page marker or excerpt")
+            found.append(f"{cid}: a wording names a source id, marker, file or excerpt")
     count = len(planned["sources"])
     texts = {f"{cid}-s{n}": shown[f"{cid}-s{n}"]["text"] for n in range(1, count + 1)}
     if status == "answered":

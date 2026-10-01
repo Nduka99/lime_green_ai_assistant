@@ -821,7 +821,8 @@ def earlier_use(
 ) -> tuple[frozenset[str], dict[str, list[str]]]:
     """From earlier sets (each with `plan.json` and `key.json`): the catalogue entries
     their cases used, and the quotes their keys took from each entry."""
-    by_url = {entry["url"]: entry["id"] for entry in entries}
+    # A picture shares the address of the page showing it; quotes belong to the page.
+    by_url = {e["url"]: e["id"] for e in entries if e["format"] not in cases.PICTURES}
     served: set[str] = set()
     taken: dict[str, list[str]] = {}
     for folder in folders:

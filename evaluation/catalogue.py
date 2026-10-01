@@ -146,17 +146,22 @@ def catalogue() -> list[Entry]:
 
 def pictures(entries: list[Entry]) -> list[Entry]:
     """Every stored picture (`limespec read-images`), once: filed where its alt text
-    says most about it, its topic that place's. A picture holds text when a machine
+    says most about it, its topic that place's, and `pages` the sources showing it
+    (so a picture joins its page's subject). A picture holds text when a machine
     read TEXT_WORDS or more words in it (X43 B2), else it is visual only."""
     places_file = config.IMAGES / "places.json"
     if not places_file.exists():
         return []
     topics = {entry["url"]: entry["topic"] for entry in entries}
+    ids = {entry["url"]: entry["id"] for entry in entries}
     chosen: dict[str, Entry] = {}
+    shown_on: dict[str, set[str]] = {}
     for place in json.loads(places_file.read_text(encoding="utf-8")):
         best = chosen.get(place["id"])
         if best is None or len(place["alt"]) > len(best["alt"]):
             chosen[place["id"]] = place
+        if place["source"] in ids:
+            shown_on.setdefault(place["id"], set()).add(ids[place["source"]])
     found = []
     for identity, place in chosen.items():
         reading = config.IMAGES / f"{identity}.json"
@@ -176,6 +181,7 @@ def pictures(entries: list[Entry]) -> list[Entry]:
                 "page": place["page"],
                 "alt": place["alt"],
                 "read": read,
+                "pages": sorted(shown_on.get(identity, set())),
             }
         )
     return found
