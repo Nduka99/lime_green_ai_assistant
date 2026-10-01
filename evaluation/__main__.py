@@ -104,7 +104,7 @@ from limespec import (
     verify,
     webpage,
 )
-from limespec.models import Passage, described
+from limespec.models import Passage, as_read, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 X8_SETS = ("x8-pages", "x8-pages-r2", "x8-pages-r3")  # sealed truth with tables
@@ -1209,7 +1209,7 @@ def run_reach(args: argparse.Namespace) -> int:
                 f"the run must use one index version, not {sorted(versions)}"
             )
         version = versions.pop()
-        texts = store.searchable_texts(conn, version)
+        texts = [as_read(p) for p in store.searchable_passages(conn, version)]
         pictures = store.picture_passages(conn, version)
     rows = reach.score(key, questions, given, texts, pictures)
     found = reach.summary(rows)
@@ -1233,7 +1233,7 @@ def run_replay(args: argparse.Namespace) -> int:
             parts,
             assistant.scoped_retriever(conn, args.version) if args.scoped else None,
         )
-        texts = store.searchable_texts(conn, args.version)
+        texts = [as_read(p) for p in store.searchable_passages(conn, args.version)]
         pictures = store.picture_passages(conn, args.version)
     rows = reach.score(key, questions, given, texts, pictures)
     found = reach.summary(rows)
@@ -1532,6 +1532,8 @@ def run_web_links(args: argparse.Namespace) -> int:
     checked = 0
     for passage in found:
         lines = [line for line in passage.text.split("\n") if line.strip()]
+        if not lines:
+            continue  # a picture with no words of its own: nothing to quote
         for quote in (lines[0], "\n".join(lines[:2])):
             link = verify.source_link(passage, quote)
             checked += 1
@@ -1710,15 +1712,24 @@ def run_image_requests(args: argparse.Namespace) -> int:
 
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
+    before = set_summary(baseline["summary"], args.set)
     for path in args.arms:
         arm = grades.read_json(path)
         change = lookups.compare(arm["results"], baseline["results"], args.set)
         print(
-            f"{path.name}: Success@{lookups.TOP} {arm['summary']['success']:.3f} vs "
-            f"{baseline['summary']['success']:.3f}, difference "
+            f"{path.name}: Success@{lookups.TOP} "
+            f"{set_summary(arm['summary'], args.set)['success']:.3f} vs "
+            f"{before['success']:.3f}, difference "
             f"{change['difference']:+.3f} [{change['low']:+.3f}, {change['high']:+.3f}]"
         )
     return 0
+
+
+def set_summary(summary: dict[str, Any], name: str) -> dict[str, Any]:
+    """A results file's summary of one set: a file scoring several sets
+    (`quote-retrieval`) keeps one summary per set."""
+    found: dict[str, Any] = summary[name] if name in summary else summary
+    return found
 
 
 def run_nearmiss_answer(args: argparse.Namespace) -> int:

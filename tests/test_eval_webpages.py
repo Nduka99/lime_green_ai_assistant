@@ -593,6 +593,18 @@ def test_the_command_line_builds_web_facts_and_scores_and_compares_versions(
     assert "difference +0.000" in capsys.readouterr().out
 
 
+def test_a_file_scoring_several_sets_is_compared_on_the_named_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = {"id": "t1", "set": "x9-tables", "cluster": "a", "success": 1.0}
+    summary = {"x9-tables": {"success": 1.0}, "conv-v1": {"success": 0.5}}
+    run = tmp_path / "lookups.json"
+    run.write_text(json.dumps({"summary": summary, "results": [result]}))
+
+    assert cli.main(["web-compare", str(run), str(run), "--set", "x9-tables"]) == 0
+    assert "Success@8 1.000 vs 1.000" in capsys.readouterr().out
+
+
 def test_a_customer_link_must_be_an_online_source_the_rendered_page_holds() -> None:
     shown = "Uses\nRepointing brick\nRendering"
     good = "https://www.lime-green.co.uk/duro#:~:text=Uses,Rendering"
@@ -628,6 +640,7 @@ def test_the_command_line_checks_every_passage_link_of_a_version(
     rows = [
         Passage(1, site + "duro", "Duro", "Uses", "Uses\nRepointing brick", ""),
         Passage(2, site + "Documents/a b.pdf", "A", "", "Lime", "", 3),
+        Passage(3, site + "duro", "Duro", "Image", "", "", image="p"),  # no words
     ]
     monkeypatch.setattr(assistant, "connect", connect)
     monkeypatch.setattr(store, "searchable_passages", lambda conn, version: rows)
@@ -643,4 +656,4 @@ def test_the_command_line_checks_every_passage_link_of_a_version(
     assert [p["problem"] for p in saved["problems"]] == [
         "a text directive the rendered page does not hold"
     ]
-    assert "4 links from 2 passages" in capsys.readouterr().out
+    assert "4 links from 3 passages" in capsys.readouterr().out

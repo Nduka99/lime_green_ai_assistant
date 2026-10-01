@@ -35,6 +35,14 @@ def described(title: str, context: str, text: str) -> str:
     return "\n".join(part for part in (title, context, text) if part)
 
 
+def as_read(passage: Passage) -> str:
+    """What the answer model reads of a passage, without its markup: its page title,
+    its section and its text, one per line (`answer.user_prompt`). Evidence is looked
+    for here when measuring what reached the model (X44 M1)."""
+    parts = (passage.title, passage.heading, passage.text)
+    return "\n".join(part for part in parts if part)
+
+
 @dataclass(frozen=True)
 class DraftEvidence:
     """A quote as the model returned it, before verification."""

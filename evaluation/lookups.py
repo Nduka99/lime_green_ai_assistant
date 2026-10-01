@@ -16,7 +16,7 @@ from typing import Any
 from evaluation import metrics
 from evaluation.parsing import header_and_rows
 from limespec.ingest import file_title
-from limespec.models import Passage
+from limespec.models import Passage, as_read
 from limespec.verify import find_quote
 
 DASHES = {"-", "–", "—"}  # a cell that only marks "none"
@@ -95,12 +95,13 @@ def quote_items(
 
 
 def relevant(passage: Passage, item: Item, url: str) -> bool:
-    """Whether the passage holds the item's evidence, as a claim would quote it."""
+    """Whether the passage, as the model reads it (`models.as_read`), holds the
+    item's evidence."""
     if passage.url != url:
         return False
     if item["page"] is not None and passage.page != item["page"]:
         return False
-    return all(find_quote(text, passage.text) for text in item["evidence"])
+    return all(find_quote(text, as_read(passage)) for text in item["evidence"])
 
 
 def score_item(

@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup, Tag
 
 from evaluation.lookups import TOP
 from limespec import config, ingest, webpage
-from limespec.models import Passage
+from limespec.models import Passage, as_read
 from limespec.passages import SENTENCE_END
 from limespec.verify import find_quote
 
@@ -567,10 +567,10 @@ def fact_items(
 
 
 def fact_relevant(passage: Passage, item: Mapping[str, Any]) -> bool:
-    """Whether a passage holds the fact, as a claim would quote it, from a page that
-    holds it."""
+    """Whether a passage, as the model reads it (`models.as_read`), holds the fact,
+    from a page that holds it."""
     return passage.url in item["holders"] and all(
-        find_quote(part, passage.text) for part in item["evidence"]
+        find_quote(part, as_read(passage)) for part in item["evidence"]
     )
 
 

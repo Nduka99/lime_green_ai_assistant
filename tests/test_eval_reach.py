@@ -86,6 +86,19 @@ def test_a_picture_cited_as_what_it_shows_is_reached_by_its_own_passage() -> Non
     assert reach.part_quotes(case) == [("p1", ["Class A1"])]
 
 
+def test_evidence_split_by_a_heading_is_read_as_the_model_reads_it() -> None:
+    card = {"kind": "page_text", "quote": "Ashlar Lime Mortar A fine grained mortar."}
+    wordings = [{"style": "original", "text": "What is Ashlar for?"}]
+    case = {"id": "c1", "expected_status": "answered", "wordings": wordings,
+            "parts": [{"id": "p1", "evidence": [card]}]}  # fmt: skip
+    questions = [{"id": "q1", "question": "What is Ashlar for?"}]
+    page = Passage(7, "u", "Ashlar Lime Mortar", "", "A fine grained mortar.", "")
+
+    rows = reach.score({"cases": [case]}, questions, {"q1": [page]}, [])
+
+    assert rows[0]["reached"] and not rows[0]["ceiling"]
+
+
 def test_a_quote_cannot_match_across_two_passages_of_the_version() -> None:
     rows = reach.score(KEY, QUESTIONS[:1], {}, ["Duro is free of", "cement. 3 to 6 mm"])
 
@@ -132,7 +145,9 @@ def test_reach_reads_each_answer_s_given_passages_from_its_audit_record(
     monkeypatch.setattr(assistant, "connect", connect)
     monkeypatch.setattr(store, "given_passages", lambda conn, i: (11, given[i]))
     monkeypatch.setattr(
-        store, "searchable_texts", lambda conn, version: ["Duro is free of cement."]
+        store,
+        "searchable_passages",
+        lambda conn, version: [passage(1, "Duro is free of cement.")],
     )
     monkeypatch.setattr(store, "picture_passages", lambda conn, version: {})
     out = tmp_path / "reach.json"

@@ -12,7 +12,7 @@ from collections.abc import Collection, Sequence
 from typing import Any
 
 from evaluation import grades
-from limespec.models import Passage
+from limespec.models import Passage, as_read
 from limespec.verify import find_quote
 
 # Evidence matched as quotes: a page's, PDF's or Word file's text, and a picture's
@@ -61,7 +61,9 @@ def score(
     """One row per keyed part of every question the key expects answered: whether the
     passages given for that question (`given`, by question id) hold its evidence, and
     whether the version does (`version_texts`, its searchable passages, and
-    `version_pictures`, the pictures they were made from)."""
+    `version_pictures`, the pictures they were made from). Each text is a passage as
+    the model reads it (`models.as_read`), so evidence split between a heading and its
+    text counts (X44 M1)."""
     cases = grades.cases_by_question(key, questions)
     everything = BOUNDARY.join(version_texts)
     rows = []
@@ -69,7 +71,7 @@ def score(
         case = cases[row["id"]][0]
         if "answered" not in grades.expected_statuses(case):
             continue
-        texts = [passage.text for passage in given.get(row["id"], [])]
+        texts = [as_read(passage) for passage in given.get(row["id"], [])]
         seen = {passage.image for passage in given.get(row["id"], [])}
         for part_id, quotes, pictures in part_evidence(case):
             rows.append({
