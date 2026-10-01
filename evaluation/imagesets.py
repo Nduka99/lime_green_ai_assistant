@@ -10,14 +10,23 @@ document's format (safety, technical, guide ...).
 import random
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from PIL import Image
+
 from evaluation import webpages
+from evaluation.lookups import TOP
 from limespec import tables
+from limespec.models import Passage
 
 MIN_SIDE = 72  # points: a smaller PDF figure is a mark, not a picture (X43 B)
 UNREADABLE = {"image/svg+xml"}  # vector images: no pixels to read
+THUMB = 16  # pixels a side: thumbnails compared for copies
+# Mean difference per colour value (of 255): copies measured 0.2-2.3, different
+# pictures 8.7 or more (X43 B3).
+COPY_DIFF = 5.0
 
 
 def folder(url: str) -> str:
@@ -33,7 +42,7 @@ def interleaved[T](groups: Mapping[str, Sequence[T]], seed: int) -> list[T]:
         members = list(groups[name])
         rng.shuffle(members)
         queues.append(members)
-    found = []
+    found: list[T] = []
     while any(queues):
         for queue in queues:
             if queue:
@@ -122,3 +131,73 @@ def ocr_score(
         for name, total in totals.items()
     }
     return {"rates": rates, "images": rows}
+
+
+def picture_draw(
+    places: Sequence[Mapping[str, Any]], exclude: set[str], seed: int
+) -> list[dict[str, Any]]:
+    """Every stored picture not in `exclude`, once, in drawing order: site pictures
+    by their folder and document figures by their document, each source in turn
+    (X43 B3). Each comes with the first place it is shown."""
+    first: dict[str, Mapping[str, Any]] = {}
+    for place in places:
+        if place["id"] not in exclude:
+            first.setdefault(place["id"], place)
+    groups: dict[str, dict[str, list[dict[str, Any]]]] = {"site": {}, "figure": {}}
+    for place in first.values():
+        if place["page"] is None:
+            source, group = "site", folder(place["image_url"])
+        else:
+            source, group = "figure", place["source"]
+        groups[source].setdefault(group, []).append(dict(place))
+    site = interleaved(groups["site"], seed)
+    figures = interleaved(groups["figure"], seed)
+    found: list[dict[str, Any]] = []
+    for pair in zip(site, figures, strict=False):
+        found += pair
+    longer = site if len(site) > len(figures) else figures
+    return found + longer[min(len(site), len(figures)) :]
+
+
+def thumbnail(path: Path) -> bytes:
+    """A picture shrunk to THUMB x THUMB colour pixels, for comparing pictures."""
+    with Image.open(path) as picture:
+        return picture.convert("RGB").resize((THUMB, THUMB)).tobytes()
+
+
+def copies(ids: Sequence[str], folder: Path) -> dict[str, list[str]]:
+    """Each picture with every stored picture that is a copy of it: thumbnails whose
+    pixels differ by at most COPY_DIFF on average (one picture saved twice, or at
+    another size). Different photographs of one product differ far more."""
+    small = {identity: thumbnail(folder / f"{identity}.png") for identity in ids}
+
+    def differ(one: bytes, other: bytes) -> float:
+        return sum(abs(a - b) for a, b in zip(one, other, strict=True)) / len(one)
+
+    return {
+        identity: [
+            other for other in ids if differ(small[identity], small[other]) <= COPY_DIFF
+        ]
+        for identity in ids
+    }
+
+
+def picture_result(
+    item: Mapping[str, Any], ranked: Sequence[Passage]
+) -> dict[str, Any]:
+    """One image-facts question's result: the first rank among the top TOP
+    passages of a passage made from an accepted picture."""
+    rank = None
+    for position, passage in enumerate(ranked[:TOP], 1):
+        if passage.image and passage.image in item["accepted"]:
+            rank = position
+            break
+    return {
+        "id": item["id"],
+        "set": item["set"],
+        "cluster": item["cluster"],
+        "kind": item["kind"],
+        "success": 1.0 if rank else 0.0,
+        "reciprocal": 1 / rank if rank else 0.0,
+        "ceiling": 1.0,
+    }

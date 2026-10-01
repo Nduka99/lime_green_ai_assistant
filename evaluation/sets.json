@@ -212,6 +212,12 @@
     "questions.json": "fb35c2586dc22a9f11e025182c3428e1424ce24ae7673094f63ecca4be5ebec5"
    }
   },
+  "image-facts": {
+   "description": "X43 B3: 40 questions about what drawn pictures show (seed 44), written by looking at each, answered by the picture or a stored copy",
+   "files": {
+    "questions.json": "68213f2d1ebd0e137f0d651c157783d12ec4231dd680689de25e3b3709bba27c"
+   }
+  },
   "image-text": {
    "description": "X43 B2: 40 images (20 site, 20 PDF figures; seed 43) whose printed words are all legible, transcribed by reading each image, before any OCR",
    "files": {

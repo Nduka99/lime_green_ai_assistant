@@ -150,6 +150,23 @@ around them: their captions can be downloaded only with the owner's authorisatio
     never quoted or shown.
 - Rule: the arm with the highest Success@8 whose interval against T (images resampled)
   lies above zero; otherwise T.
+- **Amendment, before any arm (1 October).** Questions built from a picture's own
+  words would favour T by design: T searches exactly those words. A visual arm can
+  only show its worth on questions about what a picture shows. So `image-facts` is
+  written by looking at the pictures:
+  - 40 pictures, drawn with seed 44 (`imagesets.picture_draw`: site pictures by
+    folder and document figures by document, in turn), the `image-text` pictures left
+    out.
+  - Each qualifies when it shows something a customer could ask to see: a finish, a
+    colour, a building, a drawing, a chart. Logos, signatures and pack shots are
+    skipped. A product's pack is shown by several different photographs (site and
+    data sheet), so the answer could not be one picture.
+  - Each gets one question in a customer's words that does not copy its alt text.
+  - 26 site pictures and 14 document figures.
+  - Success: a passage made from the picture, or from a stored copy of it, is among
+    the top 8. A copy is a thumbnail differing by at most 5 per colour value
+    (`imagesets.copies`; copies measured 0.2–2.3, different pictures 8.7 or more).
+    One drawing found twice among the drawn pictures is accepted as either.
 
 **B4. The generators see images.**
 - The F16 projectors of the two generators are downloaded (Qwen3.6 899 MB, Gemma 4 26B

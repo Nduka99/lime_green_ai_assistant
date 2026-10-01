@@ -134,3 +134,73 @@ def test_the_command_line_reads_each_registered_image_once_and_scores(
     assert calls == [("http://vlm", "Text Recognition:")]
     assert cli.main([*common, "image-ocr-score", str(out)]) == 0
     assert "all: recall 1.000, precision 1.000" in capsys.readouterr().out
+
+
+def test_copies_are_found_and_a_picture_question_is_scored(tmp_path: Path) -> None:
+    from limespec.models import Passage
+
+    Image.new("RGB", (40, 20), "green").save(tmp_path / "a.png")
+    Image.new("RGB", (80, 40), "green").save(tmp_path / "b.png")  # a copy, larger
+    Image.new("RGB", (40, 20), "red").save(tmp_path / "c.png")
+
+    found = imagesets.copies(["a", "b", "c"], tmp_path)
+
+    assert found == {"a": ["a", "b"], "b": ["a", "b"], "c": ["c"]}
+    item = {"id": "q", "set": "image-facts", "cluster": "q", "kind": "site",
+            "accepted": ["b"]}  # fmt: skip
+    text = Passage(1, "u", "T", "", "words", "")
+    picture = Passage(2, "u", "T", "Image", "", "", image="b")
+    assert imagesets.picture_result(item, [text, picture])["reciprocal"] == 0.5
+    assert imagesets.picture_result(item, [text])["success"] == 0.0
+
+
+def test_pictures_are_drawn_from_site_and_documents_in_turn() -> None:
+    places: list[dict[str, object]] = [
+        {"id": "s1", "page": None, "image_url": SITE + "images/A/1.png"},
+        {"id": "s1", "page": None, "image_url": SITE + "images/A/1.png"},
+        {"id": "s2", "page": None, "image_url": SITE + "images/B/2.png"},
+        {"id": "s3", "page": None, "image_url": SITE + "images/B/3.png"},
+        {"id": "f1", "page": 2, "source": SITE + "d.pdf", "image_url": ""},
+        {"id": "x", "page": None, "image_url": SITE + "images/A/x.png"},
+    ]
+
+    drawn = imagesets.picture_draw(places, {"x"}, seed=1)
+
+    assert sorted(p["id"] for p in drawn) == ["f1", "s1", "s2", "s3"]
+    assert drawn[1]["id"] == "f1"  # site, then figure, then the rest
+
+
+def test_the_command_line_scores_a_version_on_image_facts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+
+    from limespec import assistant, store
+    from limespec.models import Passage
+
+    folder = tmp_path / "eval" / "image-facts"
+    folder.mkdir(parents=True)
+    item = {"id": "q", "set": "image-facts", "cluster": "q", "kind": "site",
+            "question": "Show me York", "accepted": ["b"]}  # fmt: skip
+    (folder / "questions.json").write_text(json.dumps({"questions": [item]}))
+    registry = tmp_path / "sets.json"
+    sets.register("image-facts", "", tmp_path / "eval", registry)
+
+    @contextmanager
+    def connect() -> Iterator[None]:
+        yield None
+
+    ranked = [Passage(1, "u", "T", "Image", "", "", image="b")]
+    monkeypatch.setattr(assistant, "connect", connect)
+    monkeypatch.setattr(store, "search", lambda conn, version, question, e, r: ranked)
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+    run = tmp_path / "run.json"
+
+    assert (
+        cli.main([*common, "image-retrieval", "--version", "21", "--out", str(run)])
+        == 0
+    )
+    assert "Success@8 1.000" in capsys.readouterr().out
+    assert cli.main(["web-compare", str(run), str(run), "--set", "image-facts"]) == 0
+    assert "difference +0.000" in capsys.readouterr().out

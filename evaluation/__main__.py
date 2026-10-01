@@ -441,6 +441,7 @@ def parser() -> argparse.ArgumentParser:
     )
     web_compared.add_argument("baseline", type=Path, help="a web-retrieval file")
     web_compared.add_argument("arms", type=Path, nargs="+")
+    web_compared.add_argument("--set", default="web-facts", help="or image-facts")
     image_drawn = commands.add_parser(
         "image-candidates", help="images drawn for the OCR truth (X43 B2)"
     )
@@ -471,6 +472,11 @@ def parser() -> argparse.ArgumentParser:
         "image-ocr-score", help="OCR readings against the image-text truth (X43 B2)"
     )
     image_scored.add_argument("readings", type=Path, help="an image-ocr file")
+    picture_retrieved = commands.add_parser(
+        "image-retrieval", help="score a version's search on image-facts (X43 B3)"
+    )
+    picture_retrieved.add_argument("--version", type=int, required=True)
+    picture_retrieved.add_argument("--out", type=Path, required=True)
     web_linked = commands.add_parser(
         "web-links", help="the link of every passage of a version checked (X42 W4)"
     )
@@ -1593,11 +1599,30 @@ def run_image_ocr_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_image_retrieval(args: argparse.Namespace) -> int:
+    folder = sets.require("image-facts", args.root, args.registry)
+    items = grades.read_json(folder / "questions.json")["questions"]
+    results = []
+    with assistant.connect() as conn:
+        for item in items:
+            ranked = store.search(
+                conn, args.version, item["question"], llm.embed, llm.rerank
+            )
+            results.append(imagesets.picture_result(item, ranked))
+    found = lookups.summary(results)["image-facts"]
+    write_json(
+        args.out, {"version": args.version, "summary": found, "results": results}
+    )
+    print(f"image-facts: Success@{lookups.TOP} {found['success']:.3f}, MRR "
+          f"{found['mrr']:.3f}; version {args.version}")  # fmt: skip
+    return 0
+
+
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
     for path in args.arms:
         arm = grades.read_json(path)
-        change = lookups.compare(arm["results"], baseline["results"], "web-facts")
+        change = lookups.compare(arm["results"], baseline["results"], args.set)
         print(
             f"{path.name}: Success@{lookups.TOP} {arm['summary']['success']:.3f} vs "
             f"{baseline['summary']['success']:.3f}, difference "
@@ -2292,6 +2317,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_image_ocr_score(args)
         if args.command == "image-candidates":
             return run_image_candidates(args)
+        if args.command == "image-retrieval":
+            return run_image_retrieval(args)
         if args.command == "web-links":
             return run_web_links(args)
         if args.command == "web-compare":
