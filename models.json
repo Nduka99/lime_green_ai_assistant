@@ -54,6 +54,24 @@
   "use": "X8 table structure and transcription"
  },
  {
+  "file": "mmproj-Qwen3.6-35B-A3B-F16.gguf",
+  "source": "unsloth/Qwen3.6-35B-A3B-GGUF (mmproj-F16.gguf)",
+  "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+  "bytes": 899283680,
+  "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+  "licence": "Apache-2.0",
+  "use": "X43 B4: Qwen3.6 generator sees images (--mmproj)"
+ },
+ {
+  "file": "mmproj-gemma-4-26B-A4B-it-F16.gguf",
+  "source": "unsloth/gemma-4-26B-A4B-it-GGUF (mmproj-F16.gguf)",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "bytes": 1193058784,
+  "sha256": "418a6d8723067cd712235facbbc5cba6c8fbbd413fc1292d2aace5a027d5a42f",
+  "licence": "Apache-2.0",
+  "use": "X43 B4: Gemma 4 26B generator sees images (--mmproj)"
+ },
+ {
   "file": "PaddleOCR-VL-1.6-GGUF/PaddleOCR-VL-1.6-GGUF-mmproj.gguf",
   "source": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
   "revision": "main (28 Sept 2026)",

@@ -274,7 +274,10 @@ def test_a_pdf_joins_the_index_with_its_page_and_context(
 
 
 def test_a_failed_rebuild_leaves_the_live_index_intact(
-    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+    cached_faq: Path,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first, _ = ingest(pg, fake_embed_1024)
     pg.commit()
@@ -282,8 +285,11 @@ def test_a_failed_rebuild_leaves_the_live_index_intact(
     def one_vector_short(texts: list[str]) -> list[list[float]]:
         return fake_embed_1024(texts)[:-1]
 
-    with pytest.raises(ValueError):
-        ingest(pg, one_vector_short)
+    # Another embedder reuses no stored vector, so every passage is embedded again.
+    with monkeypatch.context() as patched:
+        patched.setattr(config, "EMBEDDING_MODEL", "another-embedder")
+        with pytest.raises(ValueError):
+            ingest(pg, one_vector_short)
     pg.rollback()
 
     assert store.live_version(pg) == (first, config.EMBEDDING_MODEL)
@@ -569,3 +575,22 @@ def test_web_forms_read_pages_by_the_new_reader(fake_embed: Embed) -> None:
         (SITE + "duro-copy", "Duro", whole),
     ]
     assert [row[0] for row in once] == [SITE + "duro"]
+
+
+def test_a_passage_embedded_before_takes_its_stored_vector(fake_embed: Embed) -> None:
+    html = "<body><h2>Uses</h2><p>Walls.</p><h2>Mixing</h2><p>Add water.</p></body>"
+    page = (SITE + "duro", html.encode(), "2026-01-01T00:00:00+00:00")
+    asked: list[str] = []
+
+    def counting(texts: list[str]) -> list[list[float]]:
+        asked.extend(texts)
+        return fake_embed(texts)
+
+    first = prepare_index([page], counting)
+    known = {(row[1], row[4], row[3]): [0.5] for row in first.passages[:1]}
+    asked.clear()
+    second = prepare_index([page], counting, known=known)
+
+    assert len(asked) == len(first.passages) - 1  # only the new text is embedded
+    assert second.vectors[0] == [0.5] and second.vectors[1:] == first.vectors[1:]
+    assert second.manifest["vectors_reused"] == "1"

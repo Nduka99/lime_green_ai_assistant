@@ -387,3 +387,15 @@ to it in W6, with the passage form W3 selects.
   - Reported for reference: version 17, the old extractor's passages.
 - **Rule:** the arm with the highest Success@8 whose interval against `sections` lies
   above zero (pages resampled) is selected; otherwise `sections`, the simplest.
+
+**Amendment to W3's builds (1 October, before any arm was scored).**
+- The first build stopped at its one-hour limit with nothing written. The 4B embedder
+  runs on the CPU at about 3.4 s per passage, and every build re-embedded all PDF
+  passages.
+- Builds now take the stored vector of any passage whose title, context and text the
+  newest version of the same embedder holds (`store.known_vectors`, X43 A4). They embed
+  only new text.
+- Stored and fresh vectors agree to a cosine of at least 0.9995 (mean 0.99978, 40
+  passages re-embedded): the embedder's own variation from batch to batch.
+- All three arms reuse the same PDF vectors, so they stay comparable. The builds run
+  again with a three-hour limit.

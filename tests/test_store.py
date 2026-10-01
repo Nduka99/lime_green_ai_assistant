@@ -361,3 +361,20 @@ def test_only_passages_search_can_return_are_counted_as_searchable(
     )
 
     assert store.searchable_texts(pg, version) == [row[3] for row in PASSAGES[:2]]
+
+
+def test_a_build_finds_the_vectors_the_newest_version_of_its_embedder_stored(
+    pg: store.Connection,
+) -> None:
+    assert store.known_vectors(pg, "test-embedder") == {}
+    build(pg)
+    newest = build(pg)
+    pg.execute(
+        "UPDATE passages SET text = 'changed' WHERE index_version_id <> %s", (newest,)
+    )
+
+    known = store.known_vectors(pg, "test-embedder")
+
+    key = ("FAQ", "", "Delivery\nWe deliver on weekdays.")
+    assert len(known) == 3 and known[key][:2] == [0.0, 1.0]
+    assert store.known_vectors(pg, "another-embedder") == {}

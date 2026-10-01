@@ -66,6 +66,7 @@ from evaluation import (
     graders,
     grades,
     guardrails,
+    imagesets,
     keys,
     lookups,
     nearmiss,
@@ -88,6 +89,7 @@ from limespec import (
     answer,
     assistant,
     config,
+    images,
     ingest,
     llm,
     pdf,
@@ -435,6 +437,13 @@ def parser() -> argparse.ArgumentParser:
     )
     web_compared.add_argument("baseline", type=Path, help="a web-retrieval file")
     web_compared.add_argument("arms", type=Path, nargs="+")
+    image_drawn = commands.add_parser(
+        "image-candidates", help="images drawn for the OCR truth (X43 B2)"
+    )
+    image_drawn.add_argument("--seed", type=int, required=True)
+    image_drawn.add_argument("--catalogue", type=Path, required=True)
+    image_drawn.add_argument("--count", type=int, default=60, help="per source")
+    image_drawn.add_argument("--out", type=Path, required=True, help="a folder")
     web_linked = commands.add_parser(
         "web-links", help="the link of every passage of a version checked (X42 W4)"
     )
@@ -1463,6 +1472,35 @@ def run_web_links(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_image_candidates(args: argparse.Namespace) -> int:
+    """The first `count` site images and PDF figures in drawing order, each written
+    as the PNG the index would keep (and OCR would read), with candidates.json."""
+    formats = {
+        entry["url"]: entry["format"] for entry in grades.read_json(args.catalogue)
+    }
+    readings = [
+        grades.read_json(path)
+        for path in sorted(config.READINGS.glob("*.json"))
+        if path.name != "report.json"
+    ]
+    site = imagesets.site_candidates(acquire.read_manifest(), args.seed)
+    figures = imagesets.figure_candidates(readings, formats, args.seed)
+    args.out.mkdir(parents=True, exist_ok=True)
+    kept = []
+    for candidate in site[: args.count] + figures[: args.count]:
+        stored = acquire.store_path(candidate["sha256"])
+        if "page" in candidate:
+            png = images.crop(stored, candidate["page"], tuple(candidate["box"]))
+        else:
+            png = images.normalised(stored.read_bytes())
+        name = candidate["id"].replace("/", "__") + ".png"
+        (args.out / name).write_bytes(png)
+        kept.append(candidate | {"png": name})
+    write_json(args.out / "candidates.json", kept)
+    print(f"{len(kept)} candidates in {args.out}")
+    return 0
+
+
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
     for path in args.arms:
@@ -2152,6 +2190,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_facts(args)
         if args.command == "web-retrieval":
             return run_web_retrieval(args)
+        if args.command == "image-candidates":
+            return run_image_candidates(args)
         if args.command == "web-links":
             return run_web_links(args)
         if args.command == "web-compare":

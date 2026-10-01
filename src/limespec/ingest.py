@@ -8,7 +8,7 @@ never downloads a page twice.
 import hashlib
 import posixpath
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -364,11 +364,14 @@ def prepare_index(
     embed: Embed,
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
+    known: Mapping[tuple[str, str, str], list[float]] | None = None,
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
     documents whose passages are already built (PDFs, limespec.passages). With a
     `web_form` (WEB_FORMS) the pages are read by `limespec.webpage`; in "page-once" a
-    passage whose text an earlier page already holds is left out."""
+    passage whose text an earlier page already holds is left out. A passage whose
+    (title, context, text) is in `known` (`store.known_vectors`, same embedder) takes
+    its stored vector instead of being embedded again (X43 A4)."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
     seen: set[str] = set()
@@ -398,10 +401,14 @@ def prepare_index(
         rows += passage_rows
     rows = [row for row in map(without_prices, rows) if row is not None]
 
-    vectors: list[list[float]] = []
-    for start in range(0, len(rows), config.EMBEDDING_BATCH_SIZE):
-        batch = rows[start : start + config.EMBEDDING_BATCH_SIZE]
-        vectors += embed([described(row[1], row[4], row[3]) for row in batch])
+    known = known or {}
+    vectors = [known.get((row[1], row[4], row[3]), []) for row in rows]
+    missing = [number for number, vector in enumerate(vectors) if not vector]
+    for start in range(0, len(missing), config.EMBEDDING_BATCH_SIZE):
+        batch = missing[start : start + config.EMBEDDING_BATCH_SIZE]
+        fresh = embed([described(rows[n][1], rows[n][4], rows[n][3]) for n in batch])
+        for number, vector in zip(batch, fresh, strict=True):
+            vectors[number] = vector
 
     # The site stamps each response with its render time, so page bytes (and the
     # corpus hash) change on every download; the passage hash changes only when
@@ -414,6 +421,7 @@ def prepare_index(
         "embedding_model": config.EMBEDDING_MODEL,
         "pages": str(len(page_rows)),
         "passages": str(len(rows)),
+        "vectors_reused": str(len(rows) - len(missing)),
     }
     return PreparedIndex(page_rows, rows, vectors, manifest)
 
@@ -453,7 +461,8 @@ def ingest(
     left not live can be evaluated first (`LIMESPEC_INDEX_VERSION`).
     """
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
-    prepared = prepare_index(cached_pages(urls), embed, documents, web_form)
+    known = store.known_vectors(conn, config.EMBEDDING_MODEL)
+    prepared = prepare_index(cached_pages(urls), embed, documents, web_form, known)
     version = store.write_version(
         conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
     )

@@ -124,6 +124,29 @@ def write_version(
     return int(version[0])
 
 
+def known_vectors(
+    conn: Connection, embedding_model: str
+) -> dict[tuple[str, str, str], list[float]]:
+    """The newest version embedded by `embedding_model`: each passage's (title,
+    context, text) and its stored vector, so a new build embeds only new text."""
+    row = conn.execute(
+        "SELECT max(id) FROM index_versions WHERE embedding_model = %s",
+        (embedding_model,),
+    ).fetchone()
+    if row is None or row[0] is None:
+        return {}
+    found = {}
+    for title, context, text, vector in conn.execute(
+        "SELECT title, context, text, embedding::text FROM passages "
+        "WHERE index_version_id = %s",
+        (row[0],),
+    ):
+        found[(title, context, text)] = [
+            float(x) for x in vector.strip("[]").split(",")
+        ]
+    return found
+
+
 def delete_version(conn: Connection, version_id: int) -> None:
     """Remove a version that is not live: its passages and its BM25 index."""
     with conn.transaction():
