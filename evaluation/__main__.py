@@ -398,6 +398,11 @@ def parser() -> argparse.ArgumentParser:
     )
     web_sampled.add_argument("--seed", type=int, required=True)
     web_sampled.add_argument("--out", type=Path, required=True)
+    web_rendered = commands.add_parser(
+        "web-render", help="screenshots and visible text of sampled pages (X42 W1)"
+    )
+    web_rendered.add_argument("sample", type=Path, help="a web-sample file")
+    web_rendered.add_argument("--out", type=Path, required=True, help="a folder")
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1285,6 +1290,14 @@ def run_web_sample(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_web_render(args: argparse.Namespace) -> int:
+    slugs = [row["slug"] for row in grades.read_json(args.sample)]
+    with webpages.chromium() as browser:
+        counts = webpages.render(slugs, cached_html(), args.out, browser)
+    print(f"{len(counts)} pages rendered to {args.out}; visible words {counts}")
+    return 0
+
+
 def run_nearmiss_answer(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -1951,6 +1964,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_audit(args)
         if args.command == "web-sample":
             return run_web_sample(args)
+        if args.command == "web-render":
+            return run_web_render(args)
         if args.command == "nearmiss-answer":
             return run_nearmiss_answer(args)
         if args.command == "slot-gate":

@@ -114,3 +114,18 @@ conv-v1's image turns show the value. YouTube is out of scope.
 ## Results
 
 *(added step by step)*
+
+**W0 baseline** (`12c5404`, `data/runs/x42/audit.json`): 63,692 shown words, 998 not
+extracted (1.6%); 824 passages, 303 under 120 characters of body, 225 repeating another
+page's text; 18 pages with two or more heading levels below the title. The W1 sample
+(seed 42) holds knowledge 6, news 3, case study 4, product 8, colour 4, other 5.
+
+**Amendment to W1's rendering, before any truth was judged.** A first probe drew a blank
+page with only the cookie notice: the site's own scripts load jQuery and GSAP
+ScrollTrigger from public CDNs and fonts from fonts.net, and with every third-party host
+blocked, the content stayed at its starting state, invisible until revealed by script.
+The rendering now loads what a visitor's browser loads (the site's assets, the libraries
+and fonts its pages name). It blocks only trackers and embedded widgets: analytics,
+reCAPTCHA, YouTube, the NBS widget. It then dismisses the cookie notice ("Essential
+only") and scrolls through the page so that scroll-triggered content appears. The probe
+page then shows its full content, title-block date, sidebar and footer.

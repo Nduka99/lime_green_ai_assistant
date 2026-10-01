@@ -2,19 +2,39 @@
 
 The audit (W0) compares each cached page's main content, after the site furniture is
 removed, with what the extractor keeps, and describes the passages it makes. The sample
-(W1) draws the pages whose ground truth is judged from their rendering.
+(W1) draws the pages whose ground truth is judged from their rendering: each cached
+page drawn by headless Chromium with the site's own CSS, fonts and images, third-party
+requests blocked, kept as a full-page screenshot and its visible text.
 """
 
 import random
+import time
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
-from limespec import ingest
+from limespec import config, ingest
 
 LEVELS = ["h1", "h2", "h3", "h4", "h5", "h6"]
+VIEWPORT = {"width": 1280, "height": 900}
+# Trackers and embedded widgets (analytics, reCAPTCHA, video, the NBS spec widget):
+# not part of the page a visitor reads, and not to be contacted.
+BLOCKED = (
+    "googletagmanager.com",
+    "google-analytics.com",
+    "google.com",
+    "doubleclick.net",
+    "youtube.com",
+    "youtube-nocookie.com",
+    "thenbs.com",
+)
+CONSENT = "Essential only"  # the site's cookie notice: the least a visitor accepts
+SETTLE_MS = 150  # after each scroll step, for scroll-triggered animations
 TINY = 120  # characters below a passage's heading: a passage this short holds little
 REPEAT = 40  # shorter bodies ("Find a supplier") are not counted as repeated text
 RICH = 8  # structure-rich pages drawn first
@@ -117,3 +137,69 @@ def sample(pages: Mapping[str, str], seed: int) -> list[str]:
         pool = sorted(s for s in pages if page_type(s) == kind and s not in chosen)
         chosen += rng.sample(pool, max(0, min(quota - have, len(pool))))
     return chosen
+
+
+def router(served: dict[str, str]) -> Callable[[Any], None]:
+    """A request handler: a page being rendered is served from the cache; what a
+    visitor's browser loads for it (the site's assets, the script libraries and fonts
+    it names) loads; trackers and embedded widgets are blocked."""
+
+    def handle(route: Any) -> None:
+        url = route.request.url
+        if url in served:
+            route.fulfill(body=served[url], content_type="text/html; charset=utf-8")
+        elif any(host in urlsplit(url).netloc for host in BLOCKED):
+            route.abort()
+        else:
+            route.continue_()
+
+    return handle
+
+
+def reveal(page: Any) -> None:
+    """Show the page as a visitor who scrolls through it does: dismiss the cookie
+    notice, then scroll to the end so scroll-triggered content appears."""
+    for button in page.get_by_role("button", name=CONSENT).all():
+        if button.is_visible():
+            button.click()
+    height = int(page.evaluate("document.body.scrollHeight"))
+    for top in range(0, height + VIEWPORT["height"], VIEWPORT["height"] // 2):
+        page.evaluate(f"window.scrollTo(0, {top})")
+        page.wait_for_timeout(SETTLE_MS)
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(SETTLE_MS)
+
+
+def render(
+    slugs: Sequence[str], cached: Mapping[str, str], out: Path, browser: Any
+) -> dict[str, int]:
+    """Each page's screenshot and visible text in `out`; its visible word count."""
+    out.mkdir(parents=True, exist_ok=True)
+    served: dict[str, str] = {}
+    page = browser.new_page(viewport=VIEWPORT)
+    page.route("**/*", router(served))
+    counts = {}
+    for slug in slugs:
+        url = ingest.page_url(slug)
+        served.clear()
+        served[url] = cached[slug]
+        page.goto(url, wait_until="networkidle")
+        reveal(page)
+        page.screenshot(path=str(out / f"{slug}.png"), full_page=True)
+        text = str(page.evaluate("document.body.innerText"))
+        (out / f"{slug}.txt").write_text(text, encoding="utf-8")
+        counts[slug] = len(text.split())
+        time.sleep(config.REQUEST_DELAY_SECONDS)
+    page.close()
+    return counts
+
+
+@contextmanager
+def chromium() -> Iterator[Any]:
+    """Playwright's headless Chromium (the `bench` group)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        yield browser
+        browser.close()

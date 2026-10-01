@@ -77,7 +77,9 @@ ingest = [
 # pruner. The pruner's own model code imports nltk; its sentences are given split.
 bench = [
     "nltk>=3.10.3",
+    "playwright>=1.63.0",
     "torch>=2.14.0",
+    "trafilatura>=2.2.0",
     "transformers>=5.17.0",
 ]
 
