@@ -378,3 +378,27 @@ def test_a_build_finds_the_vectors_the_newest_version_of_its_embedder_stored(
     key = ("FAQ", "", "Delivery\nWe deliver on weekdays.")
     assert len(known) == 3 and known[key][:2] == [0.0, 1.0]
     assert store.known_vectors(pg, "another-embedder") == {}
+
+
+def test_a_picture_is_stored_once_and_named_by_its_passage(
+    pg: store.Connection,
+) -> None:
+    picture = "a" * 64
+    image_row: store.PassageRow = (
+        "https://example.test/products/duro", "Duro Render", "Image",
+        "A wall pointed with lime mortar", "Image › Uses", None,
+    )  # fmt: skip
+    rows = [*PASSAGES, image_row]
+    vectors = [padded(v) for v in [*VECTORS, [0.8, 0.6]]]
+    images = ["", "", "", picture]
+    for _ in range(2):  # a second version reuses the stored picture
+        version = store.write_version(
+            pg, PAGES, rows, vectors, MANIFEST, images, {picture: b"png"}
+        )
+
+    found = store.load_passages(pg, store.keyword_ranking(pg, version, "pointed", 10))
+
+    assert [(p.image, p.heading) for p in found] == [(picture, "Image")]
+    assert store.picture(pg, picture) == b"png"
+    assert store.picture(pg, "b" * 64) is None
+    assert pg.execute("SELECT count(*) FROM images").fetchone() == (1,)

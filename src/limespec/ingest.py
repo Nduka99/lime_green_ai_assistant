@@ -6,10 +6,11 @@ never downloads a page twice.
 """
 
 import hashlib
+import json
 import posixpath
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -341,6 +342,8 @@ class PreparedIndex:
     passages: list[store.PassageRow]  # url, title, heading, text, context, page
     vectors: list[list[float]]  # one per passage
     manifest: dict[str, str]
+    images: list[str] = field(default_factory=list)  # each passage's picture, or ""
+    pictures: dict[str, bytes] = field(default_factory=dict)  # PNG by picture id
 
 
 def fingerprint_line(row: store.PassageRow) -> str:
@@ -368,13 +371,20 @@ def prepare_index(
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
     known: Mapping[tuple[str, str, str], list[float]] | None = None,
+    pictures: tuple[list[dict[str, Any]], dict[str, str], dict[str, bytes]] = (
+        [],
+        {},
+        {},
+    ),
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
     documents whose passages are already built (PDFs, limespec.passages). With a
     `web_form` (WEB_FORMS) the pages are read by `limespec.webpage`; in "page-once" a
     passage whose text an earlier page already holds is left out. A passage whose
     (title, context, text) is in `known` (`store.known_vectors`, same embedder) takes
-    its stored vector instead of being embedded again (X43 A4)."""
+    its stored vector instead of being embedded again (X43 A4). `pictures` holds the
+    places pictures are shown, the text read in each and their PNGs (X43 B):
+    each picture becomes one passage (`images.picture_passages`)."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
     seen: set[str] = set()
@@ -402,7 +412,26 @@ def prepare_index(
     for page_row, passage_rows in documents:
         page_rows.append(page_row)
         rows += passage_rows
-    rows = [row for row in map(without_prices, rows) if row is not None]
+    images = [""] * len(rows)
+    places, read, pngs = pictures
+    if places:
+        from limespec.images import picture_passages
+
+        titles = {row[0]: row[1] for row in page_rows}
+        shown: dict[tuple[str, int | None], str] = {}
+        for row in rows:
+            place = (row[0], row[5])
+            shown[place] = shown.get(place, "") + " " + row[3]
+        for row, identity in picture_passages(places, read, shown, titles):
+            rows.append(row)
+            images.append(identity)
+    kept = [
+        (row, image)
+        for row, image in zip(map(without_prices, rows), images, strict=True)
+        if row is not None
+    ]
+    rows = [row for row, _ in kept]
+    images = [image for _, image in kept]
 
     known = known or {}
     vectors = [known.get((row[1], row[4], row[3]), []) for row in rows]
@@ -425,8 +454,24 @@ def prepare_index(
         "pages": str(len(page_rows)),
         "passages": str(len(rows)),
         "vectors_reused": str(len(rows) - len(missing)),
+        "pictures": str(sum(bool(image) for image in images)),
     }
-    return PreparedIndex(page_rows, rows, vectors, manifest)
+    used = {image: pngs[image] for image in images if image}
+    return PreparedIndex(page_rows, rows, vectors, manifest, images, used)
+
+
+def stored_pictures() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, bytes]]:
+    """The places pictures are shown (`limespec read-images`), the text read in each
+    and each one's PNG, from config.IMAGES."""
+    places = json.loads((config.IMAGES / "places.json").read_text(encoding="utf-8"))
+    read = {}
+    pngs = {}
+    for identity in dict.fromkeys(place["id"] for place in places):
+        reading = config.IMAGES / f"{identity}.json"
+        if reading.exists():
+            read[identity] = json.loads(reading.read_text(encoding="utf-8"))["ocr"]
+        pngs[identity] = (config.IMAGES / f"{identity}.png").read_bytes()
+    return places, read, pngs
 
 
 def fetched_at(path: Path) -> str:
@@ -453,11 +498,13 @@ def ingest(
     all_pages: bool = False,
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
+    with_pictures: bool = False,
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
-    `documents.index_documents`); `web_form` reads pages by `limespec.webpage`.
+    `documents.index_documents`); `web_form` reads pages by `limespec.webpage`;
+    `with_pictures` adds a passage per picture `limespec read-images` stored and read.
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
@@ -465,9 +512,18 @@ def ingest(
     """
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
     known = store.known_vectors(conn, config.EMBEDDING_MODEL)
-    prepared = prepare_index(cached_pages(urls), embed, documents, web_form, known)
+    pictures = stored_pictures() if with_pictures else ([], {}, {})
+    prepared = prepare_index(
+        cached_pages(urls), embed, documents, web_form, known, pictures
+    )
     version = store.write_version(
-        conn, prepared.pages, prepared.passages, prepared.vectors, prepared.manifest
+        conn,
+        prepared.pages,
+        prepared.passages,
+        prepared.vectors,
+        prepared.manifest,
+        prepared.images,
+        prepared.pictures,
     )
     if live:
         store.set_live(conn, version)

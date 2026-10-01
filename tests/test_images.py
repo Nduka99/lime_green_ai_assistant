@@ -2,6 +2,7 @@
 
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pypdfium2
 import pytest
@@ -92,3 +93,39 @@ def test_every_image_of_a_page_and_every_figure_of_a_document_is_stored_once(
     ]
     assert places[0]["id"] == places[1]["id"]  # one stored file for both
     assert len(list((tmp_path / "out").glob("*.png"))) == 2
+
+
+def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
+    site = "https://x.test/"
+    places: list[dict[str, Any]] = [
+        {"id": "p1", "source": site + "duro", "page": None, "alt": "York",
+         "section": ["Colours"]},
+        {"id": "p1", "source": site + "york", "page": None, "alt": "",
+         "section": []},
+        {"id": "p2", "source": site + "sheet.pdf", "page": 2,
+         "alt": "A wall pointed with lime mortar", "section": ["Build-up"]},
+        {"id": "p3", "source": site + "duro", "page": None, "alt": "Duro bag",
+         "section": []},
+    ]  # fmt: skip
+    read = {
+        "p2": "Solo 2nd pass\n\n<b>Duro</b> $25\\mathrm{kg}$",
+        "p3": "Duro\nlime green",  # all of it shown on its page already
+    }
+    shown: dict[tuple[str, int | None], str] = {
+        (site + "duro", None): "Duro lime green base coat"
+    }
+    titles = {site + "duro": "Duro", site + "sheet.pdf": "Duro — Data Sheet"}
+
+    found = images.picture_passages(places, read, shown, titles)
+
+    assert found == [
+        ((site + "duro", "Duro", "Image", "", "Image › Colours › York", None), "p1"),
+        (
+            (site + "sheet.pdf", "Duro — Data Sheet", "Image",
+             "A wall pointed with lime mortar\nSolo 2nd pass\nDuro 25kg",
+             "Image › Build-up", 2),
+            "p2",
+        ),
+        ((site + "duro", "Duro", "Image", "", "Image › Duro bag", None), "p3"),
+    ]  # fmt: skip
+    assert images.new_words("", "x") == 0.0

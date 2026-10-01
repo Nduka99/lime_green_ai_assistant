@@ -8,6 +8,7 @@ the `ingest` group.
 """
 
 import hashlib
+import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,13 @@ MAX_SIDE = 1024  # pixels: the longest side of a stored image
 LIGHT = 200  # mean grey level above which drawn pixels count as light
 DARK_GROUND = (51, 51, 51)  # laid under light drawings (the site's dark grey)
 MIN_SIDE = 72  # points: a smaller PDF figure is a mark, not a picture
+DESCRIBED = 5  # words: an alt text this long describes its picture (X42)
+# The share of read words a page must lack for the text read in a picture to be kept
+# (X43 B2): a pack shot repeating its page's product name adds nothing.
+NEW_WORDS = 0.2
+PICTURE = "Image"  # the heading of a passage made from a picture
+WORD = re.compile(r"\w+")
+TAG = re.compile(r"<[^>]+>")
 FIGURE_SCALE = 200 / 72  # a figure is drawn at 200 DPI, as tables are read (pdf.py)
 Box = tuple[float, float, float, float]  # left, top, right, bottom, from top-left
 
@@ -141,3 +149,56 @@ def collect(
             keep(png, {"source": url, "page": figure["page"], "alt": figure["alt"],
                        "section": figure["section"], "image_url": ""})  # fmt: skip
     return places
+
+
+def new_words(text: str, known: str) -> float:
+    """The share of a text's words not already in `known` (case folded)."""
+    words = [word.casefold() for word in WORD.findall(text)]
+    have = {word.casefold() for word in WORD.findall(known)}
+    return sum(word not in have for word in words) / len(words) if words else 0.0
+
+
+def ocr_lines(reading: str) -> list[str]:
+    """The text a model read in a picture, as lines: inline LaTeX read as the
+    characters it prints, markup tags dropped, empty lines left out."""
+    from limespec.tables import unlatex
+
+    plain = TAG.sub(" ", unlatex(reading))
+    return [" ".join(line.split()) for line in plain.splitlines() if line.strip()]
+
+
+def picture_passages(
+    places: list[dict[str, Any]],
+    read: dict[str, str],
+    shown: dict[tuple[str, int | None], str],
+    titles: dict[str, str],
+) -> list[tuple[tuple[str, str, str, str, str, int | None], str]]:
+    """One passage per picture: (url, title, heading, text, context, page) and its id.
+
+    Shown in several places, a picture is filed under the place whose alt text says
+    most about it (the first, on a tie). Its text is its own words: an alt text of
+    DESCRIBED words or more, then the text read in it (`read`, by id) when at least
+    NEW_WORDS of that is not already shown on its page (`shown`, by source and page).
+    Its context, searched but never quoted, names it an image with its section path
+    and any shorter alt text.
+    """
+    chosen: dict[str, dict[str, Any]] = {}
+    for place in places:
+        best = chosen.get(place["id"])
+        if best is None or len(place["alt"]) > len(best["alt"]):
+            chosen[place["id"]] = place
+    found = []
+    for identity, place in chosen.items():
+        alt = " ".join(place["alt"].split())
+        described = len(alt.split()) >= DESCRIBED
+        lines = [alt] if described else []
+        text = "\n".join(ocr_lines(read.get(identity, "")))
+        known = shown.get((place["source"], place["page"]), "")
+        if text and new_words(text, known) >= NEW_WORDS:
+            lines.append(text)
+        parts = [PICTURE, *place["section"], *([] if described or not alt else [alt])]
+        url = place["source"]
+        row = (url, titles.get(url, url), PICTURE, "\n".join(lines),
+               " › ".join(parts), place["page"])  # fmt: skip
+        found.append((row, identity))
+    return found

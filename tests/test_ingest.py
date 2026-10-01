@@ -1,4 +1,5 @@
 import hashlib
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -25,6 +26,7 @@ from limespec.ingest import (
     site_html,
     site_pages,
     split_section,
+    stored_pictures,
 )
 from limespec.retrieve import Embed
 
@@ -598,3 +600,34 @@ def test_a_passage_embedded_before_takes_its_stored_vector(fake_embed: Embed) ->
     assert len(asked) == len(first.passages) - 1  # only the new text is embedded
     assert second.vectors[0] == [0.5] and second.vectors[1:] == first.vectors[1:]
     assert second.manifest["vectors_reused"] == "1"
+
+
+def test_pictures_become_passages_beside_the_text(
+    fake_embed: Embed, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limespec import config as settings
+
+    html = b"<body><main><h1>Duro</h1><p>A base coat.</p></main></body>"
+    page = (SITE + "duro", html, "2026-01-01T00:00:00+00:00")
+    place: dict[str, object] = {
+        "id": "p1",
+        "source": SITE + "duro",
+        "page": None,
+        "alt": "A wall pointed with Duro lime mortar",
+        "section": [],
+    }
+    (tmp_path / "places.json").write_text(json.dumps([place]), encoding="utf-8")
+    (tmp_path / "p1.json").write_text(json.dumps({"id": "p1", "ocr": "Fixing 40mm"}))
+    (tmp_path / "p1.png").write_bytes(b"png")
+    monkeypatch.setattr(settings, "IMAGES", tmp_path)
+
+    prepared = prepare_index(
+        [page], fake_embed, web_form="page", pictures=stored_pictures()
+    )
+
+    assert prepared.images == ["", "p1"]
+    assert (
+        prepared.passages[1][3] == "A wall pointed with Duro lime mortar\nFixing 40mm"
+    )
+    assert prepared.pictures == {"p1": b"png"}
+    assert prepared.manifest["pictures"] == "1"

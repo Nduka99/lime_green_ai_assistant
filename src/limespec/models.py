@@ -24,6 +24,9 @@ class Passage:
     # path, table caption and column headers (X9); a web passage's section path in
     # the packed forms (X42 W3), else empty.
     context: str = ""
+    # A passage made from a picture names it (the SHA-256 of its stored PNG); its text
+    # is the picture's own words (X43). Empty for every other passage.
+    image: str = ""
 
 
 def described(title: str, context: str, text: str) -> str:

@@ -8,7 +8,7 @@ and made live in one transaction, so a failed build never touches what is served
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC
 from typing import Any
 
@@ -55,12 +55,22 @@ def write_version(
     passages: Sequence[PassageRow],
     vectors: Sequence[Sequence[float]],
     manifest: dict[str, str],
+    images: Sequence[str] = (),
+    pictures: Mapping[str, bytes] | None = None,
 ) -> int:
     """Store one index version (not yet live) with its BM25 index; return its id.
 
-    A page captured with the same bytes before is reused, not stored twice.
+    A page captured with the same bytes before is reused, not stored twice. `images`
+    names each passage's picture ("" for none), in passage order; `pictures` holds the
+    PNG of each, stored once across versions.
     """
+    images = images or [""] * len(passages)
     with conn.transaction():
+        with conn.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO images (id, png) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                list((pictures or {}).items()),
+            )
         document_ids = {}
         for url, title, fetched_at, sha256 in pages:
             row = conn.execute(
@@ -84,7 +94,7 @@ def write_version(
         ).fetchone()
         assert version is not None
         rows = []
-        for passage, vector in zip(passages, vectors, strict=True):
+        for passage, vector, image in zip(passages, vectors, images, strict=True):
             url, title, heading, text, context, page = passage
             # A passage with a price is kept for audit but never searched (X16).
             commercial = prices.states_price(text)
@@ -99,13 +109,14 @@ def write_version(
                     page,
                     vector_text(vector),
                     commercial,
+                    image or None,
                 )
             )
         with conn.cursor() as cursor:
             cursor.executemany(
                 "INSERT INTO passages (index_version_id, document_id, title, heading, "
-                "text, context, page, embedding, commercial) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s)",
+                "text, context, page, embedding, commercial, image) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)",
                 rows,
             )
         # A partial index keeps its own word statistics. The version id is a
@@ -324,16 +335,17 @@ def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]
     """The passages with these ids, in the order given."""
     rows = conn.execute(
         "SELECT passages.id, documents.url, passages.title, passages.heading, "
-        "passages.text, documents.fetched_at, passages.page, passages.context "
+        "passages.text, documents.fetched_at, passages.page, passages.context, "
+        "coalesce(passages.image, '') "
         "FROM passages JOIN documents ON documents.id = passages.document_id "
         "WHERE passages.id = ANY(%s)",
         (list(passage_ids),),
     ).fetchall()
     by_id = {}
-    for passage_id, url, title, heading, text, fetched_at, page, context in rows:
+    for passage_id, url, title, heading, text, fetched_at, page, context, image in rows:
         captured = fetched_at.astimezone(UTC).isoformat(timespec="seconds")
         by_id[passage_id] = Passage(
-            passage_id, url, title, heading, text, captured, page, context
+            passage_id, url, title, heading, text, captured, page, context, image
         )
     return [by_id[passage_id] for passage_id in passage_ids]
 
@@ -401,3 +413,9 @@ def searchable_texts(conn: Connection, version_id: int) -> list[str]:
         (version_id,),
     ).fetchall()
     return [str(row[0]) for row in rows]
+
+
+def picture(conn: Connection, image_id: str) -> bytes | None:
+    """A stored picture's PNG, or None."""
+    row = conn.execute("SELECT png FROM images WHERE id = %s", (image_id,)).fetchone()
+    return bytes(row[0]) if row else None
