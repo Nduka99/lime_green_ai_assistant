@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from evaluation import parsing
+from limespec import layout
 from limespec.elements import Element
 
 BARS = {"words": 0.99, "numbers": 1.0, "grid": 0.95, "pairs": 0.95, "images": 1.0}
@@ -71,3 +72,54 @@ def scores(
     }
     passed = {measure: rates[measure] >= bar for measure, bar in BARS.items()}
     return {"rates": rates, "passed": passed, "documents": rows}
+
+
+def element(record: Mapping[str, Any]) -> Element:
+    """An element saved as JSON (`dataclasses.asdict`) read back."""
+    box = record["bbox"]
+    return Element(
+        page=record["page"],
+        kind=record["kind"],
+        text=record["text"],
+        section=tuple(record["section"]),
+        bbox=(box[0], box[1], box[2], box[3]) if box else None,
+        table=record["table"],
+        row=record["row"],
+        cells=tuple((header, value) for header, value in record["cells"]),
+        grid=tuple(tuple(row) for row in record["grid"]),
+    )
+
+
+def page_measures(
+    page: Mapping[str, Any], found: Sequence[Element], reference: str
+) -> dict[str, Any]:
+    """X8's measures for one truth page, as `evaluation parsing` takes them."""
+    units = [e.text for e in found if e.text and e.kind != "table"]
+    rows = [e.cells for e in found if e.kind == "table_row"]
+    grids = [e.grid for e in found if e.kind == "table"]
+    return parsing.score_page(dict(page), units, rows, reference, grids)
+
+
+def layout_check(
+    truth: Sequence[Mapping[str, Any]], saved: Mapping[str, Any], arm: str
+) -> dict[str, Any]:
+    """Each X8 page's measures from a saved reading, as read and with side-by-side
+    blocks joined (`layout.side_by_side`); the pages and measures that fall."""
+    falls = []
+    pooled: dict[str, list[dict[str, Any]]] = {"before": [], "after": []}
+    for page in truth:
+        record = saved[str(page["number"])]
+        found = [element(item) for item in record[arm]]
+        reference = "\n".join(record["pypdf"])
+        before = page_measures(page, found, reference)
+        after = page_measures(page, layout.side_by_side(found), reference)
+        pooled["before"].append(before)
+        pooled["after"].append(after)
+        for measure in [*parsing.GATE, "grid"]:
+            if after[measure][0] < before[measure][0]:
+                falls.append(f"page {page['number']} {measure}")
+    return {
+        "before": parsing.pooled(pooled["before"]),
+        "after": parsing.pooled(pooled["after"]),
+        "falls": falls,
+    }

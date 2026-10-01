@@ -61,10 +61,50 @@ def test_the_command_line_scores_each_arm(
     common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
     out = tmp_path / "scores"
 
-    for arm in ("docling-word", "rendered-pdf"):
+    for arm in ("docling-word", "rendered-pdf", "rendered-pdf-lines"):
         command = [*common, "docx-score", arm, "--vlm", "http://vlm", "--out", str(out)]
         assert cli.main(command) == 0
         saved = json.loads((out / f"{arm}.json").read_text(encoding="utf-8"))
         assert saved["readings"]["d1"][0]["kind"] == "heading"
     assert asked["vlm"] == "http://vlm"
     assert '"images": false' in capsys.readouterr().out
+
+
+def test_saved_x8_readings_are_rescored_with_side_by_side_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "eval" / "x8-pages"
+    folder.mkdir(parents=True)
+    page = {
+        "number": 1,
+        "tables": [],
+        "pairs": [["Declared unit", "1 kg"]],
+        "sentences": ["Declared unit 1 kg"],
+    }
+    (folder / "truth.json").write_text(json.dumps({"pages": [page]}), encoding="utf-8")
+    registry = tmp_path / "sets.json"
+    sets.register("x8-pages", "", tmp_path / "eval", registry)
+    row = {"page": 1, "kind": "paragraph", "section": [], "table": None, "row": None}
+    reading = [
+        row
+        | {"text": "Declared unit", "bbox": [10, 10, 80, 20], "cells": [], "grid": []},
+        row | {"text": "Other text", "bbox": [10, 40, 80, 50], "cells": [], "grid": []},
+        row | {"text": "1 kg", "bbox": [200, 10, 230, 20], "cells": [], "grid": []},
+        row | {"text": "", "bbox": None, "cells": [], "grid": [], "kind": "table"},
+    ]
+    run = tmp_path / "parsed.json"
+    run.write_text(json.dumps({"1": {"pypdf": ["Declared unit 1 kg"], "a": reading}}))
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+
+    assert cli.main([*common, "layout-check", "x8-pages", str(run), "--arm", "a"]) == 0
+    printed = capsys.readouterr().out
+    assert '"pairs": 0.0' in printed and '"pairs": 1.0' in printed
+    assert "falls: none" in printed
+
+    # A sentence read across the two blocks is broken by the joining: it falls.
+    found = docxpages.layout_check(
+        [page | {"sentences": ["Declared unit Other text"]}],
+        json.loads(run.read_text()),
+        "a",
+    )
+    assert found["falls"] == ["page 1 sentences"]

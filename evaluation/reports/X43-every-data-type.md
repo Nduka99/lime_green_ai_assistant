@@ -253,6 +253,70 @@ The set is sealed and registered before any arm answers it.
 
 *(added step by step)*
 
+**A3a, Word documents: neither reading qualifies as registered** (`3c808d9`;
+`data/runs/x43/docx-score/`).
+
+| Reading | Words | Numbers | Grid values | Pairs | Images | Headings |
+|---|---|---|---|---|---|---|
+| (a) Docling's Word reader | 0.996 | 1.000 | 1.000 | **0.825** | 1.000 | 1.000 |
+| (b) LibreOffice → PDF reading | 0.997 | 1.000 | 1.000 | **0.825** | 1.000 | 0.889 |
+
+Diagnosis, by mechanism:
+- **(a)** keeps each boxed declaration as one table and also emits every cell's
+  paragraphs again: the box's text appears twice (precision 0.61 when whole tables
+  are counted). It also marks every bold line as a heading: 211 headings in 8
+  documents, the address lines among them. Its pairs fail only by X8's convention of
+  leaving whole tables out of the measured text. Counted with whole tables, its pairs
+  reach 1.000, but the duplication and false headings remain.
+- **(b)** reads the declarations' two-column boxes (label left, value right, on one
+  line) as separate blocks. Docling's layout model splits the columns, and values
+  sometimes come out of order: "Reaction to fire:", "Adhesion:", "Class A 1",
+  "0.9 N/mm2". The boxes agree exactly (both blocks top at 358 pt), so the pairing
+  is lost only in reading order.
+
+**The fix, written before it is built (Rule 5):** `limespec.layout.side_by_side`.
+- Text blocks on one page that sit side by side on the same line are read as one
+  line, left to right, at the place of the first in reading order. Side by side
+  means horizontally apart, with vertical spans overlapping by at least half the
+  shorter one.
+- This is how a reader reads a key-value column. It applies to every PDF reading,
+  at passage building, so no PDF is read again.
+- Applied to (b), the reading with page geometry and the one pipeline for every
+  document.
+- **Gate:**
+  - on `docx-pages`, (b) with the fix reaches the bars: pairs ≥ 0.95, the others
+    held;
+  - on X8's three sealed rounds, rescored from their saved readings
+    (`data/runs/hidden/`), no measure of any page falls and pooled pairs do not fall.
+- If it passes, it also enters index 18, whose own gates (`x9-tables` and the
+  replays) still apply.
+
+**A3a result: the fix passes, and (b) with it is the Word reading.**
+- **First version of the rule:** blocks overlapping on a line, the shorter one line
+  high. It failed the X8 check on three round-2 pages. It joined the line-by-line
+  recovered text of two columns of running text, and a left-column heading with
+  right-column text on a carbon-footprint poster: two sentences and one pair lost.
+- **Revised once, before the final runs:**
+  - recovered lines (already running text placed where they stand) are never
+    joined;
+  - a joined pair must be a label of one line beside a value of at most two, their
+    first lines level.
+- X8 rounds 1–3 were then this fix's development check. Its unseen checks are
+  index 18's gates (`x9-tables`, the replays).
+
+| Check | Before | After | Pages that fall |
+|---|---|---|---|
+| X8 round 1, pairs | 0.826 | 0.826 | none |
+| X8 round 2, pairs | 0.623 | 0.675 | none |
+| X8 round 3 (Docling), pairs | 0.621 | 0.759 | none |
+| X8 round 3 (GLM-OCR), pairs | 0.621 | 0.759 | none |
+| `docx-pages`, (b) + fix | pairs 0.825 | **pairs 0.965** | — |
+
+(b) with the fix meets every bar on `docx-pages`: words 0.997, numbers 1.000, grid
+values 1.000, pairs 0.965, images 1.000 (headings 0.889). The Word declarations are
+therefore read as rendered PDFs. `layout.side_by_side` also applies to every PDF's
+passages from index 18.
+
 **B2, the OCR gate: passed** (`image-text` sealed in `e482dfe` before any OCR;
 `data/runs/x43/ocr-glm.json`). GLM-OCR ran on the CPU, so no other model server had
 to stop: about 12 s per image, 8 minutes for the 40.

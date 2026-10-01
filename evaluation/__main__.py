@@ -92,6 +92,7 @@ from limespec import (
     config,
     images,
     ingest,
+    layout,
     llm,
     office,
     pdf,
@@ -450,9 +451,17 @@ def parser() -> argparse.ArgumentParser:
     docx_scored = commands.add_parser(
         "docx-score", help="a Word reading against the docx-pages truth (X43 A3a)"
     )
-    docx_scored.add_argument("arm", choices=("docling-word", "rendered-pdf"))
+    docx_scored.add_argument(
+        "arm", choices=("docling-word", "rendered-pdf", "rendered-pdf-lines")
+    )
     docx_scored.add_argument("--vlm", default="", help="a vision server for tables")
     docx_scored.add_argument("--out", type=Path, required=True, help="a folder")
+    layout_checked = commands.add_parser(
+        "layout-check", help="X8 readings rescored with side-by-side lines (X43 A3a)"
+    )
+    layout_checked.add_argument("name", help="an X8 truth set")
+    layout_checked.add_argument("run", type=Path, help="a saved parsed.json")
+    layout_checked.add_argument("--arm", required=True)
     image_read = commands.add_parser(
         "image-ocr", help="each image-text image read by a vision server (X43 B2)"
     )
@@ -1532,6 +1541,8 @@ def run_docx_score(args: argparse.Namespace) -> int:
         else:
             rendered = office.render_pdf(stored, args.out / "rendered")
             readings[sha256] = pdf.read_pdf(rendered, vlm=args.vlm)
+            if args.arm == "rendered-pdf-lines":
+                readings[sha256] = layout.side_by_side(readings[sha256])
     found = docxpages.scores(truth, readings)
     saved = {sha: [asdict(e) for e in elements] for sha, elements in readings.items()}
     args.out.mkdir(parents=True, exist_ok=True)
@@ -1539,6 +1550,16 @@ def run_docx_score(args: argparse.Namespace) -> int:
     print(json.dumps({name: round(rate, 4) for name, rate in found["rates"].items()}))
     print(json.dumps(found["passed"]))
     return 0
+
+
+def run_layout_check(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    truth = grades.read_json(folder / "truth.json")["pages"]
+    found = docxpages.layout_check(truth, grades.read_json(args.run), args.arm)
+    for name in ("before", "after"):
+        print(name, json.dumps({k: round(v, 4) for k, v in found[name].items()}))
+    print("falls:", found["falls"] or "none")
+    return 1 if found["falls"] else 0
 
 
 def run_image_ocr(args: argparse.Namespace) -> int:
@@ -2263,6 +2284,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_retrieval(args)
         if args.command == "docx-score":
             return run_docx_score(args)
+        if args.command == "layout-check":
+            return run_layout_check(args)
         if args.command == "image-ocr":
             return run_image_ocr(args)
         if args.command == "image-ocr-score":
