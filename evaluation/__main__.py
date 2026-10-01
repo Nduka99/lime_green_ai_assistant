@@ -39,6 +39,7 @@ DIR/pairs.json, and `unblind`, which reads the verdicts from DIR/verdicts.json.
 
 import argparse
 import json
+import random
 import shutil
 import sys
 import time
@@ -69,6 +70,7 @@ from evaluation import (
     grades,
     guardrails,
     imagesets,
+    kbprobe,
     keys,
     lookups,
     nearmiss,
@@ -494,6 +496,24 @@ def parser() -> argparse.ArgumentParser:
         "--visual", type=Path, help="picture vectors (image-vectors): an arm T+S"
     )
     picture_retrieved.add_argument("--arm", choices=["pool", "quota"], default="pool")
+    probe_drawn = commands.add_parser(
+        "kb-probe-draw",
+        help="draw kb-probe's sources and show each to the writer (X44)",
+    )
+    probe_drawn.add_argument("--catalogue", type=Path, required=True)
+    probe_drawn.add_argument("--rendered", type=Path, required=True, help="web-render")
+    probe_drawn.add_argument("--seed", type=int, default=kbprobe.SEED)
+    probe_drawn.add_argument("--out", type=Path, required=True, help="a folder")
+    probe_sealed = commands.add_parser(
+        "kb-probe-seal", help="check written kb-probe questions and seal the set (X44)"
+    )
+    probe_sealed.add_argument("draft", type=Path, help="the written questions")
+    probe_sealed.add_argument("--catalogue", type=Path, required=True)
+    probe_sealed.add_argument("--rendered", type=Path, required=True)
+    probe_sealed.add_argument("--out-set", type=Path, required=True)
+    probed = commands.add_parser("kb-probe", help="score a version on kb-probe (X44)")
+    probed.add_argument("--version", type=int, required=True)
+    probed.add_argument("--out", type=Path, required=True)
     picture_embedded = commands.add_parser(
         "image-vectors", help="every stored picture's SigLIP2 vector (X43 B3)"
     )
@@ -1657,6 +1677,98 @@ def run_image_retrieval(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_kb_probe_draw(args: argparse.Namespace) -> int:
+    """kb-probe's sources (draw.json) and, for the writer, an excerpt of each as a
+    visitor sees it, or the picture's file (sources.md)."""
+    entries = grades.read_json(args.catalogue)
+    by_id = {entry["id"]: entry for entry in entries}
+    drawn = kbprobe.draw(entries, args.seed)
+    rng = random.Random(args.seed + 1)
+    lines = []
+    for item in drawn:
+        lines.append(f"## {item['id']} ({item['stratum']})")
+        for source in (item["source"], item.get("also", "")):
+            if not source:
+                continue
+            entry = by_id[source]
+            text = cases.source_text(entry, args.rendered)
+            if entry["format"] in cases.PICTURES:
+                lines += [
+                    f"Picture: {entry['source']} (id {source.split(':')[1]})",
+                    text,
+                ]
+            else:
+                lines += [f"Source: {entry['url']}",
+                          cases.excerpt(text, kbprobe.EXCERPT, rng)]  # fmt: skip
+        lines.append("")
+    args.out.mkdir(parents=True, exist_ok=True)
+    write_json(args.out / "draw.json", drawn)
+    (args.out / "sources.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"{len(drawn)} questions' sources in {args.out}")
+    return 0
+
+
+def run_kb_probe_seal(args: argparse.Namespace) -> int:
+    """Check the written questions against their sources as a visitor sees them, and
+    write the set: each text nugget with every document holding it."""
+    by_id = {entry["id"]: entry for entry in grades.read_json(args.catalogue)}
+    texts = {
+        entry["url"]: cases.source_text(entry, args.rendered)
+        for entry in by_id.values()
+        if any(
+            stratum not in kbprobe.PICTURE_STRATA for stratum in kbprobe.strata(entry)
+        )
+    }
+    pictures = {path.stem for path in config.IMAGES.glob("*.png")}
+    written = grades.read_json(args.draft)
+    problems = []
+    for item in written:
+        sources = [by_id[s] for s in (item["source"], item.get("also", "")) if s]
+        own = "\n".join(cases.source_text(entry, args.rendered) for entry in sources)
+        problems += kbprobe.nugget_problems(item, own, pictures)
+    if problems:
+        print("\n".join(problems))
+        return 1
+    copies = imagesets.copies(sorted(pictures), config.IMAGES)
+    found = []
+    for item in written:
+        urls = [by_id[s]["url"] for s in (item["source"], item.get("also", "")) if s]
+        found.append(kbprobe.sealed(item, texts, copies, urls))
+    args.out_set.mkdir(parents=True, exist_ok=True)
+    write_json(args.out_set / "questions.json", {"questions": found})
+    print(f"{len(found)} questions sealed in {args.out_set}")
+    return 0
+
+
+def run_kb_probe(args: argparse.Namespace) -> int:
+    """Each kb-probe question searched once on a version, as the assistant searches."""
+    folder = sets.require("kb-probe", args.root, args.registry)
+    items = grades.read_json(folder / "questions.json")["questions"]
+    results = []
+    with assistant.connect() as conn:
+        pictures = store.picture_passages(conn, args.version)
+        for item in items:
+            given = store.search(
+                conn, args.version, item["question"], llm.embed, llm.rerank
+            )
+            anywhere: list[Passage] = []
+            for nugget in item["nuggets"]:
+                for url in nugget.get("holders", []):
+                    anywhere += store.document_passages(conn, args.version, url)
+                ids = [pictures[p] for p in nugget.get("accepted", []) if p in pictures]
+                anywhere += store.load_passages(conn, ids)
+            results.append(kbprobe.result(item, given[: lookups.TOP], anywhere))
+    found = lookups.summary(results)
+    pooled = kbprobe.pooled(results)
+    summary = {"strata": found, "pooled": pooled}
+    write_json(
+        args.out, {"version": args.version, "summary": summary, "results": results}
+    )
+    print(f"kb-probe on version {args.version}: " + ", ".join(
+        f"{name} {value:.3f}" for name, value in pooled.items()))  # fmt: skip
+    return 0
+
+
 Search = Callable[[int, str], list[Passage]]  # (version, question) -> best first
 
 
@@ -2420,6 +2532,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_image_candidates(args)
         if args.command == "image-retrieval":
             return run_image_retrieval(args)
+        if args.command == "kb-probe-draw":
+            return run_kb_probe_draw(args)
+        if args.command == "kb-probe-seal":
+            return run_kb_probe_seal(args)
+        if args.command == "kb-probe":
+            return run_kb_probe(args)
         if args.command == "image-vectors":
             return run_image_vectors(args)
         if args.command == "image-requests":

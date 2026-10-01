@@ -276,6 +276,13 @@
     "truth.json": "9e2dbd55f49dc685e1f1822d36a6eed300bd825624fd5c5afef693265facd1c3"
    }
   },
+  "kb-probe": {
+   "description": "X44: 64 multimodal retrieval questions over 10 strata, written from sources as a visitor sees them (seed 71), evidence as nuggets; sealed before any X44 fix is scored",
+   "files": {
+    "draw.json": "01f5057e21de43436633f258c3f53ba323834381d326987c434af47277473a7d",
+    "questions.json": "ea392c58ef638a1aa83b69f14aede757419404e0badfe4b18d58c3ca6f2826de"
+   }
+  },
   "nearmiss-dev": {
    "description": "E7 S3: near-miss questions written by the generator from 300 passages of index version 17 (seed 71), answerable and near-miss, each with its quote; kept only where Gemma 4 26B, reading the passage alone, agreed with the label. Evaluation only; never training",
    "files": {
