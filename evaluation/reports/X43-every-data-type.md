@@ -310,6 +310,14 @@ The set is sealed and registered before any arm answers it.
   and the machine-read text (marked as possibly wrong). A picture may be cited as what it
   shows (`"visual": true`); `check-cases` rejects that for any other source, and a
   wording naming an image file.
+- **Drawn (1 October, 15:50).** Catalogue `data/catalogue-v6.json` after every reading:
+  539 pictures (262 holding text, 277 visual only, from 802 places), 8 Word
+  declarations, 3 GOV.UK documents. Plan `data/runs/heldout-v6-bundle/plan.json`: 220
+  cases over 258 sources in 14 parts; first sources by format: pictures 54 (27 each
+  kind; 30 `visual` cases), pages 76, PDFs 64, Word 10, GOV.UK 8; 46 two-source cases,
+  25 of them across data types; 223 sources carry the 365 quotes v4 and v5 took. The
+  bundle holds 78 pictures, 79 page screenshots and 214 drawn document pages (226 MB);
+  the writer's copy is `../LGE6` (no `plan.json`).
 
 ## E. The all-pairs run
 
