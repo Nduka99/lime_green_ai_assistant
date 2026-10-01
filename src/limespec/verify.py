@@ -170,6 +170,8 @@ def source_link(passage: Passage, quote: str) -> str:
     product list, whose sentence is not on the page, so the page opens as it is."""
     if passage.heading == lists.HEADING:
         return passage.url
+    if urlsplit(passage.url).path.lower().endswith(".docx"):
+        return encoded(passage.url)  # a Word file has no pages and no text fragments
     return quote_link(passage.url, quote, passage.page)
 
 

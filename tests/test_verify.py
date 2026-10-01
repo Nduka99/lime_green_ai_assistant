@@ -419,3 +419,14 @@ def test_a_compiled_list_is_cited_by_its_page_without_a_highlight() -> None:
 
     assert isinstance(result, Claim)
     assert result.evidence[0].link == "https://example.test/products-by-colour/cinders"
+
+
+def test_a_word_file_is_cited_at_its_plain_address() -> None:
+    from limespec.models import Passage
+    from limespec.verify import source_link
+
+    passage = Passage(
+        1, "https://example.test/Docs/EC DoP.docx", "DoP", "", "A1", "", 1
+    )
+
+    assert source_link(passage, "A1") == "https://example.test/Docs/EC%20DoP.docx"

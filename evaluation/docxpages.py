@@ -74,22 +74,6 @@ def scores(
     return {"rates": rates, "passed": passed, "documents": rows}
 
 
-def element(record: Mapping[str, Any]) -> Element:
-    """An element saved as JSON (`dataclasses.asdict`) read back."""
-    box = record["bbox"]
-    return Element(
-        page=record["page"],
-        kind=record["kind"],
-        text=record["text"],
-        section=tuple(record["section"]),
-        bbox=(box[0], box[1], box[2], box[3]) if box else None,
-        table=record["table"],
-        row=record["row"],
-        cells=tuple((header, value) for header, value in record["cells"]),
-        grid=tuple(tuple(row) for row in record["grid"]),
-    )
-
-
 def page_measures(
     page: Mapping[str, Any], found: Sequence[Element], reference: str
 ) -> dict[str, Any]:
@@ -109,7 +93,7 @@ def layout_check(
     pooled: dict[str, list[dict[str, Any]]] = {"before": [], "after": []}
     for page in truth:
         record = saved[str(page["number"])]
-        found = [element(item) for item in record[arm]]
+        found = [layout.from_record(item) for item in record[arm]]
         reference = "\n".join(record["pypdf"])
         before = page_measures(page, found, reference)
         after = page_measures(page, layout.side_by_side(found), reference)

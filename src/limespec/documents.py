@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from limespec import acquire, config, ingest, llm, pdf, store
+from limespec import acquire, config, ingest, layout, llm, office, pdf, store
 from limespec.passages import pdf_passages
 
 OUT = config.READINGS
@@ -42,25 +42,39 @@ READER = (
     "tables.py",
     "visibility.py",
 )
+# A Word file is laid out by LibreOffice, then read as a PDF (X43 A3a): its readings
+# also depend on that code, kept out of the PDFs' fingerprint so they are not redone.
+WORD_READER = ("office.py",)
+WORD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+READABLE = ("application/pdf", WORD)
+EXTERNAL_PUBLISHER = "GOV.UK"  # the only external documents collected (OGL, D73)
 
 Run = Any  # subprocess.run, or a stand-in in tests
 
 
 def pdf_files(records: list[acquire.Record]) -> dict[str, list[str]]:
-    """Each stored Lime Green PDF by SHA-256, with every URL it was fetched from."""
+    """Each stored document by SHA-256, with every URL it was fetched from: the site's
+    PDFs and Word files, and the openly licensed external PDFs (X43)."""
     files: dict[str, list[str]] = {}
     for record in records:
-        if record.get("kind") == "document" and "sha256" in record:
-            if record.get("content_type") == "application/pdf":
+        if record.get("kind") in ("document", "external") and "sha256" in record:
+            if record.get("content_type") in READABLE:
                 files.setdefault(str(record["sha256"]), []).append(str(record["url"]))
     return files
 
 
-def fingerprint(vlm: str) -> dict[str, Any]:
-    """What a reading depends on: the reader's own code, the packages it uses and,
-    when tables are read again, the model the vision server has loaded."""
+def is_word(path: Path) -> bool:
+    """Whether a stored file is a Word document (a zip package), not a PDF."""
+    with path.open("rb") as file:
+        return file.read(4) == b"PK"
+
+
+def fingerprint(vlm: str, word: bool = False) -> dict[str, Any]:
+    """What a reading depends on: the reader's own code (and for a Word file the code
+    that lays it out), the packages it uses and, when tables are read again, the
+    model the vision server has loaded."""
     code = hashlib.sha256()
-    for name in READER:
+    for name in READER + (WORD_READER if word else ()):
         code.update((Path(pdf.__file__).parent / name).read_bytes())
     found: dict[str, Any] = {
         "reader_sha256": code.hexdigest(),
@@ -97,6 +111,8 @@ def validate(
 def read_one(sha256: str, vlm: str) -> dict[str, Any]:
     """One document read into elements, with its validation (run in a child)."""
     path = acquire.store_path(sha256)
+    if is_word(path):
+        path = office.render_pdf(path, OUT / "rendered")
     stats: Counter[str] = Counter()
     grades: dict[int, str] = {}
     checks: dict[int, dict[str, int]] = {}
@@ -139,11 +155,12 @@ def run_all(
     files: dict[str, list[str]], vlm: str, out: Path, run: Run = subprocess.run
 ) -> dict[str, Any]:
     """Read every file not already read the same way; the run's report."""
-    found = fingerprint(vlm)
+    prints = {False: fingerprint(vlm), True: fingerprint(vlm, word=True)}
     out.mkdir(parents=True, exist_ok=True)
-    report: dict[str, Any] = {"fingerprint": found, "read": [], "skipped": [],
-                              "failed": {}}  # fmt: skip
+    report: dict[str, Any] = {"fingerprint": prints[False], "read": [],
+                              "skipped": [], "failed": {}}  # fmt: skip
     for sha256, urls in files.items():
+        found = prints[is_word(acquire.store_path(sha256))]
         target = out / f"{sha256}.json"
         if current(target, found):
             report["skipped"].append(sha256)
@@ -206,8 +223,11 @@ def index_documents(
     the given X9 form: one document per distinct file, under its first URL, titled
     by the site (`ingest.pdf_titles`) or else by its file name."""
     fetched: dict[str, str] = {}
+    external: set[str] = set()
     for record in acquire.read_manifest():
         fetched.setdefault(str(record["sha256"]), str(record["fetched_at"]))
+        if record.get("kind") == "external":
+            external.add(str(record["sha256"]))
     found = []
     for path in sorted(folder.glob("*.json")):
         if path.name == "report.json":
@@ -217,9 +237,18 @@ def index_documents(
         named = [titles[url] for url in urls if url in titles]
         title = named[0] if named else ingest.file_title(urls[0])
         sha256 = str(reading["sha256"])
+        if sha256 in external:
+            title = (
+                f"{EXTERNAL_PUBLISHER} — {title}"  # general guidance, not Lime Green's
+            )
         page_row: store.PageRow = (urls[0], title, fetched[sha256], sha256)
+        # A label and its value on one line are read together (X43 A3a).
+        lines = layout.side_by_side(
+            [layout.from_record(e) for e in reading["elements"]]
+        )
+        elements = [asdict(element) for element in lines]
         rows: list[store.PassageRow] = []
-        for heading, context, text, page in pdf_passages(reading["elements"], form):
+        for heading, context, text, page in pdf_passages(elements, form):
             rows.append((urls[0], title, heading, text, context, page))
         found.append((page_row, rows))
     return found

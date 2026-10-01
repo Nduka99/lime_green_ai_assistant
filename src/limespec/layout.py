@@ -6,6 +6,8 @@ all the labels. Text blocks that sit side by side on the same line of a page are
 as one line, left to right, where the first of them stood in reading order.
 """
 
+from typing import Any
+
 from limespec.elements import Element
 
 # Blocks a layout model read. Recovered lines are already lines of running text,
@@ -61,3 +63,20 @@ def side_by_side(elements: list[Element]) -> list[Element]:
             Element(element.page, element.kind, text, element.section, element.bbox)
         )
     return found
+
+
+def from_record(record: dict[str, Any]) -> Element:
+    """An element saved in a reading (`dataclasses.asdict`) read back. (Kept out of
+    `elements`, whose code is part of every reading's fingerprint.)"""
+    box = record["bbox"]
+    return Element(
+        page=record["page"],
+        kind=record["kind"],
+        text=record["text"],
+        section=tuple(record["section"]),
+        bbox=(box[0], box[1], box[2], box[3]) if box else None,
+        table=record["table"],
+        row=record["row"],
+        cells=tuple((header, value) for header, value in record["cells"]),
+        grid=tuple(tuple(row) for row in record["grid"]),
+    )

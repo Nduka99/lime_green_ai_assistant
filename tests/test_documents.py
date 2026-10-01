@@ -29,10 +29,14 @@ def test_stored_pdfs_are_grouped_by_their_content() -> None:
         {"url": "https://gov.test/c.pdf", "kind": "external", "sha256": "c",
          "content_type": "application/pdf"},
         {"url": "https://x.test/gone.pdf", "kind": "document", "error": "HTTP 404"},
+        {"url": "https://x.test/dop.docx", "kind": "document", "sha256": "d",
+         "content_type": documents.WORD},
     ]  # fmt: skip
 
     assert documents.pdf_files(records) == {
-        "a": ["https://x.test/a.pdf", "https://x.test/copy-of-a.pdf"]
+        "a": ["https://x.test/a.pdf", "https://x.test/copy-of-a.pdf"],
+        "c": ["https://gov.test/c.pdf"],  # openly licensed guidance (X43)
+        "d": ["https://x.test/dop.docx"],
     }
 
 
@@ -95,6 +99,7 @@ def test_one_document_is_read_with_its_tables_and_validation(
         return [Element(1, "paragraph", WORDS)]
 
     monkeypatch.setattr(pdf, "read_pdf", read_pdf)
+    monkeypatch.setattr(documents, "is_word", lambda path: False)
 
     reading = documents.read_one("abc", "http://vlm")
 
@@ -139,7 +144,10 @@ class Child:
 def test_a_run_reads_each_document_once_retries_and_reports(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(documents, "fingerprint", lambda vlm: {"vision_model": vlm})
+    monkeypatch.setattr(
+        documents, "fingerprint", lambda vlm, word=False: {"vision_model": vlm}
+    )
+    monkeypatch.setattr(documents, "is_word", lambda path: False)
     done = {"sha256": "old", "seconds": 1.0, "tables": {}, "urls": ["u/old.pdf"],
             "validation": {"pages": [], "flagged": 0},
             "fingerprint": {"vision_model": "http://vlm"}}  # fmt: skip
@@ -228,8 +236,8 @@ def test_saved_readings_become_index_documents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     paragraph = {"page": 1, "kind": "paragraph", "text": "Mix well.",
-                 "section": ["Mixing"], "table": None, "row": None, "cells": [],
-                 "grid": []}  # fmt: skip
+                 "section": ["Mixing"], "bbox": None, "table": None, "row": None,
+                 "cells": [], "grid": []}  # fmt: skip
     titled = {
         "sha256": "abc",
         "elements": [paragraph],
@@ -242,7 +250,7 @@ def test_saved_readings_become_index_documents(
     (tmp_path / "report.json").write_text("{}")
     records = [{"sha256": "abc", "fetched_at": "T1"},
                {"sha256": "abc", "fetched_at": "T2"},
-               {"sha256": "def", "fetched_at": "T3"}]  # fmt: skip
+               {"sha256": "def", "fetched_at": "T3", "kind": "external"}]  # fmt: skip
     monkeypatch.setattr(acquire, "read_manifest", lambda: records)
 
     found = documents.index_documents(
@@ -253,5 +261,29 @@ def test_saved_readings_become_index_documents(
     assert found == [
         ((url, "C — SDS", "T1", "abc"),
          [(url, "C — SDS", "Mixing", "Mix well.", "Mixing", 1)]),
-        (("https://example.test/d%20e.pdf", "d e", "T3", "def"), []),
+        (("https://example.test/d%20e.pdf", "GOV.UK — d e", "T3", "def"), []),
     ]  # fmt: skip
+
+
+def test_a_word_file_is_laid_out_before_it_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limespec import office
+
+    stored = tmp_path / "dop"
+    stored.write_bytes(b"PK\x03\x04 a Word package")
+    monkeypatch.setattr(acquire, "store_path", lambda sha: stored)
+    monkeypatch.setattr(office, "render_pdf", lambda path, out: tmp_path / "dop.pdf")
+    read: list[Path] = []
+
+    def read_pdf(path: Path, **options: Any) -> list[Element]:
+        read.append(path)
+        return []
+
+    monkeypatch.setattr(pdf, "read_pdf", read_pdf)
+
+    documents.read_one("dop", "")
+
+    assert read == [tmp_path / "dop.pdf"]
+    (tmp_path / "x.pdf").write_bytes(b"%PDF-1.7")
+    assert documents.is_word(stored) and not documents.is_word(tmp_path / "x.pdf")
