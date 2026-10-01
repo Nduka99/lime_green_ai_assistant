@@ -410,6 +410,23 @@ the UD-Q4_K_XL in use. With the experts in RAM they would cost mostly RAM (about
 for Q8) and output speed, plus 1–1.5 GB of GPU for the shared layers. The user judged
 them too large; Gemma stays at UD-Q4_K_XL.
 
+**Arm (b), a thinking budget: skipped (user's decision, 1 Oct); thinking stays off in
+every request of this architecture.** Checked first: Gemma's template defaults to
+`enable_thinking | default(false)`, our requests send `false`, and on the 40 replayed
+requests it generates 323 tokens for 1,196 visible characters (median). That is the same
+0.27 tokens per character as Qwen3.6 (256 for 945), so no hidden reasoning is paid for.
+Its extra time comes from longer replies (+26% characters) and slower output (23 against
+30 tokens/s). Reasoning would add about 10 s per answer and replace greedy, repeatable
+decoding with sampling. It is left for a separate A/B benchmark on its own branch, after
+the production architecture is settled.
+
+**Next, as E5 registered:**
+1. Freeze and tag the candidate (index version 17, scoped search, Gemma) and run the
+   breakage checks: unit tests, `exposure-v1`, guardrails, and a 20-question smoke run
+   that is not graded.
+2. Read v5's key through, and record any exclusions before the run (E6).
+3. Run gate R1 on held-out v5 once.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
