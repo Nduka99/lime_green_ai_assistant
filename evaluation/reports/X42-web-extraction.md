@@ -388,6 +388,22 @@ to it in W6, with the passage form W3 selects.
 - **Rule:** the arm with the highest Success@8 whose interval against `sections` lies
   above zero (pages resampled) is selected; otherwise `sections`, the simplest.
 
+**W3 result: `page` is selected** (`data/runs/x42/w3-v<N>.json`; 354 facts, pages
+resampled).
+
+| Version | Web form | Passages | Success@8 | MRR | Ceiling | Against `sections` |
+|---|---|---|---|---|---|---|
+| 17 | old extractor | 1,902 | 0.921 | 0.695 | 0.955 | −0.008 [−0.043, +0.022] |
+| 18 | `sections` (baseline) | 1,801 | 0.929 | 0.742 | 0.992 | — |
+| 19 | `page` | 1,463 | **0.969** | 0.776 | 0.992 | **+0.040 [+0.011, +0.078]** |
+| 20 | `page-once` | 1,461 | 0.969 | 0.776 | 0.992 | +0.040 [+0.011, +0.078] |
+
+- `page` and `page-once` tie: keeping repeated text once removes only 2 passages. The
+  rule names no tie-break, so the simpler form wins, as in X9. That is `page`, with no
+  repeat step.
+- The new reader alone raised the ceiling from 0.955 to 0.992: facts the old
+  extractor never held.
+
 **Amendment to W3's builds (1 October, before any arm was scored).**
 - The first build stopped at its one-hour limit with nothing written. The 4B embedder
   runs on the CPU at about 3.4 s per passage, and every build re-embedded all PDF

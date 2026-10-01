@@ -14,6 +14,8 @@ PAGE_CACHE = Path("data/site")  # fetched HTML; never committed
 FILE_STORE = Path("data/files")
 # Each stored PDF read into elements (limespec.documents); never committed.
 READINGS = Path("data/elements")
+# Every picture stored once as PNG, where it is shown, and the text read in it (X43).
+IMAGES = Path("data/images")
 # LibreOffice, unpacked into tools/ (never committed), lays out Word files (X43).
 LIBREOFFICE = Path(
     os.environ.get("LIMESPEC_LIBREOFFICE", "tools/libreoffice/program/soffice.exe")

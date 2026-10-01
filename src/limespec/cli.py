@@ -31,6 +31,8 @@ from limespec.ingest import (
 from limespec.passages import FORMS
 from limespec.view import AnswerView, view
 
+OCR_PROMPT = "Text Recognition:"  # GLM-OCR's prompt for the text in an image
+
 
 def run_acquire(what: str, measure_only: bool) -> None:
     """Pages from the sitemap not yet cached, the PDFs and images linked from
@@ -140,6 +142,44 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
+def run_read_images(vlm: str) -> int:
+    """Store every picture of the pages and documents once, then read the text in
+    each with a vision model (GLM-OCR); readings already saved are kept (X43 B)."""
+    from PIL import Image
+
+    from limespec import images, tables
+
+    if not llm.healthy(vlm):
+        print(f"error: no vision model ready at {vlm}", file=sys.stderr)
+        return 1
+    readings = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(documents.OUT.glob("*.json"))
+        if path.name != "report.json"
+    ]
+    stored = {}
+    for record in acquire.read_manifest():
+        path = acquire.store_path(record["sha256"])
+        if record.get("content_type") == documents.WORD:
+            path = documents.OUT / "rendered" / f"{record['sha256']}.pdf"  # laid out
+        stored[record["url"]] = path
+    places = images.collect(dict(site_html()), readings, stored, config.IMAGES)
+    text = json.dumps(places, indent=1, ensure_ascii=False)
+    (config.IMAGES / "places.json").write_text(text + "\n", encoding="utf-8")
+    read = 0
+    for identity in dict.fromkeys(place["id"] for place in places):
+        target = config.IMAGES / f"{identity}.json"
+        if target.exists():
+            continue
+        with Image.open(config.IMAGES / f"{identity}.png") as picture:
+            words = tables.recognise(picture.convert("RGB"), vlm, OCR_PROMPT)
+        target.write_text(json.dumps({"id": identity, "ocr": words}), encoding="utf-8")
+        read += 1
+    print(f"{len(places)} places of {len(set(p['id'] for p in places))} pictures; "
+          f"{read} read now")  # fmt: skip
+    return 0
+
+
 def run_read_pdfs(vlm: str) -> int:
     """Read every stored PDF; print the run's totals, failures and flagged pages."""
     if vlm and not llm.healthy(vlm):
@@ -233,6 +273,11 @@ def main(argv: list[str] | None = None) -> int:
     read_parser.add_argument(
         "--vlm", default="", help="a vision model server that reads tables again"
     )
+    images_parser = commands.add_parser(
+        "read-images",
+        help="store every picture once and read its text (needs the ingest group)",
+    )
+    images_parser.add_argument("--vlm", required=True, help="a vision model server")
     one_parser = commands.add_parser(
         "read-pdf", help="read one stored PDF into a JSON file (used by read-pdfs)"
     )
@@ -248,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "read-pdfs":
         return run_read_pdfs(args.vlm)
+    if args.command == "read-images":
+        return run_read_images(args.vlm)
     if args.command == "read-pdf":
         reading = documents.read_one(args.sha256, args.vlm)
         text = json.dumps(reading, indent=1, ensure_ascii=False) + "\n"

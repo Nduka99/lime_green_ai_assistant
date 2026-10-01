@@ -1,10 +1,11 @@
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, documents, llm, store, telemetry
+from limespec import acquire, assistant, cli, config, documents, llm, store, telemetry
 from limespec.app import app
 from limespec.ingest import ingest
 from limespec.models import Answer
@@ -238,3 +239,45 @@ def test_model_server_errors_are_reported_not_raised(
 
     assert cli.main(["ingest"]) == 1
     assert "embedding server" in capsys.readouterr().err
+
+
+def test_read_images_stores_pictures_then_reads_each_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from PIL import Image
+
+    from limespec import images, tables
+
+    out = tmp_path / "images"
+    out.mkdir()
+    Image.new("RGB", (8, 8), "white").save(out / "p1.png")
+    Image.new("RGB", (8, 8), "white").save(out / "p2.png")
+    (out / "p2.json").write_text("{}")  # read before
+    readings = tmp_path / "elements"
+    readings.mkdir()
+    (readings / "r.json").write_text(json.dumps({"urls": ["u"], "elements": []}))
+    (readings / "report.json").write_text("{}")
+    records = [
+        {"url": "https://x.test/a.png", "sha256": "a", "content_type": "image/png"},
+        {"url": "https://x.test/d.docx", "sha256": "d", "content_type": documents.WORD},
+    ]
+    seen: dict[str, Any] = {}
+
+    def collect(pages: Any, found: Any, stored: Any, folder: Path) -> list[Any]:
+        seen["stored"] = stored
+        return [{"id": "p1"}, {"id": "p2"}, {"id": "p1"}]
+
+    monkeypatch.setattr(config, "IMAGES", out)
+    monkeypatch.setattr(documents, "OUT", readings)
+    monkeypatch.setattr(acquire, "read_manifest", lambda: records)
+    monkeypatch.setattr(cli, "site_html", lambda: [("https://x.test/", "<html/>")])
+    monkeypatch.setattr(images, "collect", collect)
+    monkeypatch.setattr(tables, "recognise", lambda image, url, prompt: "Duro 25kg")
+    monkeypatch.setattr(llm, "healthy", lambda url: url == "http://vlm")
+
+    assert cli.main(["read-images", "--vlm", "http://none"]) == 1
+    assert cli.main(["read-images", "--vlm", "http://vlm"]) == 0
+
+    assert json.loads((out / "p1.json").read_text())["ocr"] == "Duro 25kg"
+    assert seen["stored"]["https://x.test/d.docx"] == readings / "rendered" / "d.pdf"
+    assert "3 places of 2 pictures; 1 read now" in capsys.readouterr().out

@@ -104,7 +104,16 @@ def listings(soup: BeautifulSoup, root: Tag) -> None:
                 ]
         box.replace_with(names_list(soup, [name for name in names if name]))
     for grid in root.select(".clr-grid"):
-        grid.replace_with(names_list(soup, [text_of(n) for n in grid.select(".name")]))
+        colours = names_list(soup, [text_of(n) for n in grid.select(".name")])
+        # Each colour keeps its swatch picture, named by the colour (X43 B).
+        for item, swatch in zip(
+            colours.find_all("li"), grid.select(".clr"), strict=True
+        ):
+            picture = swatch.find("img")
+            if picture is not None:
+                picture["alt"] = text_of(item)
+                item.append(picture)
+        grid.replace_with(colours)
     for buttons in root.select(".ds .bts"):
         names = [text_of(button) for button in buttons.select("a")]
         buttons.replace_with(names_list(soup, names))
@@ -112,10 +121,10 @@ def listings(soup: BeautifulSoup, root: Tag) -> None:
         button.decompose()  # link buttons point elsewhere
 
 
-def rendered_lines(root: Tag) -> list[dict[str, Any]]:
+def rendered_lines(root: Tag, every_image: bool = False) -> list[dict[str, Any]]:
     """The text as a browser lays it out: each line with the block element that holds
-    it, whether all of it is bold, and images with a describing alt text as lines of
-    their own."""
+    it, whether all of it is bold, and images as lines of their own with the file
+    they show: those with a describing alt text, or with `every_image` all of them."""
     lines: list[dict[str, Any]] = []
     runs: list[tuple[str, bool]] = []
 
@@ -136,11 +145,11 @@ def rendered_lines(root: Tag) -> list[dict[str, Any]]:
                 end_line(block)
             elif isinstance(child, Tag) and child.name == "img":
                 alt = " ".join(str(child.get("alt") or "").split())
-                if len(alt.split()) >= DESCRIBED:
+                source = str(child.get("data-src") or child.get("src") or "")
+                if source and (every_image or len(alt.split()) >= DESCRIBED):
                     end_line(block)
-                    lines.append(
-                        {"text": alt, "block": block, "bold": False, "figure": True}
-                    )
+                    lines.append({"text": alt, "block": block, "bold": False,
+                                  "figure": True, "image": source})  # fmt: skip
             elif isinstance(child, Tag) and child.name in BLOCKS:
                 end_line(block)
                 walk(child, child, False)
@@ -192,7 +201,8 @@ def elements(
             found.append({"kind": "meta", "text": text, "section": section})
             continue
         if line["figure"]:
-            found.append({"kind": "figure", "text": text, "section": section})
+            figure = {"kind": "figure", "text": text, "section": section}
+            found.append(figure | {"image": line["image"]})
             continue
         derived = block.name == "dt" or (
             heavy
@@ -217,8 +227,12 @@ def elements(
     return found
 
 
-def read_page(raw_html: str) -> tuple[str, list[dict[str, Any]]]:
-    """The page's title and its main content's elements in reading order."""
+def read_page(
+    raw_html: str, every_image: bool = False
+) -> tuple[str, list[dict[str, Any]]]:
+    """The page's title and its main content's elements in reading order; with
+    `every_image`, every image of the main content is a figure, not only those whose
+    alt text describes them."""
     soup = BeautifulSoup(raw_html, "html.parser")
     root = soup.find("main") or soup.body
     if root is None:
@@ -230,4 +244,5 @@ def read_page(raw_html: str) -> tuple[str, list[dict[str, Any]]]:
     title = text_of(heading) if heading else text_of(soup.title)
     if heading:
         heading.decompose()  # the title is the page's, not a section's
-    return title, elements(rendered_lines(root), root.select(TITLE_BLOCK))
+    lines = rendered_lines(root, every_image)
+    return title, elements(lines, root.select(TITLE_BLOCK))

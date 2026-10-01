@@ -10,13 +10,18 @@ the `ingest` group.
 import hashlib
 from io import BytesIO
 from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin
 
 import pypdfium2
-from PIL import Image, ImageStat
+from PIL import Image, ImageStat, UnidentifiedImageError
+
+from limespec import config, webpage
 
 MAX_SIDE = 1024  # pixels: the longest side of a stored image
 LIGHT = 200  # mean grey level above which drawn pixels count as light
 DARK_GROUND = (51, 51, 51)  # laid under light drawings (the site's dark grey)
+MIN_SIDE = 72  # points: a smaller PDF figure is a mark, not a picture
 FIGURE_SCALE = 200 / 72  # a figure is drawn at 200 DPI, as tables are read (pdf.py)
 Box = tuple[float, float, float, float]  # left, top, right, bottom, from top-left
 
@@ -62,3 +67,77 @@ def crop(pdf: Path, page: int, box: Box) -> bytes:
     finally:
         document.close()
     return normalised(out.getvalue())
+
+
+def page_images(raw_html: str) -> list[dict[str, Any]]:
+    """Every image of a page's main content (`webpage`), with its file's address,
+    its alt text and the headings above it."""
+    _, found = webpage.read_page(raw_html, every_image=True)
+    return [
+        {
+            "image_url": urljoin(config.SITE, element["image"]),
+            "alt": element["text"],
+            "section": element["section"],
+        }
+        for element in found
+        if element["kind"] == "figure"
+    ]
+
+
+def figure_boxes(elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A document reading's figures large enough to be pictures (MIN_SIDE points on
+    each side), with their page, box, caption and section."""
+    found = []
+    for element in elements:
+        box = element.get("bbox")
+        if element["kind"] != "figure" or not box:
+            continue
+        left, top, right, bottom = box
+        if right - left >= MIN_SIDE and bottom - top >= MIN_SIDE:
+            found.append({
+                "page": element["page"],
+                "box": box,
+                "alt": element["text"],
+                "section": element["section"],
+            })  # fmt: skip
+    return found
+
+
+def collect(
+    pages: dict[str, str],
+    readings: list[dict[str, Any]],
+    stored: dict[str, Path],
+    out: Path,
+) -> list[dict[str, Any]]:
+    """Every picture of the site's pages and documents stored once in `out` as PNG,
+    and each place it is shown: the page or document (its URL), the page number of a
+    document, its alt text or caption and its section. `pages` holds each page's HTML
+    by URL; `stored` each collected file's path by URL."""
+    out.mkdir(parents=True, exist_ok=True)
+    places = []
+
+    def keep(png: bytes, place: dict[str, Any]) -> None:
+        identity = image_id(png)
+        target = out / f"{identity}.png"
+        if not target.exists():
+            target.write_bytes(png)
+        places.append(place | {"id": identity})
+
+    for url, raw in pages.items():
+        for image in page_images(raw):
+            path = stored.get(image["image_url"])
+            if path is None:
+                continue  # not collected (a dead link)
+            try:
+                png = normalised(path.read_bytes())
+            except UnidentifiedImageError:
+                continue  # vector images (SVG) hold no pixels to read
+            keep(png, image | {"source": url, "page": None})
+    for reading in readings:
+        url = reading["urls"][0]
+        pdf = stored[url]
+        for figure in figure_boxes(reading["elements"]):
+            png = crop(pdf, figure["page"], tuple(figure["box"]))
+            keep(png, {"source": url, "page": figure["page"], "alt": figure["alt"],
+                       "section": figure["section"], "image_url": ""})  # fmt: skip
+    return places
