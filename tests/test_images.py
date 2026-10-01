@@ -25,6 +25,11 @@ def test_an_image_is_stored_as_an_rgb_png_at_most_max_side() -> None:
 
     assert (stored.format, stored.mode, stored.size) == ("PNG", "RGB", (1024, 341))
     assert flat.getpixel((0, 0)) == (255, 255, 255)  # transparency laid on white
+    icon = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+    icon.putpixel((5, 5), (255, 255, 255, 255))  # a white drawing on transparency
+    shown = Image.open(BytesIO(images.normalised(encoded(icon, "PNG"))))
+    assert shown.getpixel((0, 0)) == images.DARK_GROUND
+    assert shown.getpixel((5, 5)) == (255, 255, 255)
     assert images.image_id(b"png") == images.image_id(b"png") != images.image_id(b"x")
     with pytest.raises(UnidentifiedImageError):
         images.normalised(b"<svg xmlns='http://www.w3.org/2000/svg'/>")

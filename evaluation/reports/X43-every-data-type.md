@@ -66,6 +66,21 @@ and the answers? And can the evaluation sets show how well each kind is used?
   - 20 site images (pack shots, charts, banners with words), drawn per image folder;
   - 20 PDF figures (charts, diagrams, labelled drawings), drawn per document format.
 - Each image's text is transcribed by reading the image, as X8's truth was.
+- **How the 40 are chosen** (fixed before OCR runs on any image; written while
+  looking through the candidates, `evaluation image-candidates --seed 43 --count 100`):
+  - Candidates are taken in drawing order: site images first, then PDF figures.
+  - An image qualifies when it carries printed words and every word on it can be
+    read, enlarging the original file if needed. An image with any word cut off,
+    obscured or too small to read is skipped and its reason recorded. These include a
+    watermark, an inscription cut at the frame, and fine print on a tin's side.
+  - A figure repeating a picture already chosen (the same logo or illustration in
+    another document) is skipped.
+  - Transcription takes every word in reading order: lines of a pack shot, labels of
+    a drawing, a table's cells row by row. Words are compared as W2 compares them
+    (case and punctuation folded).
+  - A first pass showed that transparent site images (white icons and lettering)
+    vanished on a white ground. `images.normalised` now lays a light drawing on dark
+    grey before any image was chosen.
 - GLM-OCR transcribes each image (the X8 configuration).
 - Bars: word recall ≥ 0.95 and precision ≥ 0.98 over the set, as X8.
 - Passing, OCR text enters as passages labelled "read from the image". An OCR passage is

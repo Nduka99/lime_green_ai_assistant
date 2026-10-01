@@ -103,6 +103,7 @@ from limespec.models import Passage, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 X8_SETS = ("x8-pages", "x8-pages-r2", "x8-pages-r3")  # sealed truth with tables
+OCR_PROMPT = "Text Recognition:"  # GLM-OCR's prompt for text (X43 B2)
 
 
 def page_reader(folder: Path) -> keys.ReadPage:
@@ -444,6 +445,15 @@ def parser() -> argparse.ArgumentParser:
     image_drawn.add_argument("--catalogue", type=Path, required=True)
     image_drawn.add_argument("--count", type=int, default=60, help="per source")
     image_drawn.add_argument("--out", type=Path, required=True, help="a folder")
+    image_read = commands.add_parser(
+        "image-ocr", help="each image-text image read by a vision server (X43 B2)"
+    )
+    image_read.add_argument("--url", required=True, help="the vision model's server")
+    image_read.add_argument("--out", type=Path, required=True)
+    image_scored = commands.add_parser(
+        "image-ocr-score", help="OCR readings against the image-text truth (X43 B2)"
+    )
+    image_scored.add_argument("readings", type=Path, help="an image-ocr file")
     web_linked = commands.add_parser(
         "web-links", help="the link of every passage of a version checked (X42 W4)"
     )
@@ -1501,6 +1511,37 @@ def run_image_candidates(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_image_ocr(args: argparse.Namespace) -> int:
+    """Each registered image read with GLM-OCR's text prompt; a rerun keeps the
+    readings already saved."""
+    from PIL import Image
+
+    folder = sets.require("image-text", args.root, args.registry)
+    truth = grades.read_json(folder / "truth.json")
+    readings = grades.read_json(args.out) if args.out.exists() else {}
+    for image in truth["images"]:
+        if image["id"] in readings:
+            continue
+        with Image.open(folder / "images" / image["png"]) as picture:
+            readings[image["id"]] = tables.recognise(
+                picture.convert("RGB"), args.url, OCR_PROMPT
+            )
+        write_json(args.out, readings)
+    print(f"{len(readings)} images read into {args.out}")
+    return 0
+
+
+def run_image_ocr_score(args: argparse.Namespace) -> int:
+    folder = sets.require("image-text", args.root, args.registry)
+    truth = grades.read_json(folder / "truth.json")
+    found = imagesets.ocr_score(truth["images"], grades.read_json(args.readings))
+    for name, rates in found["rates"].items():
+        print(
+            f"{name}: recall {rates['recall']:.3f}, precision {rates['precision']:.3f}"
+        )
+    return 0
+
+
 def run_web_compare(args: argparse.Namespace) -> int:
     baseline = grades.read_json(args.baseline)
     for path in args.arms:
@@ -2190,6 +2231,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_facts(args)
         if args.command == "web-retrieval":
             return run_web_retrieval(args)
+        if args.command == "image-ocr":
+            return run_image_ocr(args)
+        if args.command == "image-ocr-score":
+            return run_image_ocr_score(args)
         if args.command == "image-candidates":
             return run_image_candidates(args)
         if args.command == "web-links":

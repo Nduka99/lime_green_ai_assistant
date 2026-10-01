@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from evaluation import __main__ as cli
-from evaluation import imagesets
+from evaluation import imagesets, sets
 from limespec import acquire, config
 
 SITE = "https://www.lime-green.co.uk/"
@@ -90,3 +90,47 @@ def test_the_command_line_writes_each_candidate_as_its_png(
     assert len(kept) == 3 and kept[-1]["group"] == "pdf:technical"
     assert all((out / candidate["png"]).exists() for candidate in kept)
     assert "3 candidates" in capsys.readouterr().out
+
+
+def test_ocr_is_scored_by_words_against_the_transcription() -> None:
+    images = [
+        {"id": "site/a", "text": "Solo OneCoat Plaster 25kg"},
+        {"id": "figure/b/1", "text": "Fixing: 40mm"},
+    ]
+    readings = {"site/a": r"SOLO One-Coat Plaster $25\mathrm{kg}$", "figure/b/1": ""}
+
+    found = imagesets.ocr_score(images, readings)
+
+    assert found["images"]["site/a"] == {"words": 4, "read": 5, "right": 3}
+    assert found["rates"]["all"]["recall"] == 3 / 6
+    assert found["rates"]["figure"] == {"recall": 0.0, "precision": 0.0}
+
+
+def test_the_command_line_reads_each_registered_image_once_and_scores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from limespec import tables
+
+    folder = tmp_path / "eval" / "image-text"
+    (folder / "images").mkdir(parents=True)
+    Image.new("RGB", (20, 10), "white").save(folder / "images" / "a.png")
+    truth = {"images": [{"id": "site/a", "png": "a.png", "text": "lime green"}]}
+    (folder / "truth.json").write_text(json.dumps(truth), encoding="utf-8")
+    registry = tmp_path / "sets.json"
+    sets.register("image-text", "", tmp_path / "eval", registry)
+    calls = []
+
+    def recognise(image: object, url: str, prompt: str) -> str:
+        calls.append((url, prompt))
+        return "lime green"
+
+    monkeypatch.setattr(tables, "recognise", recognise)
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+    out = tmp_path / "ocr.json"
+    command = [*common, "image-ocr", "--url", "http://vlm", "--out", str(out)]
+
+    assert cli.main(command) == 0
+    assert cli.main(command) == 0  # the saved reading is kept, not asked again
+    assert calls == [("http://vlm", "Text Recognition:")]
+    assert cli.main([*common, "image-ocr-score", str(out)]) == 0
+    assert "all: recall 1.000, precision 1.000" in capsys.readouterr().out

@@ -8,9 +8,13 @@ document's format (safety, technical, guide ...).
 """
 
 import random
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
+
+from evaluation import webpages
+from limespec import tables
 
 MIN_SIDE = 72  # points: a smaller PDF figure is a mark, not a picture (X43 B)
 UNREADABLE = {"image/svg+xml"}  # vector images: no pixels to read
@@ -82,3 +86,39 @@ def figure_candidates(
                 "group": group,
             })  # fmt: skip
     return interleaved(groups, seed)
+
+
+def ocr_counts(truth: str, reading: str) -> dict[str, int]:
+    """One image's word counts against its transcription, words compared as W2
+    compares them (`webpages.tokens`): case and punctuation folded. The model's
+    inline LaTeX is read as the characters it prints (`tables.unlatex`)."""
+    wanted = Counter(webpages.tokens(truth))
+    read = Counter(webpages.tokens(tables.unlatex(reading)))
+    return {
+        "words": sum(wanted.values()),
+        "read": sum(read.values()),
+        "right": sum((wanted & read).values()),
+    }
+
+
+def ocr_score(
+    images: Sequence[Mapping[str, Any]], readings: Mapping[str, str]
+) -> dict[str, Any]:
+    """Recall and precision over the set and per source (site images, PDF figures),
+    and each image's counts (X43 B2)."""
+    rows = {}
+    totals: dict[str, Counter[str]] = {"all": Counter()}
+    for image in images:
+        counts = ocr_counts(image["text"], readings[image["id"]])
+        rows[image["id"]] = counts
+        source = image["id"].split("/", 1)[0]
+        for name in ("all", source):
+            totals.setdefault(name, Counter()).update(counts)
+    rates = {
+        name: {
+            "recall": total["right"] / total["words"],
+            "precision": total["right"] / total["read"] if total["read"] else 0.0,
+        }
+        for name, total in totals.items()
+    }
+    return {"rates": rates, "images": rows}

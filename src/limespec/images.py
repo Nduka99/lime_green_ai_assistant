@@ -12,21 +12,28 @@ from io import BytesIO
 from pathlib import Path
 
 import pypdfium2
-from PIL import Image
+from PIL import Image, ImageStat
 
 MAX_SIDE = 1024  # pixels: the longest side of a stored image
+LIGHT = 200  # mean grey level above which drawn pixels count as light
+DARK_GROUND = (51, 51, 51)  # laid under light drawings (the site's dark grey)
 FIGURE_SCALE = 200 / 72  # a figure is drawn at 200 DPI, as tables are read (pdf.py)
 Box = tuple[float, float, float, float]  # left, top, right, bottom, from top-left
 
 
 def normalised(data: bytes) -> bytes:
-    """The image as an RGB PNG at most MAX_SIDE pixels on its longest side; any
-    transparency is laid on white. Raises PIL.UnidentifiedImageError for a format PIL
-    cannot read (SVG)."""
+    """The image as an RGB PNG at most MAX_SIDE pixels on its longest side. Any
+    transparency is laid on a ground that contrasts with what is drawn: dark under a
+    light drawing (the site's white icons and lettering), white otherwise. Raises
+    PIL.UnidentifiedImageError for a format PIL cannot read (SVG)."""
     with Image.open(BytesIO(data)) as opened:
         opened.load()
         image = opened.convert("RGBA")
-    flat = Image.new("RGB", image.size, "white")
+    drawn = image.getchannel("A").point(lambda alpha: 255 if alpha > 128 else 0)
+    level = (
+        ImageStat.Stat(image.convert("L"), mask=drawn).mean[0] if drawn.getbbox() else 0
+    )
+    flat = Image.new("RGB", image.size, DARK_GROUND if level > LIGHT else "white")
     flat.paste(image, mask=image.getchannel("A"))
     flat.thumbnail((MAX_SIDE, MAX_SIDE))
     out = BytesIO()
