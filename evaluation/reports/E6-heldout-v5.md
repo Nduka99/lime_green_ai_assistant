@@ -77,3 +77,49 @@ Every round was checked by case id only; the key's text was not read.
 - Sealed (253 cases, 337 questions, 0 problems) with blind order seed 54 into
   `data/eval/heldout-v5` and registered with its brief, plans and feedback (8 files).
   The key's text stays unread until the candidate is frozen.
+
+## Amendment before the gate (1 October, after the freeze `v5-candidate`)
+
+**Second graders (user's decision).** R1's plan (D98) had the primary grader, Gemma 4 26B
+locally and an outside grader in a fresh chat, with the majority of three deciding. Gemma is now the
+candidate's generator (ADR 0029), so as a grader it would judge its own answers, a
+known self-preference bias. The local grader is dropped. The second graders are two
+outside graders from two other model families, each in a fresh chat, each grading the
+same sample by the guide; the majority of three is used as before, and κ ≥ 0.8 is required of each
+against the primary.
+
+**Read-through (step 3; 1 October, after the freeze, before any run): no case excluded.**
+- **Answerable cases:** all 253 cases were read with their parts, evidence quotes and
+  rules. Every answerable case's expected answer is stated by its own quoted evidence.
+- **Absent cases:** the checker had already found none of the writer's absence terms in
+  the corpus. As well, the corpus was searched for the figures most likely to exist
+  after all: a renewable-electricity share, CO₂ reabsorption, a test-panel area, a
+  stacking height, storage humidity, a mesh aperture, an LC50, drying shrinkage,
+  turnover, pencil hardness, particle size, Pantone and CIELAB values. None states the
+  asked figure. ("Do not stack or crush" is the Aerogel board's sheet, not Penetrating
+  Primer's; the only LC50s are the Aerogel board's.)
+- **Emergency and out-of-domain cases:** need no evidence.
+
+**The gate run (step 4), fixed before it starts.**
+- **Arms:** each answers all 337 questions one at a time through the API (`evaluation
+  ask`).
+  - `v5-live`, the system live today: the worktree at `s2b-before-fixes`, index version
+    4, Qwen3.6 on 8080, the 0.6B embedder on 8081, the reranker on 8082; API on 8096.
+  - `v5-candidate`, the frozen candidate: tag `v5-candidate`, index version 17, scoped
+    search, Gemma on 8083 with ADR 0029's line, the 4B embedder on 8084, the reranker on
+    8082; 8080 and 8081 stopped; API on 8098.
+  - `v5-candidate-repeat`: the candidate's second full pass, for stability.
+- **Grading:**
+  - Answers are blinded with `evaluation blind --all` (seed 91) and every distinct answer
+    is graded by the primary grader, by the guide, before unblinding.
+  - The sitting is registered, then a sample goes to the two outside graders: 30% by case
+    type, plus every item the primary grader judged wrong or missing (`grading-bundle`,
+    seed 92).
+- **Readout:** R1 (D98) by case, from `evaluation reliability`, with the majority of
+  three:
+  - risk's Wilson upper bound at most 5%;
+  - refusals at least 95%;
+  - every emergency referred and no price shown;
+  - coverage not below live;
+  - κ ≥ 0.8 for each second grader;
+  - the repeat changes at most 2 verdicts.
