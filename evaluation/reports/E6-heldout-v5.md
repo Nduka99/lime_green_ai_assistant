@@ -123,3 +123,17 @@ against the primary.
   - coverage not below live;
   - κ ≥ 0.8 for each second grader;
   - the repeat changes at most 2 verdicts.
+
+**The gate run was stopped and discarded (user's decision, 1 October, 06:53).**
+- **What was stopped:** the live arm had begun (06:44). Its partial answers were deleted
+  unread, the candidate arm never started, and v5 is kept for last.
+- **Why:** the web-page extractor (`ingest.extract_sections`) has never been checked
+  against page-level ground truth as the PDF reading was (X8). The key writer saw each web
+  page through that same extractor, so v5 cannot reveal what it drops or mis-sections.
+- **What it means for v5 later:**
+  - The extraction is to be measured, and fixed if it is wrong, before v5 is run.
+  - If the extraction changes, v5's web-page quotes are checked again against the new
+    text by id (`check-cases`).
+  - The key's text has been read once, in the read-through after the freeze. Fixes made
+    since are therefore structural only, chosen on seeded benchmarks and never on v5's
+    content. Whether a fresh key (v6) is needed to certify is the user's decision.
