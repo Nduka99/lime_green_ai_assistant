@@ -379,6 +379,31 @@ today) and the 8090 page (the submitted v5) use 8081. So Gemma is measured both 
   startup lines, goes to the user. Keeping 8081 would mean keeping version 4 and the 8090
   page served beside Gemma; dropping it means starting them only when needed.
 
+**Results (1 Oct, 05:17–06:07).**
+
+| Pass | GPU peak (all) | Min available RAM | s per answer | All 40 | Replies as `S1` |
+|---|---|---|---|---|---|
+| `S1-with-8081` | 7,605 MiB | 18.7 GB | 18.2 | 747 s | 40/40 |
+| `S1` | 5,238 MiB | 20.1 GB | 18.1 | 746 s | — |
+| `S2`, one at a time | 6,158 MiB | 19.9 GB | 18.1 (−0.02 [−0.09, +0.05]) | 744 s | 40/40 |
+| `S2`, two at a time | 6,158 MiB | 19.5 GB | median 28.7, p95 56.4 | 618 s (0.83) | 17/40 |
+
+- **One slot beside 8081:** servable, but only just (75 MiB under the ceiling).
+- **Two slots:** meet X41's conditions without 8081 (same replies one at a time, not
+  slower; 0.83 of the one-at-a-time time with two at a time). Beside 8081 they would need
+  about 8.5 GB, which does not fit.
+- **Under concurrent load:** 23 of 40 replies change (Qwen3.6: 11 of 40 in X41), since
+  the server is not batch-invariant.
+- **Speed:** Gemma takes 18.1 s per replayed answer against Qwen3.6's 13.0 s (+39%):
+  23.3 against 30 tokens/s of output, with prompt reading faster (663 against 524
+  tokens/s).
+
+**Recommendation.** Production after the candidate passes the v5 gate: Gemma with two
+slots on 8080, with 8081 started only when version 4 or the 8090 page is needed. Until
+then 8080 stays Qwen3.6, because the gate's live arm is today's system, and the candidate
+arm serves Gemma from a scratch port (`LIMESPEC_CHAT_URL`), as G3 did. No startup line
+changes before the gate.
+
 **Specialist arm on `claims-dev`: fails the rule** (20:43–21:35, 1,447 part requests
 at about 2.1 s each on the GPU, 8080 stopped). AUC 0.666. At seed 5 it withholds 33 of
 370 correct claims and catches 4 of 30 that are not correct (3 of 26 off-question), and
