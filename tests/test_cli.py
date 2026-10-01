@@ -282,9 +282,27 @@ def test_read_images_stores_pictures_then_reads_each_once(
 
     assert json.loads((out / "p1.json").read_text())["ocr"] == "Duro 25kg"
     assert seen["stored"]["https://x.test/d.docx"] == readings / "rendered" / "d.pdf"
-    assert "3 places of 2 pictures; 1 read and 0 described" in capsys.readouterr().out
+    assert "3 places of 2 pictures; 1 read, 0 described" in capsys.readouterr().out
 
     assert cli.main(["read-images", "--describe", "http://vlm"]) == 0
     saved = json.loads((out / "p1.json").read_text())
     assert saved == {"ocr": "Duro 25kg", "id": "p1", "description": "A bag of Duro."}
-    assert "0 read and 2 described now" in capsys.readouterr().out
+    assert "0 read, 2 described" in capsys.readouterr().out
+
+    from limespec import siglip
+
+    (out / "siglip.json").write_text(json.dumps({"p2": [0.0, 1.0]}))
+    monkeypatch.setattr(
+        siglip,
+        "siglip_model",
+        lambda folder: (lambda paths: [[1.0, 0.0]] * len(paths), None),
+    )
+    assert cli.main(["read-images", "--vectors"]) == 0
+    assert json.loads((out / "siglip.json").read_text()) == {
+        "p1": [1.0, 0.0],
+        "p2": [0.0, 1.0],
+    }
+    assert "and 1 vectors made now" in capsys.readouterr().out
+    (out / "siglip.json").unlink()
+    assert cli.main(["read-images", "--vectors"]) == 0
+    assert "and 2 vectors made now" in capsys.readouterr().out

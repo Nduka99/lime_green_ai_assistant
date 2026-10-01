@@ -101,6 +101,7 @@ from limespec import (
     office,
     pdf,
     scope,
+    siglip,
     store,
     tables,
     verify,
@@ -111,6 +112,7 @@ from limespec.models import Passage, as_read, described
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
 X8_SETS = ("x8-pages", "x8-pages-r2", "x8-pages-r3")  # sealed truth with tables
 OCR_PROMPT = "Text Recognition:"  # GLM-OCR's prompt for text (X43 B2)
+CHANNELS = "score all an answer is given: the company's places, pictures, guidance"
 
 
 def page_reader(folder: Path) -> keys.ReadPage:
@@ -296,6 +298,7 @@ def parser() -> argparse.ArgumentParser:
     )
     searched.add_argument("--version", type=int, required=True)
     searched.add_argument("--out", type=Path, required=True, help="a JSON file")
+    searched.add_argument("--channels", action="store_true", help=CHANNELS)
     covered = commands.add_parser(
         "coverage", help="count the answerable follow-ups an index version covers (X36)"
     )
@@ -316,6 +319,7 @@ def parser() -> argparse.ArgumentParser:
     replayed_searches.add_argument(
         "--scoped", action="store_true", help="search again inside named products (B4)"
     )
+    replayed_searches.add_argument("--channels", action="store_true", help=CHANNELS)
     again = commands.add_parser(
         "embed-again", help="an index version copied with another embedder (E5)"
     )
@@ -451,6 +455,7 @@ def parser() -> argparse.ArgumentParser:
     )
     web_retrieved.add_argument("--version", type=int, required=True)
     web_retrieved.add_argument("--out", type=Path, required=True)
+    web_retrieved.add_argument("--channels", action="store_true", help=CHANNELS)
     web_compared = commands.add_parser(
         "web-compare", help="web-facts arms against the baseline (X42 W3)"
     )
@@ -493,9 +498,10 @@ def parser() -> argparse.ArgumentParser:
     picture_retrieved.add_argument("--version", type=int, required=True)
     picture_retrieved.add_argument("--out", type=Path, required=True)
     picture_retrieved.add_argument(
-        "--visual", type=Path, help="picture vectors (image-vectors): an arm T+S"
+        "--visual", type=Path, help="picture vectors (read-images --vectors): arm T+S"
     )
     picture_retrieved.add_argument("--arm", choices=["pool", "quota"], default="pool")
+    picture_retrieved.add_argument("--channels", action="store_true", help=CHANNELS)
     probe_drawn = commands.add_parser(
         "kb-probe-draw",
         help="draw kb-probe's sources and show each to the writer (X44)",
@@ -514,11 +520,7 @@ def parser() -> argparse.ArgumentParser:
     probed = commands.add_parser("kb-probe", help="score a version on kb-probe (X44)")
     probed.add_argument("--version", type=int, required=True)
     probed.add_argument("--out", type=Path, required=True)
-    picture_embedded = commands.add_parser(
-        "image-vectors", help="every stored picture's SigLIP2 vector (X43 B3)"
-    )
-    picture_embedded.add_argument("--out", type=Path, required=True)
-    picture_embedded.add_argument("--model", type=Path, default=visual.SIGLIP)
+    probed.add_argument("--channels", action="store_true", help=CHANNELS)
     served_pictures = commands.add_parser(
         "image-requests", help="the serving check's requests, with images (X43 B4)"
     )
@@ -1151,10 +1153,8 @@ def run_quote_retrieval(args: argparse.Namespace) -> int:
             url = urls[item["sha256"]]
             if url not in anywhere:
                 anywhere[url] = store.document_passages(conn, args.version, url)
-            ranked = store.search(
-                conn, args.version, item["question"], llm.embed, llm.rerank
-            )
-            results.append(lookups.score_item(item, ranked, anywhere[url], url))
+            ranked, top = given(conn, args.version, item["question"], args.channels)
+            results.append(lookups.score_item(item, ranked, anywhere[url], url, top))
         passages = store.passage_count(conn, args.version)
     found = lookups.summary(results)
     record = {"version": args.version, "passages": passages, "summary": found}
@@ -1252,6 +1252,7 @@ def run_replay(args: argparse.Namespace) -> int:
             assistant.retriever(conn, args.version),
             parts,
             assistant.scoped_retriever(conn, args.version) if args.scoped else None,
+            assistant.extras(conn, args.version) if args.channels else None,
         )
         texts = [as_read(p) for p in store.searchable_passages(conn, args.version)]
         pictures = store.picture_passages(conn, args.version)
@@ -1521,11 +1522,9 @@ def run_web_retrieval(args: argparse.Namespace) -> int:
             for url in item["holders"]:
                 if url not in anywhere:
                     anywhere[url] = store.document_passages(conn, args.version, url)
-            ranked = store.search(
-                conn, args.version, item["question"], llm.embed, llm.rerank
-            )
+            ranked, top = given(conn, args.version, item["question"], args.channels)
             held = [p for url in item["holders"] for p in anywhere[url]]
-            results.append(webpages.fact_result(item, ranked, held))
+            results.append(webpages.fact_result(item, ranked, held, top))
         passages = store.passage_count(conn, args.version)
     found = lookups.summary(results)["web-facts"]
     record = {"version": args.version, "passages": passages, "summary": found}
@@ -1663,12 +1662,17 @@ def run_image_retrieval(args: argparse.Namespace) -> int:
     folder = sets.require("image-facts", args.root, args.registry)
     items = grades.read_json(folder / "questions.json")["questions"]
     arm = f"T+S {args.arm}" if args.visual else "T"
+    if args.channels:
+        arm = f"channels ({config.PICTURE_RANKING})"
     results = []
     with assistant.connect() as conn:
         search = picture_search(conn, args) if args.visual else plain_search(conn)
         for item in items:
-            ranked = search(args.version, item["question"])
-            results.append(imagesets.picture_result(item, ranked))
+            if args.channels:
+                ranked, top = given(conn, args.version, item["question"], True)
+            else:
+                ranked, top = search(args.version, item["question"]), lookups.TOP
+            results.append(imagesets.picture_result(item, ranked, top))
     found = lookups.summary(results)["image-facts"]
     write_json(args.out, {"version": args.version, "arm": arm, "summary": found,
                           "results": results})  # fmt: skip
@@ -1748,16 +1752,14 @@ def run_kb_probe(args: argparse.Namespace) -> int:
     with assistant.connect() as conn:
         pictures = store.picture_passages(conn, args.version)
         for item in items:
-            given = store.search(
-                conn, args.version, item["question"], llm.embed, llm.rerank
-            )
+            ranked, top = given(conn, args.version, item["question"], args.channels)
             anywhere: list[Passage] = []
             for nugget in item["nuggets"]:
                 for url in nugget.get("holders", []):
                     anywhere += store.document_passages(conn, args.version, url)
                 ids = [pictures[p] for p in nugget.get("accepted", []) if p in pictures]
                 anywhere += store.load_passages(conn, ids)
-            results.append(kbprobe.result(item, given[: lookups.TOP], anywhere))
+            results.append(kbprobe.result(item, ranked[:top], anywhere))
     found = lookups.summary(results)
     pooled = kbprobe.pooled(results)
     summary = {"strata": found, "pooled": pooled}
@@ -1767,6 +1769,18 @@ def run_kb_probe(args: argparse.Namespace) -> int:
     print(f"kb-probe on version {args.version}: " + ", ".join(
         f"{name} {value:.3f}" for name, value in pooled.items()))  # fmt: skip
     return 0
+
+
+def given(
+    conn: store.Connection, version: int, question: str, channels: bool
+) -> tuple[list[Passage], int]:
+    """What one search gives, and how many of it are scored: the top 8, as X9 to X43
+    scored; with `channels`, everything an answer is given, the company's places and
+    the pictures and guidance added after them (X44 F2)."""
+    if channels:
+        found = assistant.searched(conn, version, question)
+        return found, len(found)
+    return store.search(conn, version, question, llm.embed, llm.rerank), lookups.TOP
 
 
 Search = Callable[[int, str], list[Passage]]  # (version, question) -> best first
@@ -1782,7 +1796,7 @@ def plain_search(conn: store.Connection) -> Search:
 def picture_search(conn: store.Connection, args: argparse.Namespace) -> Search:
     """Search with SigLIP2's picture ranking placed as `args.arm` says (B3's T+S)."""
     vectors = grades.read_json(args.visual)
-    _, embed_texts = visual.siglip_model(visual.SIGLIP)
+    _, embed_texts = siglip.siglip_model(config.SIGLIP)
 
     def search(version: int, question: str) -> list[Passage]:
         by_picture = store.picture_passages(conn, version)
@@ -1797,17 +1811,6 @@ def picture_search(conn: store.Connection, args: argparse.Namespace) -> Search:
         return visual.with_quota(ranked, pictures)
 
     return search
-
-
-def run_image_vectors(args: argparse.Namespace) -> int:
-    places = grades.read_json(config.IMAGES / "places.json")
-    ids = sorted({place["id"] for place in places})
-    known = grades.read_json(args.out) if args.out.exists() else {}
-    embed_pictures, _ = visual.siglip_model(args.model)
-    vectors = visual.picture_vectors(ids, config.IMAGES, embed_pictures, known)
-    write_json(args.out, vectors)
-    print(f"{len(vectors)} picture vectors in {args.out} ({len(known)} kept)")
-    return 0
 
 
 def run_image_requests(args: argparse.Namespace) -> int:
@@ -2538,8 +2541,6 @@ def main(argv: list[str] | None = None) -> int:
             return run_kb_probe_seal(args)
         if args.command == "kb-probe":
             return run_kb_probe(args)
-        if args.command == "image-vectors":
-            return run_image_vectors(args)
         if args.command == "image-requests":
             return run_image_requests(args)
         if args.command == "web-links":

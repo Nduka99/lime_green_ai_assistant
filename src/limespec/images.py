@@ -262,10 +262,11 @@ def picture_passages(
     path, then any shorter alt text, then any description (`descriptions`, by id; X44
     F6). So a picture has words of its own exactly when its text is not empty or its
     context has more than one line (the picture channel's word ranking, `store`).
+    Only places in a page or document of the build (`titles`) count (X44 F5).
     """
     descriptions = descriptions or {}
     chosen: dict[str, dict[str, Any]] = {}
-    for place in places:
+    for place in [place for place in places if place["source"] in titles]:
         best = chosen.get(place["id"])
         if best is None or len(place["alt"]) > len(best["alt"]):
             chosen[place["id"]] = place
@@ -284,7 +285,7 @@ def picture_passages(
         if descriptions.get(identity):
             context.append(descriptions[identity])
         url = place["source"]
-        row = (url, titles.get(url, url), PICTURE, "\n".join(lines),
+        row = (url, titles[url], PICTURE, "\n".join(lines),
                "\n".join(context), place["page"])  # fmt: skip
         found.append((row, identity))
     return found

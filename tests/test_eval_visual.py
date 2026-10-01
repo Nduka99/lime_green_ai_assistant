@@ -13,7 +13,7 @@ from PIL import Image
 
 from evaluation import __main__ as cli
 from evaluation import sets, visual
-from limespec import assistant, config, store
+from limespec import assistant, config, siglip, store
 from limespec.models import Passage
 
 
@@ -51,12 +51,30 @@ def test_the_model_gives_unit_vectors_and_reads_text_lowercased(
     )
     Image.new("RGB", (4, 4), "green").save(tmp_path / "a.png")
 
-    pictures, texts = visual.siglip_model(tmp_path)
+    pictures, texts = siglip.siglip_model(tmp_path)
 
     assert pictures([tmp_path / "a.png"]) == [[0.6000000238418579, 0.800000011920929]]
     assert texts(["Show Me Duro"]) == [[0.0, 1.0]]
     assert asked[1]["text"] == ["show me duro"]
     assert (asked[1]["padding"], asked[1]["max_length"]) == ("max_length", 64)
+
+
+def test_a_question_s_vector_comes_from_the_text_tower_loaded_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded: list[Path] = []
+
+    def model(folder: Path) -> Any:
+        loaded.append(folder)
+        return (lambda paths: [], lambda texts: [[0.0, 1.0] for _ in texts])
+
+    monkeypatch.setattr(siglip, "siglip_model", model)
+    siglip.text_encoder.cache_clear()
+
+    assert siglip.text_vector("Show me York") == [0.0, 1.0]
+    assert siglip.text_vector("Show me Bath") == [0.0, 1.0]
+    assert loaded == [config.SIGLIP]
+    siglip.text_encoder.cache_clear()
 
 
 def test_vectors_resume_and_pictures_rank_by_cosine(tmp_path: Path) -> None:
@@ -66,7 +84,7 @@ def test_vectors_resume_and_pictures_rank_by_cosine(tmp_path: Path) -> None:
         embedded.append([path.stem for path in paths])
         return [[1.0, 0.0] for _ in paths]
 
-    vectors = visual.picture_vectors(["a", "b"], tmp_path, embed, {"a": [0.0, 1.0]})
+    vectors = siglip.picture_vectors(["a", "b"], tmp_path, embed, {"a": [0.0, 1.0]})
 
     assert vectors == {"a": [0.0, 1.0], "b": [1.0, 0.0]} and embedded == [["b"]]
     assert visual.picture_ranking([0.0, 1.0], vectors, {"a": 7, "b": 3}) == [7, 3]
@@ -83,19 +101,14 @@ def test_the_quota_keeps_the_reranked_top_and_adds_new_pictures() -> None:
 
 
 @pytest.mark.parametrize("arm", ["pool", "quota"])
-def test_the_command_line_embeds_pictures_and_scores_each_arm(
+def test_the_command_line_scores_each_arm(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     arm: str,
 ) -> None:
-    images = tmp_path / "images"
-    images.mkdir()
-    places = [{"id": "b"}, {"id": "b"}, {"id": "c"}]
-    (images / "places.json").write_text(json.dumps(places), encoding="utf-8")
-    monkeypatch.setattr(config, "IMAGES", images)
     monkeypatch.setattr(
-        visual,
+        siglip,
         "siglip_model",
         lambda folder: (
             lambda paths: [[1.0, 0.0] for _ in paths],
@@ -103,8 +116,7 @@ def test_the_command_line_embeds_pictures_and_scores_each_arm(
         ),
     )
     vectors = tmp_path / "vectors.json"
-    assert cli.main(["image-vectors", "--out", str(vectors)]) == 0
-    assert "2 picture vectors" in capsys.readouterr().out
+    vectors.write_text(json.dumps({"b": [1.0, 0.0], "c": [1.0, 0.0]}))
 
     folder = tmp_path / "eval" / "image-facts"
     folder.mkdir(parents=True)
@@ -147,6 +159,14 @@ def test_the_command_line_embeds_pictures_and_scores_each_arm(
     assert "Success@8 1.000" in capsys.readouterr().out
     assert fused == ([[[5, 6]]] if arm == "pool" else [None])  # one ranking more
     assert json.loads(out.read_text())["arm"] == f"T+S {arm}"
+
+    # The channels arm scores everything an answer is given (X44 F2).
+    given = [passage(n) for n in range(1, 9)] + [passage(9, "b")]
+    monkeypatch.setattr(assistant, "searched", lambda conn, v, q: given)
+    command = [*common, "image-retrieval", "--version", "22", "--out", str(out)]
+    assert cli.main([*command, "--channels"]) == 0
+    assert json.loads(out.read_text())["arm"] == "channels (words)"
+    assert json.loads(out.read_text())["summary"]["success"] == 1.0
 
 
 def test_the_serving_check_replays_text_then_asks_with_pictures(

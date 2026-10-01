@@ -15,10 +15,12 @@ from limespec.answer import (
     answer,
     answer_schema,
     closest_pages,
+    gather,
     interleave,
     read_output,
     read_understanding,
     user_prompt,
+    with_extras,
 )
 from limespec.ingest import prepare_index
 from limespec.llm import ModelServerError
@@ -386,6 +388,38 @@ def test_a_question_with_several_parts_is_searched_whole_and_by_part() -> None:
     assert len(result.passages) == 12  # MAX_PASSAGES for several parts
     assert result.status == "answered" and result.notice == ""  # every part answered
     assert "Parts of the question:\n1. Is Duro breathable?" in model.requests[1][1]
+
+
+def test_what_each_search_adds_comes_after_its_company_passages() -> None:
+    ranked = [passage(n, f"text {n}") for n in range(1, 21)]
+    told: list[tuple[str, list[int]]] = []
+
+    def extra(query: str, company: Any) -> list[Passage]:
+        told.append((query, [p.id for p in company]))
+        return [Passage(90, "u", "T", "Image", "", "", image="a"), passage(91, "g")]
+
+    found = gather(["Duro?", "Solo?"], lambda query: ranked, None, extra)
+
+    assert [query for query, _ in told] == ["Duro? Solo?", "Duro?", "Solo?"]
+    assert told[0][1] == list(range(1, 9))  # each search's top places
+    assert [p.id for p in found] == [*range(1, 13), 90, 91]  # each added once
+
+
+def test_added_passages_keep_to_the_picture_cap_and_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from limespec import config
+
+    found = [passage(1, "one"), Passage(2, "u", "T", "", "", "", image="p")]
+    pictures = [Passage(n, "u", "T", "", "", "", image=f"p{n}") for n in range(3, 9)]
+    guidance = [passage(n, f"g{n}") for n in range(20, 50)]
+
+    taken = with_extras(found, [*pictures, *guidance])
+
+    assert sum(bool(p.image) for p in taken) == config.MAX_PICTURES
+    assert len(taken) == config.PASSAGE_BUDGET
+    monkeypatch.setattr(config, "PASSAGE_BUDGET", 2)
+    assert with_extras(found, guidance) == tuple(found)
 
 
 def test_a_one_part_question_gets_the_top_eight_of_its_search() -> None:

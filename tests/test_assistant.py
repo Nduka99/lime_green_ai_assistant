@@ -271,3 +271,84 @@ def test_an_answer_is_traced_stage_by_stage_without_its_text(
         "limespec.claims.kept": 1,
         "limespec.claims.removed": 0,
     }
+
+
+def test_one_answer_embeds_each_query_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[list[str]] = []
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        asked.append(texts)
+        return [[float(len(text))] for text in texts]
+
+    monkeypatch.setattr(llm, "embed", embed)
+    remember = assistant.query_embedder()
+
+    assert remember(["ab", "abc", "ab"]) == [[2.0], [3.0], [2.0]]
+    assert remember(["abc"]) == [[3.0]]
+    assert asked == [["ab", "abc"]]
+
+
+def picture(number: int) -> Passage:
+    return Passage(number, "u", "T", "Image", "", "", image=f"p{number}")
+
+
+def text_passage(number: int) -> Passage:
+    return Passage(number, "u", "T", "", f"text {number}", "")
+
+
+@pytest.mark.parametrize(("ranking", "ids"), [("words", [5, 7]), ("siglip", [5, 6])])
+def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
+    monkeypatch: pytest.MonkeyPatch, ranking: str, ids: list[int]
+) -> None:
+    from limespec import siglip
+
+    channels: list[str] = []
+
+    def fused(conn: Any, version: int, query: str, embed: Any, **opts: Any) -> Any:
+        channels.append(opts["channel"])
+        return [7, 5] if opts["channel"] == "picture" else [30, 31, 32]
+
+    def load(conn: Any, found: list[int]) -> list[Passage]:
+        return [picture(n) if n < 10 else text_passage(n) for n in found]
+
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        # Guidance 30 beats every company passage, 31 only the last, 32 none.
+        scores = {"text 1": 5.0, "text 2": 3.0, "text 30": 9.0, "text 31": 4.0}
+        return [scores.get(document.split("\n")[-1], 0.0) for document in documents]
+
+    monkeypatch.setattr(config, "PICTURE_RANKING", ranking)
+    monkeypatch.setattr(store, "picture_passages", lambda conn, v: {"p5": 5})
+    monkeypatch.setattr(store, "picture_ranking", lambda conn, v, vector, n: [5, 6])
+    monkeypatch.setattr(store, "fused", fused)
+    monkeypatch.setattr(store, "load_passages", load)
+    monkeypatch.setattr(siglip, "text_vector", lambda query: [1.0])
+    monkeypatch.setattr(llm, "rerank", rerank)
+    add = assistant.extras(None, 21, llm.embed)  # type: ignore[arg-type]
+
+    found = add("Show me Duro", [text_passage(1), text_passage(2)])
+
+    assert [p.id for p in found] == [*ids, 30, 31]
+    assert channels == (["picture", "guidance"] if ranking == "words" else ["guidance"])
+    assert [p.id for p in add("Duro", [])] == [*ids, 30, 31]  # best guidance alone
+
+
+def test_a_version_without_pictures_or_guidance_adds_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "picture_passages", lambda conn, v: {})
+    monkeypatch.setattr(store, "fused", lambda *args, **opts: [])
+    monkeypatch.setattr(store, "load_passages", lambda conn, found: [])
+
+    assert assistant.extras(None, 4)("Duro", [text_passage(1)]) == []  # type: ignore[arg-type]
+
+
+def test_a_search_as_an_answer_makes_it_is_every_channel_s_places(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    company = [text_passage(1)]
+    monkeypatch.setattr(store, "search", lambda conn, v, q, embed, rerank: company)
+    monkeypatch.setattr(
+        assistant, "extras", lambda conn, v, embed: lambda q, top: [picture(5)]
+    )
+
+    assert [p.id for p in assistant.searched(None, 21, "Duro")] == [1, 5]  # type: ignore[arg-type]

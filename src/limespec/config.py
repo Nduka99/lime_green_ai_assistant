@@ -105,6 +105,25 @@ PICTURES = os.environ.get("LIMESPEC_PICTURES", "")
 if PICTURES not in {"", "see", "claims"}:
     raise ValueError('LIMESPEC_PICTURES must be "see", "claims" or unset')
 MAX_PICTURES = 4
+# Search channels (X44 F2): company content (the site's pages, Lime Green's
+# documents) fills each search's places; pictures and general guidance are ranked
+# apart and added after it, never in its place. Each search adds its best
+# PICTURES_PER_SEARCH pictures, at most MAX_PICTURES per question, and up to
+# GUIDANCE_PER_SEARCH guidance passages that the reranker puts above the company
+# channel's last place. Pictures are ranked by SigLIP2 ("siglip") or by it fused
+# with their own words ("words"), the arm X44 selects.
+PICTURES_PER_SEARCH = 2
+GUIDANCE_PER_SEARCH = 2
+PICTURE_RANKING = os.environ.get("LIMESPEC_PICTURE_RANKING", "words")
+if PICTURE_RANKING not in {"siglip", "words"}:
+    raise ValueError('LIMESPEC_PICTURE_RANKING must be "siglip" or "words"')
+# External documents are titled with their publisher first (general guidance).
+GUIDANCE_TITLE = "GOV.UK — "
+# SigLIP2 so400m (Apache-2.0): its text tower ranks pictures at query time on the
+# CPU; its picture vectors are stored beside each picture.
+SIGLIP = Path("models/siglip2-so400m-patch14-384")
+SIGLIP_DIMENSIONS = 1152
+SIGLIP_TEXT_TOKENS = 64  # the question padded as the model card does
 
 # `limespec serve` listens on this machine only: the page is a local demo. 8090
 # sits beside the model servers (8080 chat, 8081 embeddings, 8082 reranking) and

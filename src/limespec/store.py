@@ -57,12 +57,14 @@ def write_version(
     manifest: dict[str, str],
     images: Sequence[str] = (),
     pictures: Mapping[str, bytes] | None = None,
+    picture_vectors: Mapping[str, Sequence[float]] | None = None,
 ) -> int:
     """Store one index version (not yet live) with its BM25 index; return its id.
 
     A page captured with the same bytes before is reused, not stored twice. `images`
     names each passage's picture ("" for none), in passage order; `pictures` holds the
-    PNG of each, stored once across versions.
+    PNG of each, stored once across versions, and `picture_vectors` their SigLIP2
+    vectors. Each passage's search channel follows from what it is (`channel`).
     """
     images = images or [""] * len(passages)
     with conn.transaction():
@@ -70,6 +72,13 @@ def write_version(
             cursor.executemany(
                 "INSERT INTO images (id, png) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 list((pictures or {}).items()),
+            )
+            cursor.executemany(
+                "UPDATE images SET siglip = %s::vector WHERE id = %s",
+                [
+                    (vector_text(vector), identity)
+                    for identity, vector in (picture_vectors or {}).items()
+                ],
             )
         document_ids = {}
         for url, title, fetched_at, sha256 in pages:
@@ -110,13 +119,14 @@ def write_version(
                     vector_text(vector),
                     commercial,
                     image or None,
+                    channel(title, image),
                 )
             )
         with conn.cursor() as cursor:
             cursor.executemany(
                 "INSERT INTO passages (index_version_id, document_id, title, heading, "
-                "text, context, page, embedding, commercial, image) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)",
+                "text, context, page, embedding, commercial, image, channel) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s)",
                 rows,
             )
         # A partial index keeps its own word statistics. The version id is a
@@ -133,6 +143,14 @@ def write_version(
             )
         )
     return int(version[0])
+
+
+def channel(title: str, image: str) -> str:
+    """A passage's search channel (X44 F2): a picture's, general guidance (an external
+    document, titled with its publisher first), or the company's own content."""
+    if image:
+        return "picture"
+    return "guidance" if title.startswith(config.GUIDANCE_TITLE) else "company"
 
 
 def known_vectors(
@@ -210,14 +228,25 @@ def in_scope(scope: Sequence[str]) -> sql.Composable:
     )
 
 
+def in_channel(name: str) -> sql.Composable:
+    """A filter keeping one search channel's passages (X44 F2). A picture is searched
+    by words only when it has words of its own: text, or a context line after its
+    section path (`images.picture_passages`)."""
+    found = sql.SQL(" AND channel = {}").format(sql.Literal(name))
+    if name == "picture":
+        found += sql.SQL(" AND (text <> '' OR strpos(context, chr(10)) > 0)")
+    return found
+
+
 def keyword_ranking(
     conn: Connection,
     version_id: int,
     question: str,
     limit: int,
     scope: Sequence[str] = (),
+    channel: str = "company",
 ) -> list[int]:
-    """Passage ids ranked by BM25 over the question's words (experiment X2).
+    """Passage ids of one channel ranked by BM25 over the question's words (X2).
 
     Passages that share no word with the question score 0 and are left out, as a
     full-text match leaves them out, and so are passages with a price (X16). Ties
@@ -231,9 +260,14 @@ def keyword_ranking(
     rows = conn.execute(
         sql.SQL(
             "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
-            "AND NOT commercial{} ORDER BY {}, id LIMIT {}"
+            "AND NOT commercial{}{} ORDER BY {}, id LIMIT {}"
         ).format(
-            sql.Literal(version_id), score, in_scope(scope), score, sql.Literal(limit)
+            sql.Literal(version_id),
+            score,
+            in_scope(scope),
+            in_channel(channel),
+            score,
+            sql.Literal(limit),
         )
     ).fetchall()
     return [row[0] for row in rows]
@@ -245,13 +279,14 @@ def vector_ranking(
     query_vector: Sequence[float],
     limit: int,
     scope: Sequence[str] = (),
+    channel: str = "company",
 ) -> list[int]:
-    """Passage ids ranked by cosine similarity (inner product of unit vectors),
-    leaving out passages with a price (X16)."""
+    """Passage ids of one channel ranked by cosine similarity (inner product of unit
+    vectors), leaving out passages with a price (X16)."""
     query = sql.SQL(
-        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial{} "
+        "SELECT id FROM passages WHERE index_version_id = %s AND NOT commercial{}{} "
         "ORDER BY embedding <#> %s::vector, id LIMIT %s"
-    ).format(in_scope(scope))
+    ).format(in_scope(scope), in_channel(channel))
     rows = conn.execute(
         query, (version_id, vector_text(query_vector), limit)
     ).fetchall()
@@ -267,25 +302,51 @@ def search(
     top: int | None = None,
     scope: Sequence[str] = (),
     also: Sequence[list[int]] = (),
+    channel: str = "company",
 ) -> list[Passage]:
-    """The top passages of one index version for a question, best first: `top` of
-    them, or `config.TOP_K`; only passages of the named `scope`, if one is given.
+    """The top passages of one index version's channel for a question, best first:
+    `top` of them, or `config.TOP_K`; only passages of the named `scope`, if one is
+    given. The fused rankings' best candidates ordered by the reranker
+    (`retrieve.rerank_top`)."""
+    ranking = fused(conn, version_id, question, embed, scope, also, channel)
+    candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
+    return rerank_top(question, candidates, rerank, top)
 
-    Keyword and vector rankings, and any rankings `also` given (passage ids, best
-    first), fused, then the reranker orders the best candidates
-    (`retrieve.rerank_top`).
-    """
+
+def fused(
+    conn: Connection,
+    version_id: int,
+    question: str,
+    embed: Embed,
+    scope: Sequence[str] = (),
+    also: Sequence[list[int]] = (),
+    channel: str = "company",
+) -> list[int]:
+    """One channel's keyword and vector rankings for a question, and any rankings
+    `also` given (passage ids, best first), fused: passage ids, best first."""
     query_vector = embed([config.QUERY_INSTRUCTION + question])[0]
     limit = config.CANDIDATES_PER_METHOD
-    ranking = fuse(
+    return fuse(
         [
-            keyword_ranking(conn, version_id, question, limit, scope),
-            vector_ranking(conn, version_id, query_vector, limit, scope),
+            keyword_ranking(conn, version_id, question, limit, scope, channel),
+            vector_ranking(conn, version_id, query_vector, limit, scope, channel),
             *also,
         ]
     )
-    candidates = load_passages(conn, ranking[: config.RERANK_CANDIDATES])
-    return rerank_top(question, candidates, rerank, top)
+
+
+def picture_ranking(
+    conn: Connection, version_id: int, query_vector: Sequence[float], limit: int
+) -> list[int]:
+    """Picture passage ids ranked by what their pictures show: SigLIP2's cosine
+    between the question and each stored picture (X44 F2)."""
+    rows = conn.execute(
+        "SELECT p.id FROM passages p JOIN images i ON i.id = p.image "
+        "WHERE p.index_version_id = %s AND p.channel = 'picture' "
+        "AND i.siglip IS NOT NULL ORDER BY i.siglip <#> %s::vector, p.id LIMIT %s",
+        (version_id, vector_text(query_vector), limit),
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 def product_names(conn: Connection, version_id: int) -> list[str]:

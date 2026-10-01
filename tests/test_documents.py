@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 import pytest
 
-from limespec import acquire, cli, documents, llm, pdf
+from limespec import acquire, cli, config, documents, llm, pdf
 from limespec.elements import Element
 
 WORDS = "Mix four litres of clean water with each bag for ten minutes please"
@@ -245,13 +245,18 @@ def test_saved_readings_become_index_documents(
     }
     untitled = {"sha256": "def", "elements": [],
                 "urls": ["https://example.test/d%20e.pdf"]}  # fmt: skip
-    for reading in (titled, untitled):
+    unlisted = {"sha256": "eee", "elements": [], "urls": ["https://example.test/e.pdf"]}
+    for reading in (titled, untitled, unlisted):
         (tmp_path / f"{reading['sha256']}.json").write_text(json.dumps(reading))
     (tmp_path / "report.json").write_text("{}")
     records = [{"sha256": "abc", "fetched_at": "T1"},
                {"sha256": "abc", "fetched_at": "T2"},
-               {"sha256": "def", "fetched_at": "T3", "kind": "external"}]  # fmt: skip
+               {"sha256": "def", "fetched_at": "T3", "kind": "external"},
+               {"sha256": "eee", "fetched_at": "T4", "kind": "external"}]  # fmt: skip
     monkeypatch.setattr(acquire, "read_manifest", lambda: records)
+    listed = tmp_path / "external.txt"
+    listed.write_text("# kept\nhttps://example.test/d%20e.pdf OGL-3.0\n")
+    monkeypatch.setattr(config, "EXTERNAL_SOURCES", listed)
 
     found = documents.index_documents(
         "table", {"https://example.test/c.pdf": "C — SDS"}, tmp_path

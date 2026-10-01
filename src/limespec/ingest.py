@@ -9,7 +9,7 @@ import hashlib
 import json
 import posixpath
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,6 +51,7 @@ TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: the <h1>, a label, a d
 # X42 W3: web passages from `limespec.webpage`, by section (as `page_passages`) or
 # sections packed with their section path as context (`passages.merge`), repeats once.
 WEB_FORMS = ("sections", "page", "page-once")
+PICTURE_VECTORS = "siglip.json"  # SigLIP2 vectors beside the pictures (X44 F2)
 
 
 class IngestError(RuntimeError):
@@ -543,7 +544,15 @@ def ingest(
         prepared.manifest,
         prepared.images,
         prepared.pictures,
+        stored_picture_vectors(prepared.pictures),
     )
     if live:
         store.set_live(conn, version)
     return version, prepared.manifest
+
+
+def stored_picture_vectors(ids: Collection[str]) -> dict[str, list[float]]:
+    """The SigLIP2 vectors `limespec read-images --vectors` made for these pictures."""
+    path = config.IMAGES / PICTURE_VECTORS
+    found = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    return {identity: found[identity] for identity in ids if identity in found}

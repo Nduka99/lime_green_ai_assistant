@@ -97,3 +97,11 @@ def test_the_command_line_replays_and_scores_reach(
     again = tmp_path / "again.json"
     assert cli.main([*command[:-1], str(again), "--parts", str(out)]) == 0
     assert json.loads(again.read_text(encoding="utf-8"))["rows"] == saved["rows"]
+    shown = Passage(3, "https://example.test/duro", "Duro", "Image", "", "", image="p")
+    monkeypatch.setattr(
+        assistant, "extras", lambda conn, version: lambda query, top: [shown]
+    )
+    channelled = tmp_path / "channels.json"
+    command = [*command[:-1], str(channelled), "--parts", str(out), "--channels"]
+    assert cli.main(command) == 0
+    assert json.loads(channelled.read_text(encoding="utf-8"))["passages"]["q1"][-1] == 3

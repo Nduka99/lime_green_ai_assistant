@@ -212,3 +212,15 @@ def test_the_command_line_scores_a_version_on_kb_probe(
     assert "text 1.000, pictures 0.000, all 1.000" in capsys.readouterr().out
     saved = json.loads(run.read_text())
     assert saved["summary"]["strata"]["pdf-text"]["ceiling"] == 1.0
+
+    # With --channels, everything an answer is given is scored, beyond the top 8.
+    many = [passage(n, "u9", f"filler {n}") for n in range(10, 18)]
+    monkeypatch.setattr(store, "search", lambda conn, v, q, e, r: [*many, held])
+    command = [*common, "kb-probe", "--version", "21", "--out", str(run)]
+    assert cli.main(command) == 0
+    assert "text 0.000" in capsys.readouterr().out
+    monkeypatch.setattr(
+        assistant, "searched", lambda conn, v, q: [*many, held, picture]
+    )
+    assert cli.main([*command, "--channels"]) == 0
+    assert "text 1.000" in capsys.readouterr().out

@@ -183,12 +183,12 @@ def copies(ids: Sequence[str], folder: Path) -> dict[str, list[str]]:
 
 
 def picture_result(
-    item: Mapping[str, Any], ranked: Sequence[Passage]
+    item: Mapping[str, Any], ranked: Sequence[Passage], top: int = TOP
 ) -> dict[str, Any]:
-    """One image-facts question's result: the first rank among the top TOP
-    passages of a passage made from an accepted picture."""
+    """One image-facts question's result: the first rank among the `top` passages
+    of a passage made from an accepted picture."""
     rank = None
-    for position, passage in enumerate(ranked[:TOP], 1):
+    for position, passage in enumerate(ranked[:top], 1):
         if passage.image and passage.image in item["accepted"]:
             rank = position
             break

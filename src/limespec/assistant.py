@@ -11,17 +11,19 @@ from typing import Any
 
 import psycopg
 
-from limespec import config, llm, scope, store, telemetry
+from limespec import config, llm, scope, siglip, store, telemetry
 from limespec.answer import (
     PROMPT_SHA256,
     UNDERSTAND_SCHEMA,
     Chat,
+    Extra,
     Retrieve,
     See,
     answer,
 )
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
+from limespec.retrieve import Embed, fuse, rerank_top
 from limespec.view import view
 
 
@@ -91,20 +93,45 @@ def seer(conn: store.Connection, on_stage: Callable[[str], None]) -> See:
     return see
 
 
-def retriever(conn: store.Connection, version_id: int) -> Retrieve:
-    """One search of an index version with the configured model servers. It returns
-    its whole reranked pool; `answer.gather` takes the top 8, or interleaves several
-    searches up to 12 (S2b C2). The evaluation replay uses the same function."""
+def query_embedder() -> Embed:
+    """`llm.embed` remembering what it has embedded: one answer searches the same
+    query in several channels (X44 F2). Made for each answer, so nothing is kept
+    between answers."""
+    known: dict[str, list[float]] = {}
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        missing = [text for text in dict.fromkeys(texts) if text not in known]
+        if missing:
+            known.update(zip(missing, llm.embed(missing), strict=True))
+        return [known[text] for text in texts]
+
+    return embed
+
+
+def retriever(
+    conn: store.Connection, version_id: int, embed: Embed | None = None
+) -> Retrieve:
+    """One search of an index version's company channel with the configured model
+    servers. It returns its whole reranked pool; `answer.gather` takes the top 8, or
+    interleaves several searches up to 12 (S2b C2). The evaluation replay uses the
+    same function."""
 
     def retrieve(query: str) -> list[Passage]:
         return store.search(
-            conn, version_id, query, llm.embed, llm.rerank, config.RERANK_CANDIDATES
+            conn,
+            version_id,
+            query,
+            embed or llm.embed,
+            llm.rerank,
+            config.RERANK_CANDIDATES,
         )
 
     return retrieve
 
 
-def scoped_retriever(conn: store.Connection, version_id: int) -> Retrieve:
+def scoped_retriever(
+    conn: store.Connection, version_id: int, embed: Embed | None = None
+) -> Retrieve:
     """A search of an index version inside the products a query names (E5 B4): its
     best `config.SCOPED_TOP` passages, or none when the query names no product.
     Answers use it after each search; `evaluation replay --scoped` measures it."""
@@ -115,10 +142,79 @@ def scoped_retriever(conn: store.Connection, version_id: int) -> Retrieve:
         if not names:
             return []
         return store.search(
-            conn, version_id, query, llm.embed, llm.rerank, config.SCOPED_TOP, names
+            conn,
+            version_id,
+            query,
+            embed or llm.embed,
+            llm.rerank,
+            config.SCOPED_TOP,
+            names,
         )
 
     return retrieve
+
+
+def extras(
+    conn: store.Connection, version_id: int, embed: Embed | None = None
+) -> Extra:
+    """What each search adds after the company's top places (X44 F2): its best
+    pictures, then general guidance placed on merit (`guidance_above`). A version
+    with no pictures never loads the picture model."""
+    has_pictures = bool(store.picture_passages(conn, version_id))
+
+    def add(query: str, company: Sequence[Passage]) -> list[Passage]:
+        use = embed or llm.embed
+        found = best_pictures(conn, version_id, query, use) if has_pictures else []
+        return [*found, *guidance_above(conn, version_id, query, company, use)]
+
+    return add
+
+
+def best_pictures(
+    conn: store.Connection, version_id: int, query: str, embed: Embed
+) -> list[Passage]:
+    """A search's best `config.PICTURES_PER_SEARCH` pictures: ranked by what they
+    show (SigLIP2), fused with the ranking by their own words when
+    `config.PICTURE_RANKING` is "words"."""
+    limit = config.CANDIDATES_PER_METHOD
+    rankings = [
+        store.picture_ranking(conn, version_id, siglip.text_vector(query), limit)
+    ]
+    if config.PICTURE_RANKING == "words":
+        rankings.append(store.fused(conn, version_id, query, embed, channel="picture"))
+    return store.load_passages(conn, fuse(rankings)[: config.PICTURES_PER_SEARCH])
+
+
+def guidance_above(
+    conn: store.Connection,
+    version_id: int,
+    query: str,
+    company: Sequence[Passage],
+    embed: Embed,
+) -> list[Passage]:
+    """General guidance the reranker puts above the company's last place: its best
+    candidates are reranked with the company's top places, and at most
+    `config.GUIDANCE_PER_SEARCH` of those ahead of every company passage's last are
+    kept. With no company passage, the best guidance stands alone."""
+    found = store.fused(conn, version_id, query, embed, channel="guidance")
+    candidates = store.load_passages(conn, found[: config.TOP_K])
+    if not candidates:
+        return []
+    pool = [*company, *candidates]
+    ranked = rerank_top(query, pool, llm.rerank, len(pool))
+    own = {passage.id for passage in company}
+    places = [n for n, passage in enumerate(ranked) if passage.id in own]
+    last = places[-1] if places else len(ranked)
+    above = [passage for passage in ranked[:last] if passage.id not in own]
+    return above[: config.GUIDANCE_PER_SEARCH]
+
+
+def searched(conn: store.Connection, version_id: int, query: str) -> list[Passage]:
+    """One search as an answer makes it, in every channel: the company's top places,
+    then the pictures and guidance it adds (X44 F2). The evaluation sets score it."""
+    embed = query_embedder()
+    company = store.search(conn, version_id, query, embed, llm.rerank)
+    return [*company, *extras(conn, version_id, embed)(query, company)]
 
 
 def ask_and_record(
@@ -129,11 +225,15 @@ def ask_and_record(
     with telemetry.span("answer"), connect() as conn:
         version_id = served_index(conn)
         started = time.perf_counter()
-        retrieve, chat = with_stages(retriever(conn, version_id), llm.chat, on_stage)
+        embed = query_embedder()
+        retrieve, chat = with_stages(
+            retriever(conn, version_id, embed), llm.chat, on_stage
+        )
         see = seer(conn, on_stage) if config.PICTURES else None
-        scoped = scoped_retriever(conn, version_id)
+        scoped = scoped_retriever(conn, version_id, embed)
         describe = config.PICTURES == "claims"
-        result = answer(question, retrieve, chat, scoped, see, describe)
+        extra = extras(conn, version_id, embed)
+        result = answer(question, retrieve, chat, scoped, see, describe, extra)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(

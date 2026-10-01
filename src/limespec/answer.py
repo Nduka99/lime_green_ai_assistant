@@ -29,6 +29,8 @@ from limespec.scope import scope_of
 from limespec.verify import verify
 
 Retrieve = Callable[[str], list[Passage]]
+# What a search adds after the company's passages: (query, its top places) → added.
+Extra = Callable[[str, Sequence[Passage]], list[Passage]]
 Chat = Callable[[str, str, dict[str, Any]], object]  # system, user, schema → JSON
 # A chat request that attaches the pictures of the passages given, in order (X43 B5).
 See = Callable[[str, str, dict[str, Any], Sequence[Passage]], object]
@@ -359,17 +361,49 @@ def interleave(
 
 
 def gather(
-    parts: Sequence[str], retrieve: Retrieve, scoped: Retrieve | None = None
+    parts: Sequence[str],
+    retrieve: Retrieve,
+    scoped: Retrieve | None = None,
+    extra: Extra | None = None,
 ) -> tuple[Passage, ...]:
     """The passages the answer request is given for a question's parts. One part:
     its own search. Several: the parts together, then each alone, interleaved. Then
-    each search again inside the products it names (`scoped`), if given."""
+    each search again inside the products it names (`scoped`), if given. Then what
+    each search adds after them (`extra`: pictures and general guidance, X44 F2)."""
     searches = list(parts) if len(parts) == 1 else [" ".join(parts), *parts]
     limit = config.TOP_K if len(parts) == 1 else config.MAX_PASSAGES
-    found = interleave([retrieve(query) for query in searches], limit)
-    if scoped is None:
+    pools = [retrieve(query) for query in searches]
+    found = interleave(pools, limit)
+    if scoped is not None:
+        found = with_own_copies(found, [p for query in searches for p in scoped(query)])
+    if extra is None:
         return found
-    return with_own_copies(found, [p for query in searches for p in scoped(query)])
+    added = [
+        passage
+        for query, pool in zip(searches, pools, strict=True)
+        for passage in extra(query, pool[: config.TOP_K])
+    ]
+    return with_extras(found, added)
+
+
+def with_extras(
+    found: Sequence[Passage], added: Sequence[Passage]
+) -> tuple[Passage, ...]:
+    """`found`, then each passage the searches added that is not there yet, at most
+    MAX_PICTURES pictures in all, within the budget."""
+    taken = list(found)
+    seen = {passage.id for passage in taken}
+    pictures = sum(bool(passage.image) for passage in taken)
+    for passage in added:
+        if passage.id in seen or len(taken) >= config.PASSAGE_BUDGET:
+            continue
+        if passage.image:
+            if pictures >= config.MAX_PICTURES:
+                continue
+            pictures += 1
+        seen.add(passage.id)
+        taken.append(passage)
+    return tuple(taken)
 
 
 def with_own_copies(
@@ -399,16 +433,17 @@ def answer(
     scoped: Retrieve | None = None,
     see: See | None = None,
     describe: bool = False,
+    extra: Extra | None = None,
 ) -> Answer:
-    """Answer one question from the indexed pages (`scoped`: see `gather`). Given
-    `see`, the answer request carries the pictures of the first MAX_PICTURES picture
-    passages; with `describe` too, a claim may state what one of them shows (X43
-    B5)."""
+    """Answer one question from the indexed pages (`scoped`, `extra`: see `gather`).
+    Given `see`, the answer request carries the pictures of the first MAX_PICTURES
+    picture passages; with `describe` too, a claim may state what one of them shows
+    (X43 B5)."""
     exposed, parts = understand(question, chat)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
         return Answer(question, "safety_referral", SAFETY_REFERRAL, (), (), ())
-    passages = gather(parts, retrieve, scoped)
+    passages = gather(parts, retrieve, scoped, extra)
     sources = {f"S{number}": passage for number, passage in enumerate(passages, 1)}
     pictures = [source_id for source_id, p in sources.items() if p.image]
     attached = pictures[: config.MAX_PICTURES] if see else []

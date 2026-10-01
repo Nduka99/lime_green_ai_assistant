@@ -380,6 +380,41 @@ def test_a_build_finds_the_vectors_the_newest_version_of_its_embedder_stored(
     assert store.known_vectors(pg, "another-embedder") == {}
 
 
+def test_each_channel_is_searched_apart_and_a_picture_needs_words_of_its_own(
+    pg: store.Connection,
+) -> None:
+    guidance = ("https://gov.test/adl.pdf", "GOV.UK — Approved Document L",
+                "2026-09-12T10:00:00+00:00", "sha-adl")  # fmt: skip
+    rows: list[store.PassageRow] = [
+        *PASSAGES,
+        (guidance[0], guidance[1], "Walls", "Walls must limit heat loss.", "", 4),
+        (PAGES[0][0], "Duro Render", "Image", "", "Image › Uses", None),
+        (PAGES[0][0], "Duro Render", "Image", "", "Image › Uses\nA rendered wall",
+         None),
+    ]  # fmt: skip
+    vectors = [padded(v) for v in [*VECTORS, [0.0, 1.0], [1.0, 0.0], [1.0, 0.0]]]
+    images = ["", "", "", "", "a" * 64, "b" * 64]
+    pictures = {"a" * 64: b"a", "b" * 64: b"b"}
+    version = store.write_version(
+        pg, [*PAGES, guidance], rows, vectors, MANIFEST, images, pictures
+    )
+
+    def channel_of(passage_id: int) -> str:
+        row = pg.execute("SELECT channel FROM passages WHERE id = %s", (passage_id,))
+        return str(row.fetchone()[0])  # type: ignore[index]
+
+    walls = store.keyword_ranking(pg, version, "walls", 10, channel="guidance")
+    wall_pictures = store.keyword_ranking(pg, version, "wall", 10, channel="picture")
+
+    assert [channel_of(n) for n in walls] == ["guidance"]
+    assert store.keyword_ranking(pg, version, "walls", 10) == []
+    assert len(wall_pictures) == 1  # the picture with no words is not searched by words
+    assert store.load_passages(pg, wall_pictures)[0].image == "b" * 64
+    fused = store.fused(pg, version, "walls", lambda texts: [padded([0.0, 1.0])])
+    assert fused and all(channel_of(n) == "company" for n in fused)
+    assert store.channel("Duro", "") == "company"
+
+
 def test_a_picture_is_stored_once_and_named_by_its_passage(
     pg: store.Connection,
 ) -> None:
@@ -391,14 +426,19 @@ def test_a_picture_is_stored_once_and_named_by_its_passage(
     rows = [*PASSAGES, image_row]
     vectors = [padded(v) for v in [*VECTORS, [0.8, 0.6]]]
     images = ["", "", "", picture]
+    siglip = [1.0] + [0.0] * 1151
     for _ in range(2):  # a second version reuses the stored picture
         version = store.write_version(
-            pg, PAGES, rows, vectors, MANIFEST, images, {picture: b"png"}
-        )
+            pg, PAGES, rows, vectors, MANIFEST, images, {picture: b"png"},
+            {picture: siglip},
+        )  # fmt: skip
 
-    found = store.load_passages(pg, store.keyword_ranking(pg, version, "pointed", 10))
+    ranked = store.keyword_ranking(pg, version, "pointed", 10, channel="picture")
+    found = store.load_passages(pg, ranked)
 
     assert [(p.image, p.heading) for p in found] == [(picture, "Image")]
+    assert store.keyword_ranking(pg, version, "pointed", 10) == []  # company only
+    assert store.picture_ranking(pg, version, siglip, 5) == ranked
     assert store.picture_passages(pg, version) == {picture: found[0].id}
     assert store.picture(pg, picture) == b"png"
     assert store.picture(pg, "b" * 64) is None

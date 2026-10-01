@@ -221,7 +221,9 @@ def index_documents(
 ) -> list[tuple[store.PageRow, list[store.PassageRow]]]:
     """Every saved reading as an index document with its passages, its tables in
     the given X9 form: one document per distinct file, under its first URL, titled
-    by the site (`ingest.pdf_titles`) or else by its file name."""
+    by the site (`ingest.pdf_titles`) or else by its file name. An external document
+    is indexed only while `config.EXTERNAL_SOURCES` lists it (X44 F5)."""
+    listed = acquire.read_external(config.EXTERNAL_SOURCES)
     fetched: dict[str, str] = {}
     external: set[str] = set()
     for record in acquire.read_manifest():
@@ -238,6 +240,8 @@ def index_documents(
         title = named[0] if named else ingest.file_title(urls[0])
         sha256 = str(reading["sha256"])
         if sha256 in external:
+            if not any(url in listed for url in urls):
+                continue  # collected once, no longer listed
             title = (
                 f"{EXTERNAL_PUBLISHER} — {title}"  # general guidance, not Lime Green's
             )

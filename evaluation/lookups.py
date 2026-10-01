@@ -105,12 +105,16 @@ def relevant(passage: Passage, item: Item, url: str) -> bool:
 
 
 def score_item(
-    item: Item, ranked: Sequence[Passage], anywhere: Sequence[Passage], url: str
+    item: Item,
+    ranked: Sequence[Passage],
+    anywhere: Sequence[Passage],
+    url: str,
+    top: int = TOP,
 ) -> dict[str, Any]:
-    """One item's result: its first relevant rank in the top passages (`ranked`),
+    """One item's result: its first relevant rank in the `top` passages (`ranked`),
     and whether any passage of its document holds the evidence at all (the ceiling)."""
     rank = None
-    for position, passage in enumerate(ranked[:TOP], 1):
+    for position, passage in enumerate(ranked[:top], 1):
         if relevant(passage, item, url):
             rank = position
             break

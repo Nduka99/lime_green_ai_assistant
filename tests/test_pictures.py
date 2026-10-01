@@ -94,6 +94,13 @@ def test_the_picture_setting_is_checked_when_read(
     importlib.reload(config)
     assert config.PICTURES == "claims"
     monkeypatch.delenv("LIMESPEC_PICTURES")
+    monkeypatch.setenv("LIMESPEC_PICTURE_RANKING", "pixels")
+    with pytest.raises(ValueError):
+        importlib.reload(config)
+    monkeypatch.setenv("LIMESPEC_PICTURE_RANKING", "siglip")
+    importlib.reload(config)
+    assert config.PICTURE_RANKING == "siglip"
+    monkeypatch.delenv("LIMESPEC_PICTURE_RANKING")
     importlib.reload(config)
 
 

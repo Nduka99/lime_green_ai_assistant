@@ -21,6 +21,7 @@ from limespec import (
 )
 from limespec.app import app
 from limespec.ingest import (
+    PICTURE_VECTORS,
     WEB_FORMS,
     IngestError,
     cache_path,
@@ -150,16 +151,17 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
-def run_read_images(vlm: str, describer: str = "") -> int:
+def run_read_images(vlm: str, describer: str = "", vectors: bool = False) -> int:
     """Store every picture of the pages and documents once, then read the text in
-    each with a vision model (GLM-OCR at `vlm`, X43 B) and describe each with a
-    vision generator (at `describer`, X44 F6); what is already saved is kept."""
+    each with a vision model (GLM-OCR at `vlm`, X43 B), describe each with a vision
+    generator (at `describer`, X44 F6) and give each its SigLIP2 vector (`vectors`,
+    X44 F2); what is already saved is kept."""
     from PIL import Image
 
-    from limespec import images
+    from limespec import images, siglip
 
-    if not vlm and not describer:
-        print("error: give --vlm, --describe or both", file=sys.stderr)
+    if not vlm and not describer and not vectors:
+        print("error: give --vlm, --describe or --vectors", file=sys.stderr)
         return 1
     for server in (vlm, describer):
         if server and not llm.healthy(server):
@@ -195,8 +197,17 @@ def run_read_images(vlm: str, describer: str = "") -> int:
             saved["description"] = images.describe(png.read_bytes(), describer)
             described += 1
         target.write_text(json.dumps(saved), encoding="utf-8")
-    print(f"{len(places)} places of {len(set(p['id'] for p in places))} pictures; "
-          f"{read} read and {described} described now")  # fmt: skip
+    ids = list(dict.fromkeys(place["id"] for place in places))
+    made = 0
+    if vectors:
+        path = config.IMAGES / PICTURE_VECTORS
+        known = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        embed_pictures, _ = siglip.siglip_model(config.SIGLIP)
+        found = siglip.picture_vectors(ids, config.IMAGES, embed_pictures, known)
+        path.write_text(json.dumps(found), encoding="utf-8")
+        made = len(set(found) - set(known))
+    print(f"{len(places)} places of {len(ids)} pictures; {read} read, "
+          f"{described} described and {made} vectors made now")  # fmt: skip
     return 0
 
 
@@ -311,6 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     images_parser.add_argument(
         "--describe", default="", help="a vision generator's server (X44 F6)"
     )
+    images_parser.add_argument(
+        "--vectors", action="store_true", help="each picture's SigLIP2 vector (X44 F2)"
+    )
     one_parser = commands.add_parser(
         "read-pdf", help="read one stored PDF into a JSON file (used by read-pdfs)"
     )
@@ -327,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "read-pdfs":
         return run_read_pdfs(args.vlm)
     if args.command == "read-images":
-        return run_read_images(args.vlm, args.describe)
+        return run_read_images(args.vlm, args.describe, args.vectors)
     if args.command == "read-pdf":
         reading = documents.read_one(args.sha256, args.vlm)
         text = json.dumps(reading, indent=1, ensure_ascii=False) + "\n"

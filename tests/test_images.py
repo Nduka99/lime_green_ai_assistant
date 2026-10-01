@@ -109,6 +109,8 @@ def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
          "section": []},
         {"id": "p4", "source": site + "york", "page": None, "alt": "",
          "section": []},
+        {"id": "p5", "source": site + "left-out.pdf", "page": 3, "alt": "",
+         "section": []},  # its document is not in the build
     ]  # fmt: skip
     read = {
         "p2": "Solo 2nd pass\n\n<b>Duro</b> $25\\mathrm{kg}$",
@@ -118,7 +120,11 @@ def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
     shown: dict[tuple[str, int | None], str] = {
         (site + "duro", None): "Duro lime green base coat"
     }
-    titles = {site + "duro": "Duro", site + "sheet.pdf": "Duro — Data Sheet"}
+    titles = {
+        site + "duro": "Duro",
+        site + "sheet.pdf": "Duro — Data Sheet",
+        site + "york": "York",
+    }
 
     found = images.picture_passages(places, read, shown, titles, {"p2": "A wall."})
 
@@ -131,7 +137,7 @@ def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
             "p2",
         ),
         ((site + "duro", "Duro", "Image", "", "Image\nDuro bag", None), "p3"),
-        ((site + "york", site + "york", "Image", "", "Image", None), "p4"),
+        ((site + "york", "York", "Image", "", "Image", None), "p4"),
     ]  # fmt: skip
     assert images.new_words("", "x") == 0.0
 
