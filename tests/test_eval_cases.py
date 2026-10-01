@@ -391,7 +391,9 @@ def test_the_command_line_plans_a_bundle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     entries = pool() + [entry("file:photo", "image", "t", text="A photo of a wall")]
-    monkeypatch.setattr(cases, "source_text", lambda e: "Words to quote. " * 20)
+    monkeypatch.setattr(
+        cases, "source_text", lambda e, rendered=None: "Words to quote. " * 20
+    )
     listed = tmp_path / "catalogue.json"
     listed.write_text(json.dumps(entries))
     brief, agents = tmp_path / "brief.md", tmp_path / "agents.md"
@@ -557,7 +559,9 @@ def test_the_command_line_replaces_flagged_cases_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     entries = [entry(f"page:{n}", "page:product", f"t{n}") for n in range(6)]
-    monkeypatch.setattr(cases, "source_text", lambda e: "Words to quote. " * 20)
+    monkeypatch.setattr(
+        cases, "source_text", lambda e, rendered=None: "Words to quote. " * 20
+    )
     listed = tmp_path / "catalogue.json"
     listed.write_text(json.dumps(entries))
     bundle = tmp_path / "bundle"
@@ -688,7 +692,9 @@ def test_the_command_line_plans_and_seals_a_later_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     entries = pool()[:60]
-    monkeypatch.setattr(cases, "source_text", lambda e: "Words to quote. " * 20)
+    monkeypatch.setattr(
+        cases, "source_text", lambda e, rendered=None: "Words to quote. " * 20
+    )
     listed = tmp_path / "catalogue.json"
     listed.write_text(json.dumps(entries))
     for name in ("brief.md", "agents.md", "design.json"):

@@ -18,6 +18,7 @@ import random
 import re
 import shutil
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from pypdf.errors import DependencyError, PyPdfError
 
 from evaluation import conversations, keys
 from evaluation.catalogue import Entry
+from limespec import config
 
 # Case type -> number of cases. Out-of-domain cases need no source.
 TYPES = {
@@ -58,6 +60,15 @@ FORMATS = {
 }  # fmt: skip
 UNINDEXED = {"image", "external:guidance"}  # not in the assistant's index yet
 MIN_PER_FORMAT = 3
+# Held-out v6 (X43) covers every data type: a picture is a source of its own
+# (`catalogue.pictures`), Word files and the OGL guidance are read like PDFs.
+PICTURES = {"image:text", "image:visual"}
+ASSET_SCALE = 1.5  # a document page drawn at 108 DPI for the writer to see
+V6_FORMATS = {
+    "visual": PICTURES,
+    "structure": {"page:product", "page:knowledge", "page:case-study", "page:company",
+                  "pdf:guide", "pdf:technical", "docx:declaration"},
+}  # fmt: skip
 STYLES = ["original", "rushed"]
 # A plan's design: the prefix of its case ids, its cases per type, whether a source may
 # serve more than one case, and the wordings its cases get in turn. Held-out v4's:
@@ -67,6 +78,8 @@ V4: dict[str, Any] = {
     "reuse": False,
     "styles": [STYLES],
 }
+# What a source is seen by, written into the bundle: (entry, source id, text) -> names.
+Show = Callable[[Entry, str, str], list[str]]
 PAGE_MARK = re.compile(r"^\[page (\d+)\]$", re.MULTILINE)
 # A customer never sees the bundle, so never names its source ids or page markers.
 BUNDLE_WORDS = re.compile(r"\bv\d+c\d+-s\d+\b|\[page \d+\]|\bexcerpt\b", re.IGNORECASE)
@@ -99,11 +112,37 @@ def pdf_text(path: Path) -> str:
     return "\n\n".join(blocks)
 
 
-def source_text(entry: Entry) -> str:
-    """The text a source offers the writer and the checker."""
+def source_text(entry: Entry, rendered: Path | None = None) -> str:
+    """The text a source offers the writer and the checker. With `rendered` (a
+    `web-render` folder), a page is its text as a browser shows it (X43); a Word
+    file is the PDF LibreOffice laid it out as; a picture is its alt text and the
+    text a machine read in it."""
     if entry["id"].startswith("page:"):
+        page = (rendered or Path()) / f"{Path(entry['source']).stem}.txt"
+        if rendered is not None and page.exists():
+            return page.read_text(encoding="utf-8")
         return conversations.source_text(entry)
+    if entry["format"] in PICTURES:
+        return picture_text(entry)
+    if entry["format"] == "docx:declaration":
+        sha256 = entry["id"].split(":", 1)[1]
+        return pdf_text(config.READINGS / "rendered" / f"{sha256}.pdf")
     return pdf_text(Path(entry["source"]))
+
+
+def picture_text(entry: Entry) -> str:
+    """What a picture source shows the writer beside the picture itself."""
+    where = entry["url"] + (f" (page {entry['page']})" if entry.get("page") else "")
+    return "\n".join(
+        [
+            f"Picture file: {Path(entry['source']).name}",
+            f"Shown on: {where}",
+            f"Alt text: {entry.get('alt') or '(none)'}",
+            "Text a machine read in the picture (it can be wrong: quote only what "
+            "the picture itself shows):",
+            entry.get("read") or "(none)",
+        ]
+    )
 
 
 def page_texts(text: str) -> dict[int, str]:
@@ -116,10 +155,12 @@ def page_texts(text: str) -> dict[int, str]:
     return pages
 
 
-def allocate(counts: dict[str, int], total: int) -> dict[str, int]:
-    """Cases per format: `MIN_PER_FORMAT` each (fewer if the format has fewer
-    sources), the rest in proportion to the sources, largest remainders first."""
-    slots = {name: min(MIN_PER_FORMAT, count) for name, count in counts.items()}
+def allocate(
+    counts: dict[str, int], total: int, least: int = MIN_PER_FORMAT
+) -> dict[str, int]:
+    """Cases per format: `least` each (fewer if the format has fewer sources), the
+    rest in proportion to the sources, largest remainders first."""
+    slots = {name: min(least, count) for name, count in counts.items()}
     left = total - sum(slots.values())
     size = sum(counts.values())
     shares = {name: left * count / size for name, count in counts.items()}
@@ -133,19 +174,24 @@ def allocate(counts: dict[str, int], total: int) -> dict[str, int]:
 
 
 def assign(
-    slots: dict[str, int], rng: random.Random, counts: dict[str, int]
+    slots: dict[str, int],
+    rng: random.Random,
+    counts: dict[str, int],
+    needs: dict[str, set[str]] | None = None,
 ) -> list[tuple[str, str]]:
     """(type, format) for every case with a source; types that need a kind of
-    source choose first, those allowed the fewest formats before the others."""
+    source (`needs`, else FORMATS) choose first, those allowed the fewest formats
+    before the others."""
+    needs = FORMATS if needs is None else needs
     formats = [name for name, count in sorted(slots.items()) for _ in range(count)]
     rng.shuffle(formats)
     kinds = [
         kind for kind, n in counts.items() if SOURCES.get(kind, 1) for _ in range(n)
     ]
-    kinds.sort(key=lambda kind: len(FORMATS.get(kind, formats)))
+    kinds.sort(key=lambda kind: len(needs.get(kind, formats)))
     pairs = []
     for kind in kinds:
-        allowed = FORMATS.get(kind)
+        allowed = needs.get(kind)
         index = next(
             (i for i, name in enumerate(formats) if allowed is None or name in allowed),
             None,
@@ -205,12 +251,16 @@ def second_source(
     )
 
 
-def usable_pool(entries: list[Entry], texts: dict[str, str]) -> list[Entry]:
-    """The sources a case may use: indexed, with enough text to quote."""
+def usable_pool(
+    entries: list[Entry], texts: dict[str, str], unindexed: set[str] = UNINDEXED
+) -> list[Entry]:
+    """The sources a case may use: indexed, with enough text to quote (a picture
+    always: it can be asked about by what it shows)."""
     return [
         e
         for e in entries
-        if e["format"] not in UNINDEXED and conversations.usable(e, texts[e["id"]])
+        if e["format"] not in unindexed
+        and (e["format"] in PICTURES or conversations.usable(e, texts[e["id"]]))
     ]
 
 
@@ -226,15 +276,18 @@ def plan(
     the sources no key has used."""
     rng = random.Random(seed)
     counts, reuse = design["counts"], design["reuse"]
-    pool = usable_pool(entries, texts)
+    unindexed = set(design.get("unindexed", UNINDEXED))
+    pool = usable_pool(entries, texts, unindexed)
     total = sum(n for kind, n in counts.items() if SOURCES.get(kind, 1))
-    slots = allocate(dict(Counter(e["format"] for e in pool)), total)
+    least = design.get("min_per_format", MIN_PER_FORMAT)
+    slots = allocate(dict(Counter(e["format"] for e in pool)), total, least)
     groups = conversations.subjects(pool)
     used = Counter(served)
     topics: Counter[str] = Counter()
     firsts = []
+    needs = FORMATS | (V6_FORMATS if "visual" in counts else {})
     # Every case's own source first, so second sources never exhaust a small format.
-    for kind, name in assign(slots, rng, counts):
+    for kind, name in assign(slots, rng, counts, needs):
         named = [e for e in pool if e["format"] == name]
         first = pick(named, used, topics, rng, reuse)
         if first is None:
@@ -325,10 +378,13 @@ def part_text(
     rng: random.Random,
     shown: dict[str, dict[str, Any]],
     taken: dict[str, list[str]],
+    show: Show | None = None,
 ) -> str:
     """One part file: each case's wordings and its sources as the writer sees them,
     with the quotes earlier keys took from a source (`taken`, by entry id) listed
-    under it. What is shown is recorded in `shown` by source id."""
+    under it. What is shown is recorded in `shown` by source id. `show` writes the
+    images a source is seen by (a picture, a page's screenshot, a PDF's pages) and
+    names them."""
     lines = []
     for case in planned:
         lines += [f"# Case {case['id']}: {case['type']}", ""]
@@ -343,6 +399,8 @@ def part_text(
                 f"## Source {source_id} ({entry['format']})",
                 f"URL: {entry['url']}",
             ]
+            for name in show(entry, source_id, text) if show else []:
+                lines.append(f"See: {name}")
             whole = len(texts[entry_id])
             if len(text) < whole:
                 lines.append(f"(part of a longer source: {whole:,} characters)")
@@ -387,12 +445,16 @@ def bundle(
     seed: int,
     reuse: bool = False,
     taken: dict[str, list[str]] | None = None,
+    rendered: Path | None = None,
 ) -> list[Path]:
     """Write the brief and writer's instructions (`notes`: file name -> text), the
     part files, `plan.json` (what the writer saw, whether the plan reuses sources,
     and the quotes earlier keys took, by entry id) and `corpus/` (every indexed
-    source's whole text, with `corpus/index.md` naming each file's URL)."""
+    source's whole text, with `corpus/index.md` naming each file's URL). Given
+    `rendered` (a `web-render` folder), each source is also shown as a visitor sees
+    it: its screenshot, picture or page images (`asset_writer`)."""
     taken = taken or {}
+    show = asset_writer(out, rendered) if rendered else None
     rng = random.Random(seed)
     by_id = {e["id"]: e for e in entries}
     out.mkdir(parents=True, exist_ok=True)
@@ -403,7 +465,7 @@ def bundle(
     for first in range(0, len(planned), per_part):
         cases = planned[first : first + per_part]
         part = out / f"part-{first // per_part + 1}.md"
-        text = part_text(cases, by_id, texts, limit, rng, shown, taken)
+        text = part_text(cases, by_id, texts, limit, rng, shown, taken, show)
         part.write_text(text, encoding="utf-8", newline="\n")
         parts.append(part)
     saw = {"plan": planned, "sources": shown, "reuse": reuse, "taken": taken}
@@ -422,13 +484,59 @@ def bundle(
     return parts
 
 
+def asset_writer(out: Path, rendered: Path) -> Show:
+    """Writes into `out` what a source is seen by and names it: a picture's file,
+    a page's full screenshot (from `rendered`), or a document's shown pages drawn
+    at ASSET_SCALE."""
+    import pypdfium2
+
+    def show(entry: Entry, source_id: str, text: str) -> list[str]:
+        if entry["format"] in PICTURES:
+            name = f"pictures/{Path(entry['source']).name}"
+            (out / "pictures").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(entry["source"], out / name)
+            return [name]
+        if entry["id"].startswith("page:"):
+            slug = Path(entry["source"]).stem
+            shot = rendered / f"{slug}.png"
+            if not shot.exists():
+                return []
+            (out / "screenshots").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(shot, out / "screenshots" / f"{slug}.png")
+            return [f"screenshots/{slug}.png"]
+        path = Path(entry["source"])
+        if entry["format"] == "docx:declaration":
+            path = config.READINGS / "rendered" / f"{entry['id'].split(':', 1)[1]}.pdf"
+        names = []
+        document = pypdfium2.PdfDocument(str(path))
+        (out / "pages").mkdir(parents=True, exist_ok=True)
+        for mark in PAGE_MARK.finditer(text):
+            page = int(mark.group(1))
+            name = f"pages/{source_id}-p{page}.png"
+            document[page - 1].render(scale=ASSET_SCALE).to_pil().save(out / name)
+            names.append(name)
+        document.close()
+        return names
+
+    return show
+
+
 def evidence_problems(
-    item: dict[str, Any], label: str, texts: dict[str, str], pdfs: set[str]
+    item: dict[str, Any],
+    label: str,
+    texts: dict[str, str],
+    pdfs: set[str],
+    pictures: frozenset[str] = frozenset(),
 ) -> list[str]:
-    """Problems in one quote: its source, its page for a PDF, and its text."""
+    """Problems in one quote: its source, its page for a PDF, and its text. A
+    picture may be cited as what it shows (`"visual": true`, no quote, X43)."""
     source = str(item.get("source", ""))
     if source not in texts:
         return [f"{label}: {source} is not one of the case's sources"]
+    if item.get("visual") is True:
+        if source not in pictures:
+            return [f"{label}: only a picture can be cited as what it shows"]
+        return []
     text = texts[source]
     page = item.get("page")
     if source in pdfs:
@@ -448,6 +556,7 @@ def case_problems(
     shown: dict[str, dict[str, Any]],
     pdfs: set[str],
     corpus: list[str],
+    pictures: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Problems in one case against its plan, the text shown and the corpus."""
     cid = planned["id"]
@@ -478,7 +587,7 @@ def case_problems(
     count = len(planned["sources"])
     texts = {f"{cid}-s{n}": shown[f"{cid}-s{n}"]["text"] for n in range(1, count + 1)}
     if status == "answered":
-        found += answered_problems(case, cid, kind, texts, pdfs)
+        found += answered_problems(case, cid, kind, texts, pdfs, pictures)
     elif case["parts"]:
         found.append(f"{cid}: {status} must have no parts")
     if kind == "emergency" and case["expected_answer"]:
@@ -496,6 +605,7 @@ def answered_problems(
     kind: str,
     texts: dict[str, str],
     pdfs: set[str],
+    pictures: frozenset[str] = frozenset(),
 ) -> list[str]:
     """An answered case: enough parts, each with checked quotes, every source used."""
     found = []
@@ -512,7 +622,8 @@ def answered_problems(
             found.append(f"{label}: no evidence")
             continue
         for index, item in enumerate(evidence, 1):
-            found += evidence_problems(item, f"{label} quote {index}", texts, pdfs)
+            label_item = f"{label} quote {index}"
+            found += evidence_problems(item, label_item, texts, pdfs, pictures)
             cited.add(str(item.get("source", "")))
     found += [f"{cid}: {s} is never quoted" for s in sorted(texts.keys() - cited)]
     return found
@@ -565,7 +676,11 @@ def repeat_problems(
 
 
 def key_problems(
-    key: dict[str, Any], seen: dict[str, Any], pdfs: set[str], corpus: list[str]
+    key: dict[str, Any],
+    seen: dict[str, Any],
+    pdfs: set[str],
+    corpus: list[str],
+    pictures: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Problems in a key, checked against the plan and the text its writer saw.
     `pdfs` names the shown sources that are PDFs; `corpus` holds every source's
@@ -579,11 +694,32 @@ def key_problems(
     found += [f"{cid}: not planned" for cid in sorted(written.keys() - planned)]
     for cid in sorted(planned.keys() & written):
         found += case_problems(
-            written[cid], planned[cid], seen["sources"], pdfs, corpus
+            written[cid], planned[cid], seen["sources"], pdfs, corpus, pictures
         )
     if seen.get("reuse"):
         found += repeat_problems(written, seen.get("taken", {}))
     return found
+
+
+def sealed_evidence(item: dict[str, Any], entry: Entry) -> dict[str, Any]:
+    """One quote in the sealed key, its kind named by its source: a page's text, a
+    PDF's or Word file's text by page, a picture's own words, or a picture as what
+    it shows (no quote)."""
+    if entry["format"] in PICTURES:
+        visual = item.get("visual") is True
+        return {
+            "kind": "image_visual" if visual else "image_text",
+            "url": entry["url"],
+            "page": entry.get("page"),
+            "image": entry["id"].split(":", 1)[1],
+            "quote": "" if visual else item["quote"],
+        }
+    if item.get("page") is None:
+        kind = "page_text"
+    else:
+        kind = "docx_text" if entry["format"] == "docx:declaration" else "pdf_text"
+    return {"kind": kind, "url": entry["url"], "page": item.get("page"),
+            "quote": item["quote"]}  # fmt: skip
 
 
 def sealed(
@@ -600,15 +736,7 @@ def sealed(
             evidence = []
             for item in part["evidence"]:
                 entry = entries[seen["sources"][item["source"]]["entry"]]
-                kind = "pdf_text" if item.get("page") is not None else "page_text"
-                evidence.append(
-                    {
-                        "kind": kind,
-                        "url": entry["url"],
-                        "page": item.get("page"),
-                        "quote": item["quote"],
-                    }
-                )
+                evidence.append(sealed_evidence(item, entry))
             fields = {f: part[f] for f in conversations.PART_FIELDS}
             parts.append({**fields, "evidence": evidence})
         sources = [entries[entry_id] for entry_id in planned[case["id"]]["sources"]]

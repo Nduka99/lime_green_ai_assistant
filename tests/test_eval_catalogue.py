@@ -63,6 +63,7 @@ def collected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(config, "SITE", SITE)
     monkeypatch.setattr(config, "PAGE_CACHE", tmp_path / "site")
     monkeypatch.setattr(config, "FILE_STORE", tmp_path / "files")
+    monkeypatch.setattr(config, "IMAGES", tmp_path / "images")  # no pictures read
     config.PAGE_CACHE.mkdir()
     (config.PAGE_CACHE / "products__lime-render__duro.html").write_text(
         '<a href="/d/duro.pdf">SDS</a><img src="/i/wall.webp" alt="A rendered wall">'

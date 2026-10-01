@@ -190,6 +190,11 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         help="sets whose sources wait their turn and whose quotes are taken",
     )
+    cased.add_argument(
+        "--rendered",
+        type=Path,
+        help="a web-render folder: pages shown as a browser shows them (v6)",
+    )
     checked = commands.add_parser(
         "check-cases", help="check a single-question key against its bundle"
     )
@@ -831,12 +836,13 @@ def earlier_use(
 
 def run_plan_cases(args: argparse.Namespace) -> int:
     entries = grades.read_json(args.catalogue)
-    texts = {
-        e["id"]: cases.source_text(e)
-        for e in entries
-        if e["format"] not in cases.UNINDEXED
-    }
     design = grades.read_json(args.design) if args.design else cases.V4
+    unindexed = set(design.get("unindexed", cases.UNINDEXED))
+    texts = {
+        e["id"]: cases.source_text(e, args.rendered)
+        for e in entries
+        if e["format"] not in unindexed
+    }
     served, taken = earlier_use(args.earlier, entries)
     planned = cases.plan(entries, texts, args.seed, design, served)
     notes = {
@@ -845,7 +851,7 @@ def run_plan_cases(args: argparse.Namespace) -> int:
     }
     parts = cases.bundle(
         planned, entries, texts, notes, args.out, args.per_part, args.limit, args.seed,
-        design["reuse"], taken,
+        design["reuse"], taken, args.rendered,
     )  # fmt: skip
     by_id = {entry["id"]: entry for entry in entries}
     formats = Counter(by_id[c["sources"][0]]["format"] for c in planned if c["sources"])
@@ -891,9 +897,12 @@ def run_check_cases(args: argparse.Namespace) -> int:
         written = [c for c in written if c.get("id") not in args.withdraw]
         print("withdrawn:", ", ".join(args.withdraw))
     pdfs = {sid for sid, s in seen["sources"].items() if s["entry"].startswith("file:")}
+    pictures = frozenset(
+        sid for sid, s in seen["sources"].items() if s["entry"].startswith("picture:")
+    )
     corpus_files = sorted((args.plan.parent / "corpus").glob("*.txt"))
     corpus = [keys.normalise(path.read_text(encoding="utf-8")) for path in corpus_files]
-    found = cases.key_problems({"cases": written}, seen, pdfs, corpus)
+    found = cases.key_problems({"cases": written}, seen, pdfs, corpus, pictures)
     for problem in found:
         print("PROBLEM", problem)
     wordings = sum(len(c.get("wordings", [])) for c in written)

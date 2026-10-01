@@ -7,6 +7,7 @@ guess. Keys are then sampled with equal allocation across formats, and results a
 reported per stratum (Coverage, Not Averages, 2026).
 """
 
+import json
 import re
 from collections import Counter
 from typing import Any
@@ -20,6 +21,9 @@ PRODUCT_FAMILIES = {
     "insulation", "lime-mortar", "lime-plaster", "lime-render",
     "primers-and-adhesives", "stone-repair",
 }  # fmt: skip
+
+WORD = re.compile(r"\w+")
+TEXT_WORDS = 3  # words read in a picture: fewer, and it is a visual-only picture
 
 # First match wins, on the site's link text, then on the file name.
 PDF_FORMATS = [
@@ -120,6 +124,8 @@ def catalogue() -> list[Entry]:
         texts = link_texts.get(url, [])
         if record["kind"] == "external":
             fmt, topic = "external:guidance", "regulation"
+        elif url.lower().endswith(".docx"):
+            fmt, topic = "docx:declaration", file_topic(linked_topics.get(url, []))
         elif record["kind"] == "image":
             fmt, topic = "image", file_topic(linked_topics.get(url, []))
         else:
@@ -135,7 +141,44 @@ def catalogue() -> list[Entry]:
                 "pages": sorted(set(linking_pages.get(url, []))),
             }
         )
-    return unique(entries)
+    return unique(entries) + pictures(entries)
+
+
+def pictures(entries: list[Entry]) -> list[Entry]:
+    """Every stored picture (`limespec read-images`), once: filed where its alt text
+    says most about it, its topic that place's. A picture holds text when a machine
+    read TEXT_WORDS or more words in it (X43 B2), else it is visual only."""
+    places_file = config.IMAGES / "places.json"
+    if not places_file.exists():
+        return []
+    topics = {entry["url"]: entry["topic"] for entry in entries}
+    chosen: dict[str, Entry] = {}
+    for place in json.loads(places_file.read_text(encoding="utf-8")):
+        best = chosen.get(place["id"])
+        if best is None or len(place["alt"]) > len(best["alt"]):
+            chosen[place["id"]] = place
+    found = []
+    for identity, place in chosen.items():
+        reading = config.IMAGES / f"{identity}.json"
+        read = (
+            json.loads(reading.read_text(encoding="utf-8"))["ocr"]
+            if reading.exists()
+            else ""
+        )
+        holds_text = len(WORD.findall(read)) >= TEXT_WORDS
+        found.append(
+            {
+                "id": f"picture:{identity}",
+                "format": "image:text" if holds_text else "image:visual",
+                "topic": topics.get(place["source"], "company"),
+                "source": str(config.IMAGES / f"{identity}.png"),
+                "url": place["source"],
+                "page": place["page"],
+                "alt": place["alt"],
+                "read": read,
+            }
+        )
+    return found
 
 
 def unique(entries: list[Entry]) -> list[Entry]:
