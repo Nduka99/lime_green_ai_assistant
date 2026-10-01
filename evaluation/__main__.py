@@ -410,6 +410,11 @@ def parser() -> argparse.ArgumentParser:
     web_truthed.add_argument(
         "--set", type=Path, required=True, help="the set's folder, holding outlines/"
     )
+    web_scored = commands.add_parser(
+        "web-score", help="an extractor arm against the web-pages truth (X42 W2)"
+    )
+    web_scored.add_argument("arm", choices=webpages.ARMS)
+    web_scored.add_argument("--out", type=Path, required=True)
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1332,6 +1337,28 @@ def run_web_truth(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_web_score(args: argparse.Namespace) -> int:
+    """One arm's readings of the sampled pages, scored against the registered truth;
+    the readings are kept with the scores for diagnosis."""
+    truth = grades.read_json(
+        sets.require("web-pages", args.root, args.registry) / "truth.json"
+    )
+    pages = cached_html()
+    converter = webpages.docling_converter() if args.arm == "docling" else None
+    readings = {}
+    for slug in truth:
+        if args.arm == "current":
+            readings[slug] = webpages.current_reading(pages[slug])
+        elif args.arm == "docling":
+            readings[slug] = webpages.docling_reading(pages[slug], converter)
+        else:
+            readings[slug] = webpages.trafilatura_reading(pages[slug])
+    found = webpages.scores(truth, readings)
+    write_json(args.out, found | {"readings": readings})
+    print(json.dumps({name: round(rate, 4) for name, rate in found["rates"].items()}))
+    return 0
+
+
 def run_nearmiss_answer(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -2002,6 +2029,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_web_render(args)
         if args.command == "web-truth":
             return run_web_truth(args)
+        if args.command == "web-score":
+            return run_web_score(args)
         if args.command == "nearmiss-answer":
             return run_nearmiss_answer(args)
         if args.command == "slot-gate":

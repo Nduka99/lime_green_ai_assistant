@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from evaluation import __main__ as cli
-from evaluation import webpages
+from evaluation import sets, webpages
 from limespec import config
 
 PAGE = """<html><body><header><h1>Menu</h1></header><main>
@@ -320,3 +320,184 @@ def test_the_command_line_writes_the_truth_and_keeps_the_visible_text(
     (tmp_path / "set" / "truth.json").unlink()
     assert cli.main(command) == 1
     assert not (tmp_path / "set" / "truth.json").exists()
+
+
+def test_words_fold_case_typography_and_compatibility_forms() -> None:
+    assert webpages.tokens("Lime Green’s 25 kg – CO²") == [
+        "lime", "green", "s", "25", "kg", "co2"
+    ]  # fmt: skip
+    assert webpages.squash("Add water, slowly.") == "addwaterslowly"
+
+
+def test_the_current_extractor_reads_each_section_under_its_one_heading() -> None:
+    reading = webpages.current_reading(PAGE)
+
+    assert reading["title"] == "Duro"
+    assert reading["headings"] == ["Uses", "Mixing"]
+    assert [s["path"] for s in reading["sections"]] == [["Uses"], ["Mixing"]]
+    # text right under the title: its section's heading is the title, not a heading
+    assert webpages.current_reading(FLAT)["headings"] == []
+
+
+def test_docling_reads_html_only() -> None:
+    from docling.datamodel.base_models import InputFormat
+
+    assert webpages.docling_converter().allowed_formats == [InputFormat.HTML]
+
+
+MARKDOWN = """Knowledge base
+
+# Duro
+
+A base coat.
+
+## Uses
+
+- 
+**Repointing** : brick
+- Rendering
+continued here
+
+<!-- image -->
+
+### Mixing
+#1 rule: add water
+## Colours
+- Ochre"""
+
+
+def test_markdown_is_read_as_headings_with_levels_and_texts_under_them() -> None:
+    reading = webpages.markdown_reading(MARKDOWN)
+
+    assert reading["title"] == "Duro"
+    assert reading["headings"] == ["Uses", "Mixing", "Colours"]
+    assert reading["sections"] == [
+        {"path": [], "texts": ["Knowledge base", "A base coat."]},
+        {
+            "path": ["Uses"],
+            "texts": ["**Repointing** : brick", "Rendering continued here"],
+        },
+        {"path": ["Uses", "Mixing"], "texts": ["#1 rule: add water"]},
+        {"path": ["Colours"], "texts": ["Ochre"]},
+    ]
+
+
+def test_docling_and_trafilatura_readings_come_through_markdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import trafilatura
+
+    class Converter:
+        def convert(self, source: object) -> object:
+            self.source = source
+            document = type("Document", (), {"export_to_markdown": lambda s: MARKDOWN})
+            return type("Result", (), {"document": document()})()
+
+    asked = {}
+
+    def extract(raw: str, output_format: str) -> str | None:
+        asked["format"] = output_format
+        return None if "empty" in raw else MARKDOWN
+
+    monkeypatch.setattr(trafilatura, "extract", extract)
+
+    assert webpages.docling_reading(PAGE, Converter())["title"] == "Duro"
+    assert webpages.trafilatura_reading(PAGE)["headings"][0] == "Uses"
+    assert webpages.trafilatura_reading("empty")["sections"] == []
+    assert asked["format"] == "markdown"
+
+
+TRUTH_PAGE = {
+    "title": "Duro",
+    "headings": [{"level": 2, "text": "Uses"}, {"level": 3, "text": "Mixing"}],
+    "blocks": [
+        {"kind": "meta", "text": "Knowledge base", "path": []},
+        {"kind": "p", "text": "A base coat.", "path": []},
+        {"kind": "list", "items": ["Repointing", "Rendering"], "path": ["Uses"]},
+        {"kind": "p", "text": "Add water slowly.", "path": ["Uses", "Mixing"]},
+        {"kind": "p", "text": "Keep it damp for days.", "path": ["Uses", "Mixing"]},
+        {"kind": "alt", "text": "A wall pointed with Duro", "path": []},
+    ],
+}
+READING = {
+    "title": "Duro",
+    "headings": ["Mixing", "Extra"],
+    "sections": [
+        {"path": ["Duro"], "texts": ["Knowledge base A base coat. Repointing"]},
+        {
+            "path": ["Uses", "Mixing"],
+            "texts": ["Rendering", "Add water", "slowly. Menu"],
+        },
+    ],
+}
+
+
+def test_a_reading_is_scored_against_the_page_truth() -> None:
+    found = webpages.page_score(TRUTH_PAGE, READING)
+
+    # Words: 18 shown, 14 kept; "extra" and "menu" are not on the page, the alt
+    # text's words would have counted as right. The list is split between two
+    # sections and goes to the first of the tied ones (path "Duro": wrong); "Add
+    # water slowly." is held under both its headings; "Keep it damp" is lost.
+    assert found == {
+        "words": 18,
+        "found": 12,
+        "kept": 14,
+        "right": 12,
+        "headings": 2,
+        "headings_found": 1,
+        "tested": 3,
+        "placed": 1,
+        "lists": 1,
+        "lists_whole": 0,
+        "alts": 1,
+        "alts_kept": 0,
+    }
+    scored = webpages.scores({"duro": TRUTH_PAGE}, {"duro": READING})
+    assert scored["rates"]["recall"] == 12 / 18
+    assert scored["rates"]["section_paths"] == 1 / 3
+
+
+def test_a_block_is_held_by_the_section_holding_its_text_or_most_of_its_words() -> None:
+    sections = [
+        {"path": ["Uses"], "texts": ["Add water"]},
+        {"path": ["Mixing"], "texts": ["water slowly then mix"]},
+    ]
+
+    assert webpages.holder("Mix", sections) == sections[1]
+    assert webpages.holder("Add water slowly then", sections) == sections[1]
+    assert webpages.holder("Add water slowly", sections) == sections[0]  # a tie
+    assert webpages.holder("Ochre", sections) is None
+    assert webpages.in_order(["a", "c"], "abc") and not webpages.in_order(
+        ["c", "a"], "abc"
+    )
+
+
+def test_the_command_line_scores_each_arm_on_the_registered_truth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import trafilatura
+
+    (tmp_path / "products__render__duro.html").write_text(PAGE, encoding="utf-8")
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path)
+    folder = tmp_path / "eval" / "web-pages"
+    folder.mkdir(parents=True)
+    truth = {"products__render__duro": TRUTH_PAGE}
+    (folder / "truth.json").write_text(json.dumps(truth))
+    registry = tmp_path / "sets.json"
+    sets.register("web-pages", "", tmp_path / "eval", registry)
+
+    class Converter:
+        def convert(self, source: object) -> object:
+            document = type("Document", (), {"export_to_markdown": lambda s: MARKDOWN})
+            return type("Result", (), {"document": document()})()
+
+    monkeypatch.setattr(webpages, "docling_converter", Converter)
+    monkeypatch.setattr(trafilatura, "extract", lambda raw, output_format: MARKDOWN)
+    common = ["--root", str(tmp_path / "eval"), "--registry", str(registry)]
+
+    for arm in webpages.ARMS:
+        out = tmp_path / f"{arm}.json"
+        assert cli.main([*common, "web-score", arm, "--out", str(out)]) == 0
+        saved = json.loads(out.read_text())
+        assert set(saved) == {"rates", "total", "pages", "readings"}

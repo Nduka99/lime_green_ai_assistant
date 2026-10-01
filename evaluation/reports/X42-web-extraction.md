@@ -188,3 +188,36 @@ definition lists: the FAQ, the glossary and two case studies.
 - 13,046 content words, alt texts apart.
 - No page holds a table (none of the 160 cached pages has an HTML table), so W2's table
   measure has nothing to score.
+
+**W2 details, fixed before any arm is scored.**
+- **Readings.** Each arm gives a page's reading: its title, its headings, and its
+  sections in order. Each section has a path (the headings the arm records above it)
+  and its texts.
+  - (a) `ingest.extract_sections` as it stands. A section's path is its one heading,
+    as its passages carry it.
+  - (b) Docling's HTML backend (docling-core 2.99) reads the main content after the same
+    furniture removal as (a). On its own it reads the whole body, the site's menus
+    included (probe on a product page: every menu card came out as a title). Exported as
+    Markdown.
+  - (c) trafilatura 2.2.0 reads the whole page with its own content detection. Output
+    as Markdown.
+  - (b) and (c) go through one Markdown reader: a line of `#`s is a heading at that
+    level, the first level-1 heading is the title, and paragraphs and list items are
+    texts under the headings above them.
+- **Words.** Unicode compatibility forms are folded, case is folded, and words are runs
+  of letters and digits, so punctuation and typography do not count. Recall and
+  precision use word multisets per page, summed over pages. An arm's word counts as
+  right for precision when the truth holds it, in its content or its alt texts.
+- **Section-path accuracy is measured on each arm's sections, not its passages.** The
+  design said "a passage whose heading and context". Passages pack several sections
+  (W3's subject), and a packed passage shows its later sections' headings in its text,
+  not its context.
+  - The tested blocks are truth paragraphs and lists with at least one heading above
+    them; a block with none tests nothing.
+  - A block's holder is the section whose text holds the block's text, comparing letters
+    and digits only. Failing that, it is the section sharing most of the block's words.
+  - The block is placed right when every heading in its path equals, by the same
+    comparison, a heading in the holder's path.
+- **Other measures.** List integrity: every item, in order, in one section. Heading
+  recall: truth headings equal to one of the arm's headings, the title apart. Alt texts:
+  inside the arm's text.

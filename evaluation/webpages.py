@@ -8,10 +8,13 @@ requests blocked, kept as a full-page screenshot and its visible text.
 """
 
 import random
+import re
 import time
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from io import BytesIO
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -42,6 +45,11 @@ REPEAT = 40  # shorter bodies ("Find a supplier") are not counted as repeated te
 RICH = 8  # structure-rich pages drawn first
 QUOTAS = {"product": 8, "colour": 4, "knowledge": 6, "case study": 4, "news": 3}
 OTHER = 5
+ARMS = ("current", "docling", "trafilatura")
+WORD = re.compile(r"\w+")
+BLANK_LINE = re.compile(r"\n\s*\n")
+HEADING = re.compile(r"^(#{1,6})\s+(.*)$")  # a Markdown heading: its marks, its text
+LIST_ITEM = re.compile(r"^([-*+]|\d+\.)(\s+|$)")  # a Markdown list item's marker
 
 
 def page_type(slug: str) -> str:
@@ -292,3 +300,194 @@ def build_truth(outline: Mapping[str, Any], lines: Sequence[str]) -> dict[str, A
             rows = list(lines[entry[1] : entry[2] + 1 : step])
             blocks.append({"kind": kind, "items": rows, "path": section})
     return {"title": lines[outline["title"]], "headings": headings, "blocks": blocks}
+
+
+def tokens(text: str) -> list[str]:
+    """Words as W2 compares them: compatibility forms and case folded, runs of
+    letters and digits (punctuation and typography do not count)."""
+    return WORD.findall(unicodedata.normalize("NFKC", text).casefold())
+
+
+def squash(text: str) -> str:
+    """A text's letters and digits only, for finding one text inside another."""
+    return "".join(tokens(text))
+
+
+def current_reading(raw: str) -> dict[str, Any]:
+    """Arm (a): `ingest.extract_sections` as it stands, each section's path its one
+    heading (the first is the title when no heading comes before the text)."""
+    title, found = ingest.extract_sections(raw)
+    headings = [heading for heading, _ in found]
+    if headings and headings[0] == title:
+        headings = headings[1:]
+    sections = [{"path": [heading], "texts": texts} for heading, texts in found]
+    return {"title": title, "headings": headings, "sections": sections}
+
+
+def markdown_reading(markdown: str) -> dict[str, Any]:
+    """Arms (b) and (c): a Markdown page's reading. A line of `#`s is a heading at
+    that level (the first level-1 heading is the title); paragraphs and list items
+    are texts under the headings above them; image marks are skipped."""
+    title = ""
+    headings: list[str] = []
+    path: list[tuple[int, str]] = []
+    sections: list[dict[str, Any]] = []
+
+    def add(texts: list[str]) -> None:
+        here = [heading for _, heading in path]
+        kept = [text for text in texts if text]
+        if not kept:
+            return
+        if not sections or sections[-1]["path"] != here:
+            sections.append({"path": here, "texts": []})
+        sections[-1]["texts"] += kept
+
+    for block in BLANK_LINE.split(markdown):
+        texts: list[str] = []
+        for line in (line.strip() for line in block.split("\n")):
+            heading = HEADING.match(line)
+            item = LIST_ITEM.match(line)
+            if heading:
+                add(texts)
+                texts = []
+                level, text = len(heading[1]), ingest.clean(heading[2])
+                if level == 1 and not title:
+                    title = text
+                    continue
+                headings.append(text)
+                path = [(n, h) for n, h in path if n < level] + [(level, text)]
+            elif item:
+                texts.append(line[item.end() :])
+            elif line and not line.startswith("<!--"):
+                if texts:
+                    texts[-1] = f"{texts[-1]} {line}".strip()
+                else:
+                    texts.append(line)
+        add(texts)
+    return {"title": title, "headings": headings, "sections": sections}
+
+
+def docling_converter() -> Any:
+    """Docling's converter for HTML (the `ingest` group)."""
+    from docling.datamodel.base_models import InputFormat
+    from docling.document_converter import DocumentConverter
+
+    return DocumentConverter(allowed_formats=[InputFormat.HTML])
+
+
+def docling_reading(raw: str, converter: Any) -> dict[str, Any]:
+    """Arm (b): Docling's HTML backend on the main content after (a)'s furniture
+    removal (alone it reads the site's menus), exported as Markdown."""
+    from docling.datamodel.base_models import DocumentStream
+
+    html = BytesIO(str(main_content(raw)).encode("utf-8"))
+    result = converter.convert(DocumentStream(name="page.html", stream=html))
+    return markdown_reading(result.document.export_to_markdown())
+
+
+def trafilatura_reading(raw: str) -> dict[str, Any]:
+    """Arm (c): trafilatura's own content detection on the whole page, as Markdown
+    (the `bench` group)."""
+    import trafilatura
+
+    return markdown_reading(trafilatura.extract(raw, output_format="markdown") or "")
+
+
+def holder(text: str, sections: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The section holding a truth block's text (letters and digits compared), else
+    the one sharing most of its words, else None."""
+    target = squash(text)
+    for section in sections:
+        if target in squash(" ".join(section["texts"])):
+            return section
+    wanted = Counter(tokens(text))
+    shared = [
+        sum((wanted & Counter(tokens(" ".join(section["texts"])))).values())
+        for section in sections
+    ]
+    best = max(shared, default=0)
+    return sections[shared.index(best)] if best else None
+
+
+def in_order(parts: list[str], text: str) -> bool:
+    """Whether every part occurs in `text`, each after the one before."""
+    position = 0
+    for part in parts:
+        found = text.find(part, position)
+        if found < 0:
+            return False
+        position = found + len(part)
+    return True
+
+
+def page_score(page: Mapping[str, Any], reading: Mapping[str, Any]) -> dict[str, int]:
+    """One page's counts for W2's measures (X42 report)."""
+    blocks = page["blocks"]
+    shown = [page["title"], *(heading["text"] for heading in page["headings"])]
+    for block in blocks:
+        if block["kind"] == "list":
+            shown += block["items"]
+        elif block["kind"] != "alt":
+            shown.append(block["text"])
+    alts = [block["text"] for block in blocks if block["kind"] == "alt"]
+    sections = reading["sections"]
+    kept = [
+        reading["title"],
+        *reading["headings"],
+        *(text for section in sections for text in section["texts"]),
+    ]
+    truth = Counter(tokens(" ".join(shown)))
+    words = Counter(tokens(" ".join(kept)))
+    allowed = truth + Counter(tokens(" ".join(alts)))
+    named = Counter(squash(heading["text"]) for heading in page["headings"])
+    found_headings = named & Counter(squash(heading) for heading in reading["headings"])
+    tested = placed = 0
+    for block in blocks:
+        if block["kind"] not in ("p", "list") or not block["path"]:
+            continue
+        tested += 1
+        held = holder(block.get("text") or " ".join(block["items"]), sections)
+        above = {squash(heading) for heading in held["path"]} if held else set()
+        placed += {squash(heading) for heading in block["path"]} <= above
+    lists = [block["items"] for block in blocks if block["kind"] == "list"]
+    whole = sum(
+        any(
+            in_order([squash(item) for item in items], squash(" ".join(s["texts"])))
+            for s in sections
+        )
+        for items in lists
+    )
+    everything = squash(" ".join(kept))
+    return {
+        "words": sum(truth.values()),
+        "found": sum((truth & words).values()),
+        "kept": sum(words.values()),
+        "right": sum((allowed & words).values()),
+        "headings": sum(named.values()),
+        "headings_found": sum(found_headings.values()),
+        "tested": tested,
+        "placed": placed,
+        "lists": len(lists),
+        "lists_whole": whole,
+        "alts": len(alts),
+        "alts_kept": sum(squash(alt) in everything for alt in alts),
+    }
+
+
+def scores(
+    truth: Mapping[str, Any], readings: Mapping[str, Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Every page's counts, their totals, and W2's rates over the totals."""
+    pages = {slug: page_score(page, readings[slug]) for slug, page in truth.items()}
+    total: Counter[str] = Counter()
+    for counts in pages.values():
+        total.update(counts)
+    rates = {
+        "recall": total["found"] / total["words"],
+        "precision": total["right"] / total["kept"],
+        "headings": total["headings_found"] / total["headings"],
+        "section_paths": total["placed"] / total["tested"],
+        "lists": total["lists_whole"] / total["lists"],
+        "alts": total["alts_kept"] / total["alts"],
+    }
+    return {"rates": rates, "total": dict(total), "pages": pages}
