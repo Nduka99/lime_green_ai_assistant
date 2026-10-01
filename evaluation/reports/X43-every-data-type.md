@@ -326,6 +326,16 @@ The set is sealed and registered before any arm answers it.
   25 of them across data types; 223 sources carry the 365 quotes v4 and v5 took. The
   bundle holds 78 pictures, 79 page screenshots and 214 drawn document pages (226 MB);
   the writer's copy is `../LGE6` (no `plan.json`).
+- **Check 1 (1 October, 16:00):** 220 cases, 266 wordings, 20 problems: 19 cases
+  flagged by the writer, and v6c046 reuses a quote an earlier key took. The flags
+  follow type and format, not chance: 4 comparisons of two colour pages, 4 conditions
+  or lists asked of certificates, 2 of policies, 4 visual cases, the rest single.
+  **Rule, fixed before the redraw:** each flagged case gets one redraw by the planning
+  rules (seed 62, the same format, sources no case used); a case flagged again is
+  withdrawn, as v5c188 was, and its stratum's count is reported. v6c046 keeps its
+  sources and asks something else. The catalogue was rebuilt after the swatch
+  readings (254 pictures with text, 285 visual only); the copy the plan was drawn from
+  is kept as `catalogue-at-plan.json` in the bundle.
 
 ## E. The all-pairs run
 
