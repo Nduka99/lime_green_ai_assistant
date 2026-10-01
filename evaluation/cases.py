@@ -339,14 +339,15 @@ def replace(
     texts: dict[str, str],
     seed: int,
     reuse: bool = False,
+    unindexed: set[str] = UNINDEXED,
 ) -> list[dict[str, Any]]:
     """The plan with each flagged case given new sources by the planning rules: a
     first source of the format its old first source had (so each format keeps its
     cases) and, where the type takes two, a second; never a source any case of the
     plan has used, the flagged ones included, unless the plan reuses sources and none
-    is left."""
+    is left. `unindexed` names the formats the plan left out (its design's)."""
     rng = random.Random(seed)
-    pool = usable_pool(entries, texts)
+    pool = usable_pool(entries, texts, unindexed)
     groups = conversations.subjects(pool)
     by_id = {e["id"]: e for e in entries}
     used = Counter(source for case in planned for source in case["sources"])
@@ -434,11 +435,14 @@ def rebundle(
     texts: dict[str, str],
     limit: int,
     seed: int,
+    unindexed: set[str] = UNINDEXED,
+    show: Show | None = None,
 ) -> tuple[dict[str, Any], str]:
     """What the writer has seen, with the flagged cases given new sources, and the
-    part file that shows them. The flagged cases' old sources leave `sources`."""
+    part file that shows them (with `show`, each source's images, as `bundle`). The
+    flagged cases' old sources leave `sources`."""
     reuse, taken = seen.get("reuse", False), seen.get("taken", {})
-    planned = replace(seen["plan"], flagged, entries, texts, seed, reuse)
+    planned = replace(seen["plan"], flagged, entries, texts, seed, reuse, unindexed)
     shown = {
         source_id: source
         for source_id, source in seen["sources"].items()
@@ -446,7 +450,8 @@ def rebundle(
     }
     by_id = {e["id"]: e for e in entries}
     cases = [case for case in planned if case["id"] in flagged]
-    text = part_text(cases, by_id, texts, limit, random.Random(seed), shown, taken)
+    rng = random.Random(seed)
+    text = part_text(cases, by_id, texts, limit, rng, shown, taken, show)
     return {**seen, "plan": planned, "sources": shown}, text
 
 

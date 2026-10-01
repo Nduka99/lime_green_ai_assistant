@@ -230,3 +230,28 @@ def test_the_catalogue_files_word_downloads_and_every_picture(
     assert found["picture:a"]["pages"] == ["page:products__lime-render__duro"]
     monkeypatch.setattr(config, "IMAGES", tmp_path / "none")
     assert catalogue.pictures([]) == []
+
+
+def test_a_flagged_picture_case_is_redrawn_from_the_plan_s_own_sources(
+    tmp_path: Path,
+) -> None:
+    entries = [picture(tmp_path, f"p{n}") for n in range(3)]
+    texts = {e["id"]: cases.picture_text(e) for e in entries}
+    seen = {
+        "plan": [{"id": "v6c01", "type": "visual", "sources": ["picture:p0"],
+                  "styles": ["original"]},
+                 {"id": "v6c02", "type": "visual", "sources": ["picture:p1"],
+                  "styles": ["original"]}],
+        "sources": {"v6c01-s1": {"entry": "picture:p0", "text": "t"},
+                    "v6c02-s1": {"entry": "picture:p1", "text": "t"}},
+        "reuse": True,
+    }  # fmt: skip
+    show = cases.asset_writer(tmp_path / "bundle", tmp_path)
+
+    replaced, text = cases.rebundle(
+        seen, {"v6c01"}, entries, texts, 8000, 1, {"image"}, show
+    )
+
+    assert replaced["plan"][0]["sources"] == ["picture:p2"]  # unused, not flagged
+    assert "v6c01-s1" in replaced["sources"] and "v6c02-s1" in replaced["sources"]
+    assert "See: pictures/p2.png" in text

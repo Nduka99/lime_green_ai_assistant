@@ -231,6 +231,12 @@ def parser() -> argparse.ArgumentParser:
     redrawn.add_argument(
         "--limit", type=int, default=8000, help="characters per source"
     )
+    redrawn.add_argument(
+        "--design", type=Path, help="the plan's design (default: v4's)"
+    )
+    redrawn.add_argument(
+        "--rendered", type=Path, help="the web-render folder the plan used (v6)"
+    )
     guarded = commands.add_parser(
         "guardrails", help="check a run for shown prices and missed emergencies"
     )
@@ -889,13 +895,16 @@ def run_replace_cases(args: argparse.Namespace) -> int:
     if part.exists():
         raise ValueError(f"{part} exists already")
     entries = grades.read_json(args.catalogue)
+    design = grades.read_json(args.design) if args.design else cases.V4
+    unindexed = set(design.get("unindexed", cases.UNINDEXED))
     texts = {
-        e["id"]: cases.source_text(e)
+        e["id"]: cases.source_text(e, args.rendered)
         for e in entries
-        if e["format"] not in cases.UNINDEXED
+        if e["format"] not in unindexed
     }
+    show = cases.asset_writer(args.bundle, args.rendered) if args.rendered else None
     replaced, text = cases.rebundle(
-        seen, set(args.cases), entries, texts, args.limit, args.seed
+        seen, set(args.cases), entries, texts, args.limit, args.seed, unindexed, show
     )
     # The first plan stays beside the new one: the writer saw both.
     shutil.copyfile(plan_file, args.bundle / f"plan-before-part-{args.part}.json")
