@@ -147,6 +147,14 @@ around them: their captions can be downloaded only with the owner's authorisatio
   kept only if at least 20% of its words are not already in its page's text.
 - Failing, OCR is not used. The failures are recorded per kind, and a kind that passes
   on its own may be adopted alone.
+- **Found in the first full build (1 October).** Eight plain colour swatches were read
+  as "1.1.1…" until GLM-OCR's 8,192-token limit; the digits counted as new words, the
+  passages reached 8,200 characters and the embedder refused them (HTTP 400), so the
+  build stopped. Fixed generally: a reading the model did not finish (finish reason
+  not "stop") is no text (`images.read_text`), the rule `llm.chat` applies to answers.
+  The B2 gate stands: its 40 readings all finished (the longest 411 characters). Two
+  v6 sources are among the eight swatches (second sources of v6c043 and v6c203); the
+  writer cited both as what they show, not by the looped text.
 
 **B3. Finding images: retrieval arms.**
 - Set `image-facts`: one question per image passage of the `image-text` images and of

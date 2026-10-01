@@ -31,8 +31,6 @@ from limespec.ingest import (
 from limespec.passages import FORMS
 from limespec.view import AnswerView, view
 
-OCR_PROMPT = "Text Recognition:"  # GLM-OCR's prompt for the text in an image
-
 
 def run_acquire(what: str, measure_only: bool) -> None:
     """Pages from the sitemap not yet cached, the PDFs and images linked from
@@ -148,7 +146,7 @@ def run_read_images(vlm: str) -> int:
     each with a vision model (GLM-OCR); readings already saved are kept (X43 B)."""
     from PIL import Image
 
-    from limespec import images, tables
+    from limespec import images
 
     if not llm.healthy(vlm):
         print(f"error: no vision model ready at {vlm}", file=sys.stderr)
@@ -173,7 +171,7 @@ def run_read_images(vlm: str) -> int:
         if target.exists():
             continue
         with Image.open(config.IMAGES / f"{identity}.png") as picture:
-            words = tables.recognise(picture.convert("RGB"), vlm, OCR_PROMPT)
+            words = images.read_text(picture.convert("RGB"), vlm)
         target.write_text(json.dumps({"id": identity, "ocr": words}), encoding="utf-8")
         read += 1
     print(f"{len(places)} places of {len(set(p['id'] for p in places))} pictures; "

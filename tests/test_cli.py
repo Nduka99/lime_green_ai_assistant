@@ -246,7 +246,7 @@ def test_read_images_stores_pictures_then_reads_each_once(
 ) -> None:
     from PIL import Image
 
-    from limespec import images, tables
+    from limespec import images
 
     out = tmp_path / "images"
     out.mkdir()
@@ -272,7 +272,7 @@ def test_read_images_stores_pictures_then_reads_each_once(
     monkeypatch.setattr(acquire, "read_manifest", lambda: records)
     monkeypatch.setattr(cli, "site_html", lambda: [("https://x.test/", "<html/>")])
     monkeypatch.setattr(images, "collect", collect)
-    monkeypatch.setattr(tables, "recognise", lambda image, url, prompt: "Duro 25kg")
+    monkeypatch.setattr(images, "read_text", lambda image, url: "Duro 25kg")
     monkeypatch.setattr(llm, "healthy", lambda url: url == "http://vlm")
 
     assert cli.main(["read-images", "--vlm", "http://none"]) == 1

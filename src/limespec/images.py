@@ -7,6 +7,7 @@ of the site's images). A PDF figure is cut from its page by pdfium at its box, a
 the `ingest` group.
 """
 
+import base64
 import hashlib
 import re
 from io import BytesIO
@@ -14,10 +15,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
+import httpx
 import pypdfium2
 from PIL import Image, ImageStat, UnidentifiedImageError
 
-from limespec import config, webpage
+from limespec import config, llm, webpage
 
 MAX_SIDE = 1024  # pixels: the longest side of a stored image
 LIGHT = 200  # mean grey level above which drawn pixels count as light
@@ -31,6 +33,9 @@ PICTURE = "Image"  # the heading of a passage made from a picture
 WORD = re.compile(r"\w+")
 TAG = re.compile(r"<[^>]+>")
 FIGURE_SCALE = 200 / 72  # a figure is drawn at 200 DPI, as tables are read (pdf.py)
+OCR_PROMPT = "Text Recognition:"  # GLM-OCR's prompt for the text in an image
+OCR_MAX_TOKENS = 8192  # GLM-OCR's published limit
+OCR_TIMEOUT_SECONDS = 600.0
 Box = tuple[float, float, float, float]  # left, top, right, bottom, from top-left
 
 
@@ -156,6 +161,38 @@ def new_words(text: str, known: str) -> float:
     words = [word.casefold() for word in WORD.findall(text)]
     have = {word.casefold() for word in WORD.findall(known)}
     return sum(word not in have for word in words) / len(words) if words else 0.0
+
+
+def read_text(picture: Image.Image, url: str) -> str:
+    """The text GLM-OCR (the server at `url`) reads in a picture, or "" when its reply
+    stopped at the token limit: a reply the model did not finish is a loop, not text
+    (X43: eight plain colour swatches read as "1.1.1..." to 8,192 tokens). The request
+    is `tables.recognise`'s, kept apart because `tables.py` is part of the PDF
+    reader's fingerprint."""
+    buffer = BytesIO()
+    picture.save(buffer, format="PNG")
+    address = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    content = [
+        {"type": "image_url", "image_url": {"url": address}},
+        {"type": "text", "text": OCR_PROMPT},
+    ]
+    body = {
+        "messages": [{"role": "user", "content": content}],
+        "max_tokens": OCR_MAX_TOKENS,
+    }
+    try:
+        response = llm.CLIENT.post(
+            f"{url}/v1/chat/completions",
+            json=body,
+            headers=llm.auth(),
+            timeout=OCR_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        choice = response.json()["choices"][0]
+        finished = choice["finish_reason"] == "stop"
+        return str(choice["message"]["content"]) if finished else ""
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
+        raise llm.ModelServerError(f"vision model at {url} failed: {error}") from error
 
 
 def ocr_lines(reading: str) -> list[str]:

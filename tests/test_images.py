@@ -129,3 +129,44 @@ def test_each_picture_becomes_one_passage_of_its_own_words() -> None:
         ((site + "duro", "Duro", "Image", "", "Image › Duro bag", None), "p3"),
     ]  # fmt: skip
     assert images.new_words("", "x") == 0.0
+
+
+@pytest.mark.parametrize(("finish", "found"), [("stop", "Duro 25kg"), ("length", "")])
+def test_only_a_reading_the_model_finished_is_text(
+    monkeypatch: pytest.MonkeyPatch, finish: str, found: str
+) -> None:
+    import httpx
+
+    from limespec import llm
+
+    sent: list[Any] = []
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        sent.append((url, kwargs["json"]))
+        choice = {"finish_reason": finish, "message": {"content": "Duro 25kg"}}
+        return httpx.Response(
+            200, json={"choices": [choice]}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(llm.CLIENT, "post", post)
+
+    assert images.read_text(Image.new("RGB", (4, 4)), "http://vlm") == found
+    url, body = sent[0]
+    assert url == "http://vlm/v1/chat/completions"
+    assert body["messages"][0]["content"][1]["text"] == "Text Recognition:"
+
+
+def test_a_failed_reading_is_a_model_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from limespec import llm
+
+    def post(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(500, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(llm.CLIENT, "post", post)
+
+    with pytest.raises(llm.ModelServerError):
+        images.read_text(Image.new("RGB", (4, 4)), "http://vlm")
