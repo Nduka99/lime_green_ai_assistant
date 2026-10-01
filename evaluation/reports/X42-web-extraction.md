@@ -221,3 +221,65 @@ definition lists: the FAQ, the glossary and two case studies.
 - **Other measures.** List integrity: every item, in order, in one section. Heading
   recall: truth headings equal to one of the arm's headings, the title apart. Alt texts:
   inside the arm's text.
+
+**W2 result (`b747c8b`, `data/runs/x42/w2-<arm>.json`): no arm qualifies.**
+
+| Arm | Recall | Precision | Headings | Section paths | Lists | Alt texts |
+|---|---|---|---|---|---|---|
+| (a) current | 0.964 | 0.935 | 0.579 | 0.518 | 0.538 | 0 / 4 |
+| (b) Docling HTML | 0.971 | 0.866 | 0.228 | 0.322 | 0.487 | 4 / 4 |
+| (c) trafilatura | 0.959 | 0.904 | 0.221 | 0.212 | 0.564 | 0 / 4 |
+
+Neither generic reader knows the site's headings: most are paragraphs styled by class
+(`p.h3-style`) or bold lines, which both read as text. (a) reads the classes, so it leads
+on structure. By the rule, (a)'s failures are diagnosed and (a) gets the fix.
+
+**Diagnosis of (a), by mechanism** (per page, `x42_diagnose.py`):
+- **Only the nearest heading is kept.** No FAQ answer keeps its category (0 of 37). A
+  heading with no text directly under it vanishes from the reading, as every FAQ
+  category and each colour page's "Products available in …" heading do.
+- **Bold lines are read as paragraphs** (E5 A′). That holds for the case studies'
+  "The Requirement" headings, the knowledge base's question subheadings and the sensor
+  headings S1–S4: 33 headings in all.
+- **Leaf-only reading loses text.** A block element whose text sits outside the tags
+  listed (a `<blockquote>` with bare text, text after a `<p>` inside an `<li>`) loses it:
+  76 words of one article, a sentence of another.
+- **Over-broad furniture selectors remove content.** `.swatch` holds colour names and
+  document names, `.portal` the team and the Warmshell benefits, `.blog-feed` the news
+  index's article names. The title-block label and date and image captions are lost too.
+- **Furniture kept.** Listing cards' blurbs (100 to 200 words per listing page), the
+  case-study sidebar's "Materials used" cards, back links, link buttons, the supplier
+  and technical callouts, and the FAQ's AI box.
+
+**The fix (designed from W1's failures; research below).**
+- **Block reading like a browser's.** Text is broken into lines at block-level element
+  boundaries and at `<br>`, and joined inside inline elements. This follows the WHATWG
+  `innerText` algorithm ("rendered text collection": a block-level box starts and ends
+  a line), as Inscriptis does for layout-aware HTML to text (Weichselbraun 2021, JOSS).
+  No text is lost because its tag is not on a list.
+- **Headings with levels and a path.** `h1`–`h6` by tag. A paragraph styled `hN-style`
+  takes level N (the site's way of marking headings). A definition term, or a bold line
+  that is not followed by a list and fits on one line of the content column (100
+  characters), sits one level below the last tagged heading. Every element records the
+  path of headings above it. A heading with no text of its own stays in the path.
+  - Bold or large text acting as a heading without heading markup is a known pattern
+    (WCAG failure F2). WAVE's "possible heading" check treats short bold or large text
+    as a probable heading.
+- **Components by role, from the main-content rule.**
+  - Furniture is removed: carousels, the case-study sidebar boxes, highlight sections,
+    callouts, back links and link buttons.
+  - A card that is not a link carries content and is kept, its title read as text.
+  - Link cards left in the page's own column are its listing, read as one list of their
+    names. Colour grids and download buttons are read the same way.
+  - The title block keeps its label and date as text; its `<h1>` is the title.
+- **Considered and not used:** site template detection (blocks repeated across a site's
+  pages are boilerplate; Bar-Yossef and Rajagopalan 2002). Here the FAQ repeats a
+  knowledge-base paragraph word for word, so it would delete content. Repeated content
+  is W3's question (passages kept once).
+
+**W2b, pages the fix was not derived from (fixed before the fix is written).** Ten new
+pages are drawn with seed 43 from the 130 pages outside W1: product 3, colour 1,
+knowledge base 2, case study 1, news 1, other 2. They are rendered and judged by the same
+rules, and registered as `web-pages-holdout`, before the fixed reader exists. The fix is
+kept only if it qualifies on W1 and holds on W2b: recall ≥ 0.99, precision ≥ 0.98, and
+section-path accuracy and list integrity not below (a)'s on W2b.

@@ -287,6 +287,32 @@
     "visible/warmshell-natural-insulation__warmshell-external-insulation.txt": "9740b21e8fe4c6d37ab73741e88a7cb794f2392bdda213173c682fd7dfcdc6e3"
    }
   },
+  "web-pages-holdout": {
+   "description": "X42 W2b: 10 rendered site pages outside W1 (seed 43), judged before the fixed reader existed",
+   "files": {
+    "outlines/news__joe-dinsdale-appointment.json": "a12406e8aeed9e47313e770b46835cd0d7154acc6eb8fea5172411ec29ca3df4",
+    "outlines/products-by-colour__york.json": "cb43547f7c491e3859ffcf82253c203dc3e9270152b8d2129c196ca46f5d4294",
+    "outlines/products__insulation__woodfibre.json": "ec6b9f30b2369e69d343c6432021ae25cf671619b9b4ee5135e8985db9e8c041",
+    "outlines/products__lime-plaster__ultra.json": "41fb8da781f83fa9531246936ae33abb7a6332e3cb1cc67ee3ef690f09660db0",
+    "outlines/products__primers-and-adhesives__mpl1.json": "42b7301cb9b044ce757c4205c2d811e2e8bce288c5744ee2faff9a0bf1955e87",
+    "outlines/support__case-studies__newport-street-gallery.json": "c1b34a8328beb94287ea8e0854df6bcff8f846e8ef5895dd1d5bec698acba018",
+    "outlines/support__knowledgebase.json": "7132766db0a0a0735c1004589d86a8ce20546379a96695302e5cbc38a0a7835a",
+    "outlines/support__knowledgebase__conservation.json": "250b8ab046283d746a033a0081365f73d9b0a45cb12ab46af16edb39bf79c377",
+    "outlines/terms-and-conditions.json": "145e4ac5781a977e65d82d8c9758a8925b8db4e23a4a19d625b08f829c1f406c",
+    "outlines/terms.json": "a822ba4a077d2bb934754f64aa738922fcfab0e31534bafcc43edafbeaa6f4f7",
+    "truth.json": "67ab15984d11226f2546fb504893da8bdad8ca5d89ab5efb8a2411919cac44f2",
+    "visible/news__joe-dinsdale-appointment.txt": "b8d920b20599b42ebdbbdd8c1177c890714fd456719aa78943bec4eb0d884a4a",
+    "visible/products-by-colour__york.txt": "89ef8f61967ec03f737159f06897c9aa7a58c1c6c400dcceeb3323e39290ecfc",
+    "visible/products__insulation__woodfibre.txt": "ad059d1db9f9622c429cb5be290c80676b7696892eabb1b570018592e58829cc",
+    "visible/products__lime-plaster__ultra.txt": "6205bdcd6500fbdba833cf4d860270935d31fe1049a1ea670bad7bbc150172b9",
+    "visible/products__primers-and-adhesives__mpl1.txt": "498f8438a38f524a238931197c5704319b67d87bf5201090b667eb1532ff8d49",
+    "visible/support__case-studies__newport-street-gallery.txt": "a89b7e5842ae3433ec3f84e96dbee3842d375e1a3a8c06365cbeb663c133ea67",
+    "visible/support__knowledgebase.txt": "cca7ccc13a0ffdd4548a3f7869133d31a2e098d883f2985528ca2fe1948e2d7c",
+    "visible/support__knowledgebase__conservation.txt": "b66ae4c5de431fd0b88a359413400d32f89d9c22180f9776413fb283577f63cd",
+    "visible/terms-and-conditions.txt": "7b137feb0453522dedc1ca9dfb35ec019288920a0b5ee8529612153cae864ce4",
+    "visible/terms.txt": "20703b53dc3596615b83f28da6818d084458445eed3913644d158ba0546d5a23"
+   }
+  },
   "x8-pages": {
    "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
    "files": {

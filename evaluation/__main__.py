@@ -398,6 +398,9 @@ def parser() -> argparse.ArgumentParser:
     )
     web_sampled.add_argument("--seed", type=int, required=True)
     web_sampled.add_argument("--out", type=Path, required=True)
+    web_sampled.add_argument(
+        "--held-out", type=Path, help="draw W2b's pages from outside this sample"
+    )
     web_rendered = commands.add_parser(
         "web-render", help="screenshots and visible text of sampled pages (X42 W1)"
     )
@@ -1295,7 +1298,11 @@ def run_web_audit(args: argparse.Namespace) -> int:
 
 
 def run_web_sample(args: argparse.Namespace) -> int:
-    chosen = webpages.sample(cached_html(), args.seed)
+    if args.held_out:
+        drawn = {row["slug"] for row in grades.read_json(args.held_out)}
+        chosen = webpages.held_out(cached_html(), drawn, args.seed)
+    else:
+        chosen = webpages.sample(cached_html(), args.seed)
     rows = [{"slug": slug, "type": webpages.page_type(slug)} for slug in chosen]
     write_json(args.out, rows)
     print(f"{len(rows)} pages in {args.out}: {dict(Counter(r['type'] for r in rows))}")

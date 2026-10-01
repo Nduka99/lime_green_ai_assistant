@@ -45,6 +45,8 @@ REPEAT = 40  # shorter bodies ("Find a supplier") are not counted as repeated te
 RICH = 8  # structure-rich pages drawn first
 QUOTAS = {"product": 8, "colour": 4, "knowledge": 6, "case study": 4, "news": 3}
 OTHER = 5
+HELD_OUT = {"product": 3, "colour": 1, "knowledge": 2, "case study": 1, "news": 1}
+HELD_OUT_OTHER = 2
 ARMS = ("current", "docling", "trafilatura")
 WORD = re.compile(r"\w+")
 BLANK_LINE = re.compile(r"\n\s*\n")
@@ -146,6 +148,17 @@ def sample(pages: Mapping[str, str], seed: int) -> list[str]:
         have = sum(page_type(slug) == kind for slug in chosen)
         pool = sorted(s for s in pages if page_type(s) == kind and s not in chosen)
         chosen += rng.sample(pool, max(0, min(quota - have, len(pool))))
+    return chosen
+
+
+def held_out(pages: Mapping[str, str], exclude: set[str], seed: int) -> list[str]:
+    """W2b's pages: each type to its HELD_OUT quota, from pages outside `exclude`
+    (W1's sample), for checking a fix on pages it was not derived from."""
+    rng = random.Random(seed)
+    chosen: list[str] = []
+    for kind, quota in [*HELD_OUT.items(), ("other", HELD_OUT_OTHER)]:
+        pool = sorted(s for s in pages if page_type(s) == kind and s not in exclude)
+        chosen += rng.sample(pool, min(quota, len(pool)))
     return chosen
 
 

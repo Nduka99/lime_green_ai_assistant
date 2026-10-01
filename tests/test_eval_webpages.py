@@ -73,6 +73,12 @@ def test_the_command_line_writes_the_audit_and_the_sample(
     rows = json.loads((tmp_path / "s.json").read_text())
     assert {r["type"] for r in rows} == {"product", "news"}
 
+    (tmp_path / "products__render__ultra.html").write_text(PAGE, encoding="utf-8")
+    held = ["web-sample", "--seed", "4", "--held-out", str(tmp_path / "s.json")]
+    assert cli.main([*held, "--out", str(tmp_path / "h.json")]) == 0
+    rows = json.loads((tmp_path / "h.json").read_text())
+    assert rows == [{"slug": "products__render__ultra", "type": "product"}]
+
 
 class Route:
     def __init__(self, url: str) -> None:
