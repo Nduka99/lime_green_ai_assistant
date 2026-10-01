@@ -308,3 +308,22 @@ knowledge base 2, case study 1, news 1, other 2. They are rendered and judged by
 rules, and registered as `web-pages-holdout`, before the fixed reader exists. The fix is
 kept only if it qualifies on W1 and holds on W2b: recall ≥ 0.99, precision ≥ 0.98, and
 section-path accuracy and list integrity not below (a)'s on W2b.
+
+**W2b result: the fix holds, and is kept** (reader frozen at `4ba3b37` before it read
+these pages; `data/runs/x42/w2b-<arm>.json`).
+
+| Arm on W2b | Recall | Precision | Headings | Section paths | Lists | Alt texts |
+|---|---|---|---|---|---|---|
+| (a) current | 0.948 | 0.920 | 0.632 | 0.650 | 0.545 | 0 / 2 |
+| (a) fixed | 1.000 | 0.988 | 1.000 | 0.850 | 1.000 | 2 / 2 |
+
+- The three section-path misses are all on the terms page, and they come from the
+  instrument. The truth lines "Download our" and "Terms and Conditions" are short and
+  occur more than once, and the scorer takes the first section that holds a block's
+  text. The reader places each under its own heading (checked in the reading), so read
+  by eye its held-out section paths are 20 of 20.
+- W2b tests only 20 blocks; W1's 216 carry the weight. The scorer's first-match rule
+  undercounts short repeated lines in every arm alike.
+
+**W2 decision:** the web side reads pages with `limespec.webpage`. Ingestion switches
+to it in W6, with the passage form W3 selects.
