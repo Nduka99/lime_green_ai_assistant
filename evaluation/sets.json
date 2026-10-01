@@ -212,6 +212,18 @@
     "questions.json": "fb35c2586dc22a9f11e025182c3428e1424ce24ae7673094f63ecca4be5ebec5"
    }
   },
+  "heldout-v6": {
+   "description": "Held-out v6 (X43): 213 cases over every data type (pages as rendered, PDFs, Word, GOV.UK, pictures), written blind by an outside model family from sources as a visitor sees them; 7 cases withdrawn after one redraw; blind order seed 63",
+   "files": {
+    "brief.md": "752270a768687fa81752189fa7825d00a2ac403df3ac2cae20e22fde8cac5dec",
+    "catalogue-at-plan.json": "2e4fc725ff601ea030b61fea31395dc96c1c0b7917bde9bc4ca368654de5e55a",
+    "feedback-1.md": "ff465f62b18893b314923181e4a83805b8c99d640a77e3f3905256fefc9c40f7",
+    "key.json": "3a6619bf359fa27d44af7f66cdcc52ced667500a45b9ea3df93e5010f30dc53f",
+    "plan-before-part-15.json": "a5ac7ff5b400342a811301ebccaa41eb1d95c037a188d204839fcc3488331350",
+    "plan.json": "3a1341e40b730ae11e730838f797d906c62a52e5e20ec038cea63cb300f43bcf",
+    "questions.json": "ff6eae0f48fd7e5ef6e050aec1e456632ed348513bf1156607c53db77506edac"
+   }
+  },
   "image-facts": {
    "description": "X43 B3: 40 questions about what drawn pictures show (seed 44), written by looking at each, answered by the picture or a stored copy",
    "files": {

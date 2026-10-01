@@ -336,6 +336,16 @@ The set is sealed and registered before any arm answers it.
   sources and asks something else. The catalogue was rebuilt after the swatch
   readings (254 pictures with text, 285 visual only); the copy the plan was drawn from
   is kept as `catalogue-at-plan.json` in the bundle.
+- **Check 2 and seal (1 October).** The writer rewrote exactly the 20 named cases (the
+  key compared by case id with its copy before feedback); v6c046 passes; 7 were
+  flagged again (v6c013 colour-page comparison, v6c107 performance comparison, v6c112
+  visual, v6c113 and v6c195 lists, v6c159 and v6c176 conditions on certificates) and
+  are withdrawn by the rule. **Sealed and registered as `heldout-v6`:** 213 cases (173
+  answerable, 30 to refuse, 10 emergencies), 284 questions, blind order seed 63; 0
+  problems. Evidence: 88 page quotes, 73 PDF quotes (GOV.UK included), 10 Word quotes,
+  7 picture-text quotes, 68 pictures cited as what they show. Cases by first source:
+  pictures 53 (26 with text, 27 visual only), pages 75, PDFs 59, Word 10, GOV.UK 8;
+  certificates end at 5, below the floor of 6 (reported with that stratum).
 
 ## E. The all-pairs run
 
