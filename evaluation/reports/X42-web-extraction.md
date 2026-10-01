@@ -110,6 +110,21 @@ of body, and passages whose body repeats on another page. Its first run is the b
 any collection (the user's decision). Descriptive alt texts become image passages only if
 conv-v1's image turns show the value. YouTube is out of scope.
 
+**W5 findings (1 October).**
+- **The NBS widget holds no content.** It is NBS Source's "add to spec" button, an
+  iframe on 15 product pages that opens the product on NBS Source. Nothing is missing
+  from the pages. Collecting NBS Source's own product records would be a question for
+  NBS's terms, and is not proposed.
+- **Alt texts show value.** conv-v1 has 22 evidence quotes in 19 turns taken from an
+  image's alt text (`webp` and `jpeg` files among its 100 quotes). No index holds them,
+  so those turns cannot be grounded. W6 indexes the reader's alt texts:
+  - each joins its section's passage as a line `Image: <alt text>`, not a passage of
+    its own;
+  - a claim quoting such a line links to the plain page address, since a text fragment
+    cannot highlight an alt text.
+  - The W3 arms are built without them (pre-registered). W6's regression gates decide
+    whether they stay.
+
 **W6, regressions before a new freeze.**
 - Index version 18 = the web side by W2 and W3; PDFs, the price fence and the compiled
   lists unchanged.
