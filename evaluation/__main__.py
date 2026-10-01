@@ -81,6 +81,7 @@ from evaluation import (
     slotbench,
     support,
     versions,
+    webpages,
 )
 from limespec import (
     acquire,
@@ -388,6 +389,15 @@ def parser() -> argparse.ArgumentParser:
     near_checked.add_argument("--version", type=int, required=True)
     near_checked.add_argument("--url", required=True, help="the second model's server")
     near_checked.add_argument("--out", type=Path, required=True)
+    web_audited = commands.add_parser(
+        "web-audit", help="cached pages against what the extractor keeps (X42 W0)"
+    )
+    web_audited.add_argument("--out", type=Path, required=True)
+    web_sampled = commands.add_parser(
+        "web-sample", help="the pages whose ground truth is judged (X42 W1)"
+    )
+    web_sampled.add_argument("--seed", type=int, required=True)
+    web_sampled.add_argument("--out", type=Path, required=True)
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
     )
@@ -1252,6 +1262,29 @@ def run_nearmiss_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cached_html() -> dict[str, str]:
+    """Every cached site page's HTML by its cache name."""
+    return {
+        path.stem: path.read_text(encoding="utf-8")
+        for path in sorted(config.PAGE_CACHE.glob("*.html"))
+    }
+
+
+def run_web_audit(args: argparse.Namespace) -> int:
+    found = webpages.audit(cached_html())
+    write_json(args.out, found)
+    print(json.dumps(found["total"]))
+    return 0
+
+
+def run_web_sample(args: argparse.Namespace) -> int:
+    chosen = webpages.sample(cached_html(), args.seed)
+    rows = [{"slug": slug, "type": webpages.page_type(slug)} for slug in chosen]
+    write_json(args.out, rows)
+    print(f"{len(rows)} pages in {args.out}: {dict(Counter(r['type'] for r in rows))}")
+    return 0
+
+
 def run_nearmiss_answer(args: argparse.Namespace) -> int:
     found = grades.read_json(args.items)
     with assistant.connect() as conn:
@@ -1914,6 +1947,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_nearmiss_write(args)
         if args.command == "nearmiss-check":
             return run_nearmiss_check(args)
+        if args.command == "web-audit":
+            return run_web_audit(args)
+        if args.command == "web-sample":
+            return run_web_sample(args)
         if args.command == "nearmiss-answer":
             return run_nearmiss_answer(args)
         if args.command == "slot-gate":
