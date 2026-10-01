@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
-from limespec import config, ingest
+from limespec import config, ingest, webpage
 
 LEVELS = ["h1", "h2", "h3", "h4", "h5", "h6"]
 VIEWPORT = {"width": 1280, "height": 900}
@@ -47,7 +47,7 @@ QUOTAS = {"product": 8, "colour": 4, "knowledge": 6, "case study": 4, "news": 3}
 OTHER = 5
 HELD_OUT = {"product": 3, "colour": 1, "knowledge": 2, "case study": 1, "news": 1}
 HELD_OUT_OTHER = 2
-ARMS = ("current", "docling", "trafilatura")
+ARMS = ("current", "docling", "trafilatura", "fixed")
 WORD = re.compile(r"\w+")
 BLANK_LINE = re.compile(r"\n\s*\n")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")  # a Markdown heading: its marks, its text
@@ -334,6 +334,21 @@ def current_reading(raw: str) -> dict[str, Any]:
     if headings and headings[0] == title:
         headings = headings[1:]
     sections = [{"path": [heading], "texts": texts} for heading, texts in found]
+    return {"title": title, "headings": headings, "sections": sections}
+
+
+def fixed_reading(raw: str) -> dict[str, Any]:
+    """Arm (a) fixed (`limespec.webpage`): consecutive elements under the same path
+    form a section."""
+    title, found = webpage.read_page(raw)
+    headings = [e["text"] for e in found if e["kind"] == "heading"]
+    sections: list[dict[str, Any]] = []
+    for element in found:
+        if element["kind"] == "heading":
+            continue
+        if not sections or sections[-1]["path"] != element["section"]:
+            sections.append({"path": element["section"], "texts": []})
+        sections[-1]["texts"].append(element["text"])
     return {"title": title, "headings": headings, "sections": sections}
 
 

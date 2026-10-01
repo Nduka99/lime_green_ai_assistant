@@ -417,6 +417,7 @@ def parser() -> argparse.ArgumentParser:
         "web-score", help="an extractor arm against the web-pages truth (X42 W2)"
     )
     web_scored.add_argument("arm", choices=webpages.ARMS)
+    web_scored.add_argument("--set", default="web-pages", help="a registered truth")
     web_scored.add_argument("--out", type=Path, required=True)
     near_answered = commands.add_parser(
         "nearmiss-answer", help="claims shown per question from its passage (E7 S4)"
@@ -1348,7 +1349,7 @@ def run_web_score(args: argparse.Namespace) -> int:
     """One arm's readings of the sampled pages, scored against the registered truth;
     the readings are kept with the scores for diagnosis."""
     truth = grades.read_json(
-        sets.require("web-pages", args.root, args.registry) / "truth.json"
+        sets.require(args.set, args.root, args.registry) / "truth.json"
     )
     pages = cached_html()
     converter = webpages.docling_converter() if args.arm == "docling" else None
@@ -1356,6 +1357,8 @@ def run_web_score(args: argparse.Namespace) -> int:
     for slug in truth:
         if args.arm == "current":
             readings[slug] = webpages.current_reading(pages[slug])
+        elif args.arm == "fixed":
+            readings[slug] = webpages.fixed_reading(pages[slug])
         elif args.arm == "docling":
             readings[slug] = webpages.docling_reading(pages[slug], converter)
         else:

@@ -277,6 +277,31 @@ on structure. By the rule, (a)'s failures are diagnosed and (a) gets the fix.
   knowledge-base paragraph word for word, so it would delete content. Repeated content
   is W3's question (passages kept once).
 
+**The fix as built and frozen** (`src/limespec/webpage.py`, arm `fixed`), with two
+changes made while iterating on W1:
+- **The lead-in test.** It went from "followed by a list" to "ending in a colon or
+  semicolon", as the judging rule states it. "The Problem", followed directly by its
+  list, had been read as a lead-in.
+- **Large text.** The site's large-text class (`page-lead`) is treated like bold: short,
+  it is a label ("Downloads", Q&A questions); long, it is a lead paragraph.
+- **One furniture selector added.** The product pages' "Product advice and expert help"
+  box (`.call`, which holds only that box on all 160 pages).
+
+| Arm | Recall | Precision | Headings | Section paths | Lists | Alt texts |
+|---|---|---|---|---|---|---|
+| (a) current | 0.964 | 0.935 | 0.579 | 0.518 | 0.538 | 0 / 4 |
+| (a) fixed, on W1 | 1.000 | 0.993 | 0.986 | 0.967 | 1.000 | 4 / 4 |
+
+On W1 the fix qualifies. Its residual misses:
+- the about page's kicker labels, which the reader places under the large statement
+  that follows them;
+- one sentence repeated under two headings, which the scorer assigns to the first;
+- furniture without a component of its own: the colour pages' inline samples box, the
+  Warmshell cards' titles that CSS hides, a copyright line, one hero image's alt text
+  (a judging slip: the products page's hero alt was not recorded).
+
+These W1 figures were reached by iterating on W1. The held-out pages decide.
+
 **W2b, pages the fix was not derived from (fixed before the fix is written).** Ten new
 pages are drawn with seed 43 from the 130 pages outside W1: product 3, colour 1,
 knowledge base 2, case study 1, news 1, other 2. They are rendered and judged by the same
