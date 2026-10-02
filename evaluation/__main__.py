@@ -623,6 +623,11 @@ def parser() -> argparse.ArgumentParser:
         help="/api/answer for the submitted v5 (default: the v1 API)",
     )
     asked.add_argument("--run", required=True, help="a name for this run's file")
+    asked.add_argument(
+        "--converse",
+        action="store_true",
+        help="continue each conversation of a conversation set under its id",
+    )
     turned_out = commands.add_parser(
         "conversation-questions",
         help="write a conversation set's turns as its questions, with reference "
@@ -2175,7 +2180,7 @@ def run_ask(args: argparse.Namespace) -> int:
     questions = grades.read_json(folder / "questions.json")["questions"]
     out = args.runs / args.name / f"answers-{args.run}.json"
     with httpx.Client(base_url=args.target, timeout=ANSWER_TIMEOUT_SECONDS) as client:
-        records = ask.ask_all(questions, client, args.endpoint, out)
+        records = ask.ask_all(questions, client, args.endpoint, out, args.converse)
     errors = sum("view" not in record for record in records)
     print(f"{len(records)} answers saved to {out}, {errors} errors")
     return 1 if errors else 0

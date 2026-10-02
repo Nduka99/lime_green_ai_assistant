@@ -260,3 +260,12 @@ limit of ADR 0033 and ADR 0034. The text gaps are c09t2 and c12t2.
 - The next step builds the state (PLAN §0e): history rebuilt from what the user saw
   (`answers.shown` through `view.reply_text`), the last 4 turns, read by the first
   request only, never taken from a client.
+
+## Built (step 6, 2 October)
+
+The conversation state is stored (`conversations`; answers keep their conversation, turn
+and search questions), and the v1 API carries `conversation_id`. **Identity check:**
+`conv-v1` asked through the running API (`evaluation ask --converse`, Gemma on 8083,
+version 28) shows the same answer as `b4-live` on **86 of 86 turns**, with no errors; each
+of the 20 conversations kept one id with turns 1 to n (`answers-x36-api-live.json`). The
+history rebuilt from `answers.shown` is the history `b4-live` was measured with.
