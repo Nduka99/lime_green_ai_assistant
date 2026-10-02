@@ -7,6 +7,7 @@ import pytest
 from limespec import config, store
 from limespec.answer import (
     ANSWER_PROMPT,
+    HISTORY_PROMPT,
     INSUFFICIENT,
     PARTIAL,
     SAFETY_REFERRAL,
@@ -15,6 +16,7 @@ from limespec.answer import (
     answer,
     answer_schema,
     closest_pages,
+    conversation_user,
     gather,
     interleave,
     items_to_search,
@@ -292,6 +294,36 @@ def test_a_partly_supported_answer_names_the_parts_it_does_not_answer() -> None:
     for result in (not_every_part, claim_removed):
         assert result.status == "answered"
         assert [c.text for c in result.claims] == ["Mortex is a low-carbon mix."]
+
+
+def test_without_history_the_first_request_is_exactly_as_before() -> None:
+    model = FakeModel(reply())
+
+    answer("Mortex joints?", retrieve, model)
+
+    assert model.requests[0][:2] == (UNDERSTAND_PROMPT, "Question: Mortex joints?")
+    assert conversation_user("Mortex joints?") == "Question: Mortex joints?"
+
+
+def test_only_the_first_request_reads_the_conversation_so_far() -> None:
+    history = [("How long does Mortex take to set?", "About two days."),
+               ("And Solo?", "Three days.")]  # fmt: skip
+    model = FakeModel(reply(), parts=["How long does Solo take to set outside?"])
+
+    answer("and outside?", retrieve, model, history=history)
+
+    system, user, _ = model.requests[0]
+    assert system == UNDERSTAND_PROMPT + HISTORY_PROMPT
+    assert user == (
+        "Conversation so far:\n"
+        "Customer: How long does Mortex take to set?\nAssistant: About two days.\n"
+        "Customer: And Solo?\nAssistant: Three days.\n\n"
+        "Question: and outside?"
+    )
+    # The answer request asks the standalone question, with no earlier turn in it.
+    answered = model.requests[1][1]
+    assert "How long does Solo take to set outside?" in answered
+    assert "About two days." not in answered and "Customer:" not in answered
 
 
 def test_prompt_injected_reference_text_cannot_create_an_unsupported_claim() -> None:

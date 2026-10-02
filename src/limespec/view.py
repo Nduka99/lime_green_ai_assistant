@@ -81,3 +81,12 @@ def view(answer: Answer) -> AnswerView:
         sources=sources,
         closest_pages=closest,
     )
+
+
+def reply_text(shown: AnswerView) -> str:
+    """An answer as the reader saw it, for the conversation that follows: its claims,
+    then any notice (an emergency or a refusal is its fixed text alone)."""
+    lines = [claim["text"] for claim in shown["claims"]]
+    if shown["notice"]:
+        lines.append(shown["notice"])
+    return "\n".join(lines)

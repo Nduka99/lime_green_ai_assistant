@@ -41,6 +41,21 @@ def expected_statuses(case: dict[str, Any]) -> set[str]:
     return set(expected) if isinstance(expected, list) else {expected}
 
 
+def key_cases(key: dict[str, Any]) -> list[dict[str, Any]]:
+    """A key's cases. A conversation key's turns are its cases (X36): each turn's
+    message is its one wording and its situation (`dynamic`) is its type, so every
+    turn is graded on its own, as a single question is."""
+    if "cases" in key:
+        cases: list[dict[str, Any]] = key["cases"]
+        return cases
+    return [
+        {**turn, "type": turn["dynamic"],
+         "wordings": [{"style": "original", "text": turn["message"]}]}
+        for conversation in key["conversations"]
+        for turn in conversation["turns"]
+    ]  # fmt: skip
+
+
 def cases_by_question(
     key: dict[str, Any], questions: list[dict[str, str]]
 ) -> dict[str, tuple[dict[str, Any], str]]:
@@ -50,7 +65,7 @@ def cases_by_question(
     depend on how the blind file was shuffled.
     """
     wordings: dict[str, list[tuple[dict[str, Any], str]]] = {}
-    for case in key["cases"]:
+    for case in key_cases(key):
         for wording in case_wordings(case):
             wordings.setdefault(wording["text"], []).append((case, wording["style"]))
     found = {}

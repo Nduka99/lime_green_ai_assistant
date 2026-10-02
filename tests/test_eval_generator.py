@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from evaluation import __main__ as cli
-from evaluation import generator, sets
+from evaluation import conversations, generator, sets
 from limespec import answer, assistant, config, store
 from limespec.models import Passage
 
@@ -424,8 +424,8 @@ def test_history_holds_reference_replies_within_the_window() -> None:
         "Conversation so far:\nCustomer: It burnt my eye\n"
         f"Assistant: {answer.SAFETY_REFERRAL}\n\nQuestion: And its price?"
     )
-    assert generator.reference_reply(turns[0]) == "Yes."
-    assert generator.reference_reply(turns[2]) == answer.INSUFFICIENT
+    assert conversations.reference_reply(turns[0]) == "Yes."
+    assert conversations.reference_reply(turns[2]) == answer.INSUFFICIENT
 
 
 def test_turns_can_be_interleaved_with_answer_requests_of_one_token() -> None:

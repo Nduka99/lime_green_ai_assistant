@@ -18,6 +18,7 @@ import json
 import random
 import re
 import shutil
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -27,6 +28,7 @@ from pypdf.errors import DependencyError, PyPdfError
 
 from evaluation import keys
 from evaluation.catalogue import Entry
+from limespec import answer
 from limespec.ingest import extract_sections
 
 TOPIC_CHANGE = "topic change to a different product or subject"
@@ -439,3 +441,34 @@ def coverage(key: dict[str, Any], texts: list[str]) -> dict[str, Any]:
         "covered": len(follow_ups) - len(missing),
         "missing": missing,
     }
+
+
+# X36's runs: each turn answered with the conversation so far.
+
+
+def reference_reply(turn: Mapping[str, Any]) -> str:
+    """What the assistant is taken to have said in an earlier turn (reference mode,
+    X36): the fixed referral after an emergency, else the key's expected answer,
+    else the insufficient-evidence text."""
+    if turn["expected_status"] == "safety_referral":
+        return answer.SAFETY_REFERRAL
+    return str(turn.get("expected_answer") or answer.INSUFFICIENT)
+
+
+def turn_questions(key: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every turn as a question of the set, in conversation order, with its
+    reference history: each earlier turn's message and reference reply."""
+    rows = []
+    for conversation in key["conversations"]:
+        earlier: list[list[str]] = []
+        for number, turn in enumerate(conversation["turns"], 1):
+            rows.append({"id": turn["id"], "question": turn["message"],
+                         "conversation": conversation["id"], "turn": number,
+                         "history": [list(pair) for pair in earlier]})  # fmt: skip
+            earlier.append([turn["message"], reference_reply(turn)])
+    return rows
+
+
+def window(history: Sequence[Sequence[str]], size: int) -> list[tuple[str, str]]:
+    """The last `size` turns of a history, oldest first; none when `size` is 0."""
+    return [(message, reply) for message, reply in history[-size:]] if size else []

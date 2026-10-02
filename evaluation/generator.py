@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import psutil
 
-from evaluation import grades, metrics, reach
+from evaluation import conversations, grades, metrics, reach
 from limespec import answer, config, llm, retrieve, store
 from limespec.models import Passage
 from limespec.verify import find_quote, verify
@@ -527,28 +527,14 @@ def curve(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 # M4: prompt reuse per chat turn.
 
 
-def reference_reply(turn: Mapping[str, Any]) -> str:
-    """What the assistant is taken to have said in an earlier turn (reference mode,
-    as X36): the fixed referral after an emergency, else the key's expected answer,
-    else the insufficient-evidence text."""
-    if turn["expected_status"] == "safety_referral":
-        return answer.SAFETY_REFERRAL
-    return str(turn.get("expected_answer") or answer.INSUFFICIENT)
-
-
 def understanding_user(
     turns: Sequence[Mapping[str, Any]], index: int, window: int
 ) -> str:
     """The stand-in understanding request's user message for turn `index`: the last
     `window` turns, then the new message; with no history, exactly today's."""
-    lines = []
-    for turn in turns[max(0, index - window) : index]:
-        lines.append(f"Customer: {turn['message']}")
-        lines.append(f"Assistant: {reference_reply(turn)}")
-    question = f"Question: {turns[index]['message']}"
-    if not lines:
-        return question
-    return "Conversation so far:\n" + "\n".join(lines) + "\n\n" + question
+    earlier = turns[max(0, index - window) : index]
+    history = [(t["message"], conversations.reference_reply(t)) for t in earlier]
+    return answer.conversation_user(turns[index]["message"], history)
 
 
 def conversation_requests(

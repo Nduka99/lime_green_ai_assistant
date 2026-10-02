@@ -2,7 +2,7 @@
 
 from limespec.answer import SAFETY_REFERRAL
 from limespec.models import Answer
-from limespec.view import view
+from limespec.view import reply_text, view
 
 
 def test_each_distinct_quote_becomes_one_numbered_source(answered: Answer) -> None:
@@ -42,3 +42,16 @@ def test_a_safety_referral_is_the_fixed_text_alone(referral: Answer) -> None:
     assert result["notice"] == SAFETY_REFERRAL
     assert result["claims"] == [] and result["sources"] == []
     assert result["closest_pages"] == []
+
+
+def test_the_reply_carried_into_a_conversation_is_what_the_reader_saw(
+    answered: Answer, insufficient: Answer, referral: Answer
+) -> None:
+    shown = view(answered)
+
+    assert reply_text(shown).split("\n")[: len(shown["claims"])] == [
+        claim["text"] for claim in shown["claims"]
+    ]
+    assert "Mortex is cheap" not in reply_text(shown)  # a removed claim is never there
+    assert reply_text(view(insufficient)) == view(insufficient)["notice"]
+    assert reply_text(view(referral)) == SAFETY_REFERRAL

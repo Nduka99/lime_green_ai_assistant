@@ -6,7 +6,7 @@ import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from limespec import assistant, config, llm, store
-from limespec.answer import PROMPT_SHA256, answer
+from limespec.answer import HISTORY_PROMPT, PROMPT_SHA256, answer
 from limespec.ingest import IngestError, prepare_index
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
@@ -44,6 +44,37 @@ def live_postgres_index(
     store.set_live(pg, version)
     pg.commit()
     return version
+
+
+def test_a_conversation_is_read_by_the_first_request_in_process(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    postgres_url: str,
+    pg: store.Connection,
+) -> None:
+    live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    firsts: list[tuple[str, str]] = []
+
+    def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+        if "describes_exposure" in schema["properties"]:
+            firsts.append((system, user))
+            user = "Question: How long does Mortex take to set?"
+        return two_days_chat(system, user, schema)
+
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    monkeypatch.setattr(llm, "rerank", lambda q, docs: [0.0] * len(docs))
+    monkeypatch.setattr(llm, "chat", chat)
+
+    result, _ = assistant.ask_and_record(
+        "and how long to set?", history=[("What is Mortex?", "A lime mortar.")]
+    )
+
+    system, user = firsts[0]
+    assert system.endswith(HISTORY_PROMPT)
+    assert user.startswith("Conversation so far:\nCustomer: What is Mortex?")
+    assert result.status == "answered"
 
 
 def test_ask_answers_from_the_live_index_with_both_model_requests(

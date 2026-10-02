@@ -11,8 +11,11 @@ import pytest
 from pypdf.errors import DependencyError, PdfReadError
 
 from evaluation import __main__ as cli
-from evaluation import catalogue, conversations, sets
+from evaluation import catalogue, conversations, grades, sets
 from limespec import assistant, store
+from limespec.app import UNAVAILABLE
+from limespec.llm import ModelServerError
+from limespec.models import Answer
 
 PAGE = (
     "<html><body><main><h1>Duro Plaster</h1><p>Duro is a lime undercoat plaster.</p>"
@@ -384,3 +387,74 @@ def test_coverage_is_counted_for_an_index_version(
     output = capsys.readouterr().out
     assert "1 of 2 answerable follow-ups in scope in version 11" in output
     assert "1  quotes of uncovered turns from image" in output
+
+
+# X36's runs: each turn answered with the conversation so far.
+
+
+def test_a_conversation_key_s_turns_are_graded_as_cases() -> None:
+    questions = [{"id": "q1", "question": "and its finish?"}]
+
+    case, style = grades.cases_by_question(sound_key(), questions)["q1"]
+
+    assert (case["id"], case["type"], style) == (
+        "c01t2",
+        "pronoun follow-up",
+        "original",
+    )
+    assert grades.key_cases({"cases": [{"id": "k1"}]}) == [{"id": "k1"}]
+
+
+def test_each_turn_carries_its_reference_history() -> None:
+    rows = conversations.turn_questions(sound_key())
+
+    assert [(row["id"], row["turn"]) for row in rows] == [
+        ("c01t1", 1), ("c01t2", 2), ("c01t3", 3)]  # fmt: skip
+    assert rows[0]["history"] == []
+    assert rows[2]["history"] == [
+        ["where can duro go", "On brick and stone."],
+        ["and its finish?", "On brick and stone."],
+    ]
+    assert conversations.window(rows[2]["history"], 1) == [
+        ("and its finish?", "On brick and stone.")]  # fmt: skip
+    assert conversations.window(rows[2]["history"], 0) == []
+
+
+def test_the_command_line_writes_the_turns_then_answers_them_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "conv-demo"
+    folder.mkdir()
+    (folder / "key.json").write_text(json.dumps(sound_key()))
+    registry = tmp_path / "sets.json"
+    sets.register("conv-demo", "invented", tmp_path, registry)
+    base = ["--root", str(tmp_path), "--registry", str(registry),
+            "--runs", str(tmp_path / "runs")]  # fmt: skip
+    assert cli.main([*base, "conversation-questions", "conv-demo"]) == 0
+    sets.register("conv-demo", "invented", tmp_path, registry)
+    assert cli.main([*base, "conversation-questions", "conv-demo"]) == 1  # sealed
+    seen: list[tuple[str, list[tuple[str, str]]]] = []
+
+    def ask_and_record(
+        question: str, on_stage: Any = None, history: Any = ()
+    ) -> tuple[Answer, int]:
+        seen.append((question, list(history)))
+        if question == "and its finish?":
+            raise ModelServerError("generation server failed")
+        return Answer(question, "insufficient_evidence", "Not found.", (), (), ()), 5
+
+    monkeypatch.setattr(assistant, "ask_and_record", ask_and_record)
+    live = [*base, "converse", "conv-demo", "--window", "1", "--history", "live",
+            "--run", "live"]  # fmt: skip
+
+    assert cli.main(live) == 1  # one turn failed
+    # Live history is what the reader saw: a refusal's text, the fixed error message.
+    assert seen[1] == ("and its finish?", [("where can duro go", "Not found.")])
+    assert seen[2][1] == [("and its finish?", UNAVAILABLE)]
+    seen.clear()
+    assert cli.main(live) == 1 and seen == []  # a stopped run resumes
+    assert "3 answers saved" in capsys.readouterr().out
+    reference = [*base, "converse", "conv-demo", "--window", "4", "--run", "ref"]
+    cli.main(reference)
+    assert seen[1][1] == [("where can duro go", "On brick and stone.")]
+    assert seen[0][1] == []  # a first turn has no history in any arm

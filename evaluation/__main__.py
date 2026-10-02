@@ -105,8 +105,12 @@ from limespec import (
     store,
     tables,
     verify,
+    view,
     webpage,
 )
+from limespec.app import UNAVAILABLE
+from limespec.ingest import IngestError
+from limespec.llm import ModelServerError
 from limespec.models import Passage, as_read, described
 
 ANSWER_TIMEOUT_SECONDS = 600.0  # an answer on the laptop can take minutes
@@ -619,6 +623,24 @@ def parser() -> argparse.ArgumentParser:
         help="/api/answer for the submitted v5 (default: the v1 API)",
     )
     asked.add_argument("--run", required=True, help="a name for this run's file")
+    turned_out = commands.add_parser(
+        "conversation-questions",
+        help="write a conversation set's turns as its questions, with reference "
+        "history (X36)",
+    )
+    turned_out.add_argument("name", help="e.g. conv-v1")
+    conversed = commands.add_parser(
+        "converse", help="answer a conversation set turn by turn, in process (X36)"
+    )
+    conversed.add_argument("name", help="e.g. conv-v1")
+    conversed.add_argument("--window", type=int, required=True, help="0: no history")
+    conversed.add_argument(
+        "--history",
+        choices=["reference", "live"],
+        default="reference",
+        help="the key's replies, or the ones this run showed",
+    )
+    conversed.add_argument("--run", required=True, help="a name for this run's file")
     hidden = commands.add_parser("blind", help="write runs' different answers, blind")
     hidden.add_argument("name")
     hidden.add_argument(
@@ -2098,6 +2120,56 @@ def run_unblind(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_conversation_questions(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    out = folder / "questions.json"
+    if out.exists():
+        # A set's questions are sealed by their hash once registered.
+        raise ValueError(f"{out} exists")
+    rows = conversations.turn_questions(grades.read_json(folder / "key.json"))
+    write_json(out, {"questions": rows})
+    print(f"{len(rows)} turns written to {out}; register the set before any run")
+    return 0
+
+
+def conversation_turn(row: dict[str, Any], history: answer.History) -> dict[str, Any]:
+    """One turn answered in process with its history, recorded as `ask` records an
+    answer: the view and the audit record's id, or the error."""
+    started = time.perf_counter()
+    try:
+        result, answer_id = assistant.ask_and_record(row["question"], history=history)
+    except (IngestError, ModelServerError) as problem:
+        record: dict[str, Any] = {"error": str(problem)}
+    else:
+        record = {"view": view.view(result), "answer_id": answer_id}
+    seconds = round(time.perf_counter() - started, 1)
+    return {"id": row["id"], "question": row["question"], **record, "seconds": seconds}
+
+
+def run_converse(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    out = args.runs / args.name / f"answers-{args.run}.json"
+    records = ask.read_records(out)
+    done = {record["id"]: record for record in records}
+    shown: dict[str, list[tuple[str, str]]] = {}
+    for row in questions:
+        earlier = shown.setdefault(row["conversation"], [])
+        given = earlier if args.history == "live" else row["history"]
+        history = conversations.window(given, args.window)
+        if row["id"] not in done:
+            done[row["id"]] = conversation_turn(row, history)
+            records.append(done[row["id"]])
+            ask.write_records(out, records)
+            print(row["id"], grades.status(done[row["id"]]), flush=True)
+        record = done[row["id"]]
+        reply = view.reply_text(record["view"]) if "view" in record else UNAVAILABLE
+        earlier.append((row["question"], reply))
+    errors = sum("view" not in record for record in records)
+    print(f"{len(records)} answers saved to {out}, {errors} errors")
+    return 1 if errors else 0
+
+
 def run_ask(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     questions = grades.read_json(folder / "questions.json")["questions"]
@@ -2717,6 +2789,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_support_workload(args)
         if args.command == "support-compare":
             return run_support_compare(args)
+        if args.command == "conversation-questions":
+            return run_conversation_questions(args)
+        if args.command == "converse":
+            return run_converse(args)
         return run_ask(args)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)

@@ -182,7 +182,7 @@ def compare(
         ]
         result["status_matched"][name] = len(matched)
         result["referred"][name] = len(referred)
-    case_ids = [case["id"] for case in key["cases"]]
+    case_ids = [case["id"] for case in grades.key_cases(key)]
     for verdict in COUNTED:
         result[verdict] = difference(
             graded, cases, case_ids, baseline, candidate, verdict

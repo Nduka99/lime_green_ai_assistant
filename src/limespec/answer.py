@@ -40,6 +40,8 @@ Retrieve = Callable[[str], list[Passage]]
 # What a search adds after the company's passages: (query, its top places) → added.
 Extra = Callable[[str, Sequence[Passage]], list[Passage]]
 Chat = Callable[[str, str, dict[str, Any]], object]  # system, user, schema → JSON
+# The conversation so far, oldest first: (the customer's message, the reply they saw).
+History = Sequence[tuple[str, str]]
 
 INSUFFICIENT = (
     "I could not find enough support in the indexed Lime Green pages to answer "
@@ -110,6 +112,18 @@ products, or several facts about one product), write each of them as a search \
 question of its own that names its subject, so it can be searched alone. When it \
 covers one thing, its items are empty."""
 )
+# Added to the first request only when the question comes with the conversation so
+# far (PLAN §0e, X36): the new message is rewritten to stand alone and the emergency
+# reading sees the conversation, while everything after the first request still
+# answers one standalone question. Without history the request is exactly as before.
+HISTORY_PROMPT = """
+
+The question may come with the conversation so far. Use the earlier turns only to \
+understand the new question: write each search question so it stands alone, naming \
+the products and things the new question refers to (such as "it", "that one" or "the \
+same"). When the new question changes the subject, leave the earlier turns out. \
+Never answer from the earlier turns. Decide whether the new question describes an \
+exposure emergency with the earlier turns in view."""
 # Each search question with its items (X48): one search may miss some of several
 # things, and an item without its subject finds nothing, so each item names it.
 UNDERSTAND_SCHEMA: dict[str, Any] = {
@@ -313,10 +327,25 @@ def read_output(
     return tuple(drafts)
 
 
-def understand(question: str, chat: Chat) -> tuple[bool, list[Part]]:
+def conversation_user(question: str, history: History = ()) -> str:
+    """The first request's user message: the conversation so far, then the new
+    question; with no history, the question alone, exactly as before."""
+    lines = []
+    for message, reply in history:
+        lines += [f"Customer: {message}", f"Assistant: {reply}"]
+    asked = f"Question: {question}"
+    if not lines:
+        return asked
+    return "Conversation so far:\n" + "\n".join(lines) + "\n\n" + asked
+
+
+def understand(
+    question: str, chat: Chat, history: History = ()
+) -> tuple[bool, list[Part]]:
     """The first request: whether the question describes an exposure emergency, and
-    the questions to search with their items."""
-    output = chat(UNDERSTAND_PROMPT, f"Question: {question}", UNDERSTAND_SCHEMA)
+    the questions to search with their items, read with the conversation so far."""
+    system = UNDERSTAND_PROMPT + (HISTORY_PROMPT if history else "")
+    output = chat(system, conversation_user(question, history), UNDERSTAND_SCHEMA)
     return read_understanding(output)
 
 
@@ -454,9 +483,11 @@ def answer(
     chat: Chat,
     scoped: Retrieve | None = None,
     extra: Extra | None = None,
+    history: History = (),
 ) -> Answer:
-    """Answer one question from the indexed pages (`scoped`, `extra`: see `gather`)."""
-    exposed, understood = understand(question, chat)
+    """Answer one question from the indexed pages (`scoped`, `extra`: see `gather`).
+    `history` is the conversation so far: only the first request reads it."""
+    exposed, understood = understand(question, chat, history)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
         return Answer(question, "safety_referral", SAFETY_REFERRAL, (), (), ())

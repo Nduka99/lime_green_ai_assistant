@@ -19,6 +19,7 @@ from limespec.answer import (
     UNDERSTAND_SCHEMA,
     Chat,
     Extra,
+    History,
     Retrieve,
     answer,
     with_extras,
@@ -228,10 +229,12 @@ def searched(conn: store.Connection, version_id: int, query: str) -> list[Passag
 
 
 def ask_and_record(
-    question: str, on_stage: Callable[[str], None] = no_stage
+    question: str, on_stage: Callable[[str], None] = no_stage, history: History = ()
 ) -> tuple[Answer, int]:
     """Answer from the served Postgres index and store the audit record; return the
-    answer and the record's id. `on_stage` hears each stage as it starts."""
+    answer and the record's id. `on_stage` hears each stage as it starts. `history`
+    is the conversation so far, given in process only: the API never takes it from a
+    client, since a forged assistant turn would be an injection (D60)."""
     with telemetry.span("answer"), connect() as conn:
         version_id = served_index(conn)
         started = time.perf_counter()
@@ -241,7 +244,7 @@ def ask_and_record(
         )
         scoped = scoped_retriever(conn, version_id, models)
         extra = extras(conn, version_id, models)
-        result = answer(question, retrieve, chat, scoped, extra)
+        result = answer(question, retrieve, chat, scoped, extra, history)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(
