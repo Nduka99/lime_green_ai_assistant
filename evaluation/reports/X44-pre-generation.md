@@ -341,3 +341,86 @@ fixes, and each fix is checked on other sets:
   - The footer could be read once, as the site's own page.
   - The sample page's colours are a colour grid, read as names (X42's rule). Each
     card's "Order this colour sample / Free" is a card button and tag under that rule.
+
+**F3: the card arm, by its rule.** Text gates with `--channels`; pictures do not
+change these:
+
+| Measure (bar) | Version 17 | Version 22: F3b, compiled lists | Version 23: F3a, unique descriptions |
+|---|---|---|---|
+| Replay frozen90 (≥ 102) | 103 | 112 | 108 |
+| Replay v2 (≥ 82) | 83 | **80** | 83 |
+| Replay v3 (≥ 75) | 76 | **89** | 78 |
+| Replay v4 (≥ 118) | 119 | 119 | 118 |
+| `web-facts` vs version 19 (0.969) | 0.921 | 0.952 (−0.017 [−0.052, +0.000]) | 0.966 (−0.003 [−0.009, +0.000]) |
+| `x9-tables` (17: 0.978) | 0.978 | 0.980 | 0.980 |
+
+- F3b reaches more parts over the four replays (400 against 387), but falls on v2 by 3
+  against F3a, and the rule allows 1. **F3a is selected**, and its build passes G1–G3.
+- The channels removed `web-facts`' crowding: version 21 scored 0.932, version 23
+  scores 0.966, one fact from version 19.
+- F3b gains 11 parts on v3, whose list questions ask for what each product is. Keeping
+  the unique descriptions in the page and the compiled list's descriptions as well
+  was not registered as an arm; it is the next round's candidate.
+
+**Pictures and F6: builds 24 (F3a + F6) and 25 (F3a), 571 pictures each, every one
+with a SigLIP2 vector** (`data/runs/x44/v24/`, `v25/`):
+
+| Set | 24: S | 24: W+S | 24: W∪S | 25: S | 25: W+S | 25: W∪S |
+|---|---|---|---|---|---|---|
+| `image-facts` (40) | 0.650 | 0.675 | 0.825 | 0.650 | 0.475 | 0.825 |
+| `picture-probe` (16, fresh) | 0.688 | 0.688 | 0.875 | 0.688 | 0.625 | **0.938** |
+| `kb-probe` pictures (20) | 0.600 | 0.900 | 0.800 | 0.600 | 0.600 | 0.700 |
+
+- **Amendment 1's rule adopts W∪S.**
+  - On version 25 it beats S on `image-facts`: +0.175 [+0.075, +0.300].
+  - On the fresh `picture-probe` it is not below S: +0.250 [+0.062, +0.500].
+  - The same holds on version 24.
+- **F6 is not adopted.**
+  - With W∪S, the two builds tie on `image-facts` (33 of 40).
+  - F6 is one question lower on `picture-probe` and two higher on `kb-probe`'s
+    pictures: 63 against 62 of 76 pooled, within noise. Rule 5 keeps a change only if
+    it wins beyond noise.
+  - The descriptions help the fused arm most (W+S 0.475 → 0.675 on `image-facts`).
+  - All 617 descriptions stay on disk (`data/images/<id>.json`); generating them took
+    2 h 50 min of GPU (16.5 s per picture).
+- **The decisions are applied in `0eea06d`:** W∪S is the only picture ranking, and the
+  F6 and F3b code is removed (git keeps it).
+
+**Version 25 against the gates:**
+
+| Gate | Bar | Version 25 + W∪S | Result |
+|---|---|---|---|
+| G1 | each replay not below 17 by more than 1 | 108 / 83 / 78 / 118 | pass |
+| G2 | `web-facts` not below 19 | 0.966 (−0.003 [−0.009, +0.000]) | pass |
+| G3 | `x9-tables` within 1 | 0.980 | pass |
+| G4 | `image-facts` ≥ 0.850 | 0.825 | **fail** (33 of 40; 34 needed) |
+| G5 | `kb-probe` text ≥ 0.90, pictures ≥ 0.75, guidance ≥ 0.80, no stratum below 17 | text 0.841, pictures 0.700, guidance 1.00; web content 0.75 vs 0.88 | **fail** |
+| G6 | `web-links` 0 problems | 0 of 4,158 links | pass |
+| G7 | p95 ≤ 1.5 s; API RAM measured; ≥ 6 GB free | p95 1.77 s (median 1.51 s, twice); 3.4 GB; 8.2 GB free | **fail** on time |
+
+**Readout.**
+- Version 25 is the best index so far: every data type is found in its own channel,
+  the text sets hold or rise, and the guidance stratum went from 0 to 6 of 6.
+- It does not pass G4, G5 and G7, so it serves nothing (ADR 0030).
+- Every failure has a measured cause:
+  - **G5 text (7 misses of 44):**
+    - the site footer (kb05);
+    - the colour-sample cards' "Free" (kb06), which version 17 read, so web content is
+      one question below 17;
+    - two Word declarations (kb49, kb54);
+    - a look-alike safety data sheet (kb28; the answer path's scoped search names the
+      product);
+    - two cross-type questions asked as one search (kb61, kb63; the answer path searches
+      each part).
+  - **G5 pictures and G4:** drawings and photos that neither the pictures' own words
+    nor SigLIP2 rank in their first 2.
+  - **G7:** the three channels run one after another (an embedding, two searches, a
+    joint rerank and SigLIP2's text tower per query).
+- **X45** addresses these, in order:
+  1. extraction (footer facts read once as the site's page; colour-grid sample tags;
+     a line-level check of Word readings against the file's own lines);
+  2. compiled-list descriptions kept beside the unique ones (+11 parts on v3);
+  3. channels searched concurrently;
+  4. picture places.
+
+  Then E (generation) runs with v6 as the main set.
