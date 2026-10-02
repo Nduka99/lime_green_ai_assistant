@@ -29,7 +29,8 @@ CLAIMS = [
 def chat(system: str, user: str, schema: dict[str, Any]) -> object:
     if schema is UNDERSTAND_SCHEMA:
         exposed = "eye" in user
-        return {"describes_exposure": exposed, "search_questions": ["what is in Duro"]}
+        asked = [{"question": "what is in Duro", "items": []}]
+        return {"describes_exposure": exposed, "search_questions": asked}
     return {"claims": CLAIMS}
 
 

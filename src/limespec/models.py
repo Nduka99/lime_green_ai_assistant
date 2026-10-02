@@ -44,6 +44,16 @@ def as_read(passage: Passage) -> str:
 
 
 @dataclass(frozen=True)
+class Part:
+    """One thing a question asks, as the first request wrote it: its search question
+    and, when it asks about several things (several products, or several facts about
+    one product), each of them as a search question naming its subject (X48)."""
+
+    question: str
+    items: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class DraftEvidence:
     """A quote as the model returned it, before verification."""
 

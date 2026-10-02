@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from limespec import store
+from limespec import config, store
 from limespec.answer import (
     ANSWER_PROMPT,
     INSUFFICIENT,
@@ -17,14 +17,16 @@ from limespec.answer import (
     closest_pages,
     gather,
     interleave,
+    items_to_search,
     read_output,
     read_understanding,
     user_prompt,
     with_extras,
+    with_items,
 )
 from limespec.ingest import prepare_index
 from limespec.llm import ModelServerError
-from limespec.models import Passage
+from limespec.models import Part, Passage
 from limespec.retrieve import Embed, Rerank
 
 MORTAR = Passage(
@@ -62,20 +64,29 @@ class FakeModel:
     """
 
     def __init__(
-        self, reply: object, exposure: bool = False, parts: list[str] | None = None
+        self,
+        reply: object,
+        exposure: bool = False,
+        parts: list[str] | None = None,
+        items: list[list[str]] | None = None,
     ) -> None:
         self.reply = reply
         self.exposure = exposure
         self.parts = parts
+        self.items = items
         self.requests: list[tuple[str, str, dict[str, Any]]] = []
 
     def __call__(self, system: str, user: str, schema: dict[str, Any]) -> object:
         self.requests.append((system, user, schema))
         if schema is UNDERSTAND_SCHEMA:
-            asked = user.removeprefix("Question: ")
+            asked = self.parts or [user.removeprefix("Question: ")]
+            items = self.items or [[] for _ in asked]
             return {
                 "describes_exposure": self.exposure,
-                "search_questions": self.parts or [asked],
+                "search_questions": [
+                    {"question": q, "items": i}
+                    for q, i in zip(asked, items, strict=True)
+                ],
             }
         return self.reply
 
@@ -192,12 +203,22 @@ def test_a_question_the_model_reads_as_ordinary_is_answered_from_the_pages() -> 
 def test_the_first_reply_is_read_as_a_yes_or_no_and_its_search_questions(
     value: bool,
 ) -> None:
-    output = {"describes_exposure": value, "search_questions": [" Duro? ", "Solo?"]}
+    output = {
+        "describes_exposure": value,
+        "search_questions": [
+            {"question": " Duro? ", "items": []},
+            {"question": "Solo or Duro?", "items": [" Solo? ", "Duro?"]},
+        ],
+    }
 
-    assert read_understanding(output) == (value, ["Duro?", "Solo?"])
+    assert read_understanding(output) == (
+        value,
+        [Part("Duro?"), Part("Solo or Duro?", ("Solo?", "Duro?"))],
+    )
 
 
-FIRST = {"describes_exposure": False, "search_questions": ["q"]}
+ONE = {"question": "q", "items": []}
+FIRST = {"describes_exposure": False, "search_questions": [ONE]}
 
 
 @pytest.mark.parametrize(
@@ -210,8 +231,13 @@ FIRST = {"describes_exposure": False, "search_questions": ["q"]}
         FIRST | {"x": 1},
         FIRST | {"search_questions": "q"},
         FIRST | {"search_questions": []},
-        FIRST | {"search_questions": ["  "]},
-        FIRST | {"search_questions": ["q"] * 7},  # more than MAX_PARTS
+        FIRST | {"search_questions": ["q"]},  # a plain string, not a search question
+        FIRST | {"search_questions": [ONE | {"question": "  "}]},
+        FIRST | {"search_questions": [{"question": "q"}]},  # no items
+        FIRST | {"search_questions": [ONE | {"items": "a"}]},
+        FIRST | {"search_questions": [ONE | {"items": [" "]}]},
+        FIRST | {"search_questions": [ONE | {"items": ["a"] * 7}]},  # > MAX_ITEMS
+        FIRST | {"search_questions": [ONE] * 7},  # more than MAX_PARTS
     ],
 )
 def test_a_first_reply_that_breaks_its_schema_is_an_operational_error(
@@ -388,6 +414,81 @@ def test_a_question_with_several_parts_is_searched_whole_and_by_part() -> None:
     assert len(result.passages) == 12  # MAX_PASSAGES for several parts
     assert result.status == "answered" and result.notice == ""  # every part answered
     assert "Parts of the question:\n1. Is Duro breathable?" in model.requests[1][1]
+
+
+@pytest.mark.parametrize("switched_on", [False, True])
+def test_a_parts_items_are_searched_only_when_item_searches_are_on(
+    monkeypatch: pytest.MonkeyPatch, switched_on: bool
+) -> None:
+    monkeypatch.setattr(config, "ITEM_SEARCHES", switched_on)
+    searched: list[str] = []
+
+    def retrieve_each(query: str) -> list[Passage]:
+        searched.append(query)
+        return [passage(len(searched), f"found by search {len(searched)}")]
+
+    model = FakeModel(
+        {"claims": []},
+        parts=["Compare Solo and Duro"],
+        items=[["What is Solo for?", "What is Duro for?"]],
+    )
+
+    answer("solo vs duro", retrieve_each, model)
+
+    items = ["What is Solo for?", "What is Duro for?"] if switched_on else []
+    assert searched == ["Compare Solo and Duro", *items]
+    # The answer request still sees the part, not its items.
+    assert "Parts of the question:\n1. Compare Solo and Duro" in model.requests[1][1]
+    assert "What is Solo for?" not in model.requests[1][1]
+
+
+def test_only_a_part_listing_several_things_has_its_items_searched() -> None:
+    parts = [Part("a"), Part("b", ("b alone",)), Part("c", ("c1", "c2"))]
+
+    assert items_to_search(parts) == ["c1", "c2"]
+
+
+def test_each_item_adds_its_best_new_passages_and_removes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "ITEM_TOP", 2)
+    found = [passage(1, "one"), passage(2, "two")]
+    pools = {
+        "x": [
+            passage(3, "ONE"),
+            passage(4, "four"),
+            passage(5, "five"),
+            passage(6, "6"),
+        ],
+        "y": [passage(7, "seven")],
+    }
+
+    given = with_items(found, ["x", "y"], lambda item: pools[item])
+
+    # "ONE" repeats a passage already given (case and spacing ignored).
+    assert [p.id for p in given] == [1, 2, 4, 5, 7]
+
+
+def test_item_searches_keep_to_the_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "PASSAGE_BUDGET", 3)
+    found = [passage(1, "one"), passage(2, "two")]
+
+    given = with_items(found, ["x"], lambda item: [passage(3, "a"), passage(4, "b")])
+
+    assert [p.id for p in given] == [1, 2, 3]
+
+
+def test_each_item_is_searched_inside_the_products_it_names() -> None:
+    asked: list[str] = []
+
+    def scoped(item: str) -> list[Passage]:
+        asked.append(item)
+        return [passage(9, f"inside {item}")]
+
+    given = with_items([], ["Solo use", "Duro use"], lambda item: [], scoped)
+
+    assert asked == ["Solo use", "Duro use"]
+    assert [p.text for p in given] == ["inside Solo use", "inside Duro use"]
 
 
 def test_what_each_search_adds_comes_after_its_company_passages() -> None:

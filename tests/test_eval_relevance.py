@@ -11,6 +11,7 @@ import pytest
 from evaluation import __main__ as cli
 from evaluation import metrics, relevance
 from limespec import answer, config, llm
+from limespec.models import Part
 
 SOURCES = [
     {"number": 1, "quote": "Duro is free of cement."},
@@ -140,7 +141,7 @@ def test_the_command_line_builds_checks_and_scores_a_benchmark(
 ) -> None:
     run = tmp_path / "answers.json"
     run.write_text(json.dumps(RECORDS), encoding="utf-8")
-    monkeypatch.setattr(answer, "understand", lambda q, chat: (False, [q]))
+    monkeypatch.setattr(answer, "understand", lambda q, chat: (False, [Part(q)]))
 
     def post(url: str, **kwargs: Any) -> httpx.Response:
         return httpx.Response(200, json=reply({"parts": [1, 0]}),

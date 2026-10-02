@@ -46,7 +46,8 @@ def draft_row(draft: DraftClaim, sources: Mapping[str, Passage]) -> dict[str, An
 def drafted(question: str, passages: Sequence[Passage], chat: answer.Chat) -> Item:
     """The question's parts and every claim the answer request drafts from these
     passages. An emergency, or a question given no passages, drafts nothing."""
-    exposed, parts = answer.understand(question, chat)
+    exposed, understood = answer.understand(question, chat)
+    parts = [part.question for part in understood]
     if exposed or not passages:
         return {"parts": [], "drafts": []}
     sources = sources_of(passages)

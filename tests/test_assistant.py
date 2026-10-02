@@ -16,7 +16,10 @@ def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
     """A stand-in model: no emergency, and one claim quoting the setting time."""
     if "describes_exposure" in schema["properties"]:
         asked = user.removeprefix("Question: ")
-        return {"describes_exposure": False, "search_questions": [asked]}
+        return {
+            "describes_exposure": False,
+            "search_questions": [{"question": asked, "items": []}],
+        }
     blocks = user.split('<passage id="')[1:]
     source = next(b.split('"')[0] for b in blocks if "About two days" in b)
     claim = {
@@ -188,7 +191,7 @@ def test_a_safety_referral_reports_only_understanding() -> None:
         never_searched,
         lambda system, user, schema: {
             "describes_exposure": True,
-            "search_questions": ["q"],
+            "search_questions": [{"question": "q", "items": []}],
         },
         stages.append,
     )

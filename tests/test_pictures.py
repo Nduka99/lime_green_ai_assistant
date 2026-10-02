@@ -30,7 +30,7 @@ FIGURE = Passage(3, "https://x.test/sheet.pdf", "Sheet", "Image", "Build-up 25 m
 def understanding(system: str, user: str, schema: dict[str, Any]) -> object:
     return {
         "describes_exposure": False,
-        "search_questions": ["What does Duro look like?"],
+        "search_questions": [{"question": "What does Duro look like?", "items": []}],
     }
 
 

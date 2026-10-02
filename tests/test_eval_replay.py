@@ -12,7 +12,7 @@ import pytest
 from evaluation import __main__ as cli
 from evaluation import replay, sets
 from limespec import answer, assistant, store
-from limespec.models import Passage
+from limespec.models import Part, Passage
 
 KEY: dict[str, Any] = {"cases": [
     {"id": "k1", "expected_status": "answered",
@@ -35,8 +35,8 @@ DURO = Passage(
 SOLO = Passage(2, "https://example.test/solo", "Solo", "", "Solo is for interiors.", "")
 
 
-def understand(question: str) -> tuple[bool, list[str]]:
-    return "eye" in question, ["what is in Duro", "is Duro a plaster"]
+def understand(question: str) -> tuple[bool, list[Part]]:
+    return "eye" in question, [Part("what is in Duro"), Part("is Duro a plaster")]
 
 
 def retrieve(query: str) -> list[Passage]:
@@ -44,23 +44,47 @@ def retrieve(query: str) -> list[Passage]:
 
 
 def test_each_answerable_question_is_searched_as_the_assistant_would() -> None:
-    written, given = replay.replay(KEY, QUESTIONS, understand, retrieve)
+    written, given, seconds = replay.replay(KEY, QUESTIONS, understand, retrieve)
 
-    assert written == {"q1": ["what is in Duro", "is Duro a plaster"], "q2": []}
+    assert written == {"q1": [Part("what is in Duro"), Part("is Duro a plaster")],
+                       "q2": []}  # fmt: skip
     # Two parts: searched together, then each alone, interleaved without repeats.
     assert given == {"q1": [DURO, SOLO], "q2": []}
+    assert set(seconds) == {"q1", "q2"}
 
 
 def test_search_questions_from_an_earlier_replay_are_kept() -> None:
-    def never(question: str) -> tuple[bool, list[str]]:
+    def never(question: str) -> tuple[bool, list[Part]]:
         raise AssertionError("the first request must not run again")
 
-    kept = {"q1": ["is Duro a plaster"], "q2": []}
+    kept = {"q1": [Part("is Duro a plaster")], "q2": []}
 
-    written, given = replay.replay(KEY, QUESTIONS, never, retrieve, kept)
+    written, given, _ = replay.replay(KEY, QUESTIONS, never, retrieve, kept)
 
     assert written == kept
     assert given == {"q1": [SOLO], "q2": []}
+
+
+@pytest.mark.parametrize("items", [False, True])
+def test_a_parts_items_are_searched_when_asked(items: bool) -> None:
+    kept = {"q1": [Part("Duro or Solo", ("what is in Duro", "is Duro a plaster"))]}
+
+    _, given, _ = replay.replay(KEY, QUESTIONS, understand, retrieve, kept, items=items)
+
+    # The second item finds SOLO again, which is given once.
+    assert given["q1"] == ([SOLO, DURO] if items else [SOLO])
+
+
+def test_search_questions_and_items_are_saved_and_read_back() -> None:
+    written = {"q1": [Part("a", ("a1", "a2")), Part("b")], "q2": []}
+
+    asked, items = replay.saved_parts(written)
+
+    assert asked == {"q1": ["a", "b"], "q2": []}
+    assert items == {"q1": [["a1", "a2"], []], "q2": []}
+    assert replay.read_parts({"parts": asked, "items": items}) == written
+    # A replay written before X48 has search questions only.
+    assert replay.read_parts({"parts": asked})["q1"] == [Part("a"), Part("b")]
 
 
 def test_the_command_line_replays_and_scores_reach(
@@ -93,6 +117,8 @@ def test_the_command_line_replays_and_scores_reach(
     saved = json.loads(out.read_text(encoding="utf-8"))
     assert saved["passages"] == {"q1": [1, 2], "q2": []}
     assert saved["parts"]["q2"] == []
+    assert saved["items"] == {"q1": [[], []], "q2": []}
+    assert set(saved["seconds"]) == {"q1", "q2"}
     monkeypatch.setattr(answer, "understand", lambda q, chat: 1 / 0)
     again = tmp_path / "again.json"
     assert cli.main([*command[:-1], str(again), "--parts", str(out)]) == 0
@@ -103,5 +129,5 @@ def test_the_command_line_replays_and_scores_reach(
     )
     channelled = tmp_path / "channels.json"
     command = [*command[:-1], str(channelled), "--parts", str(out), "--channels"]
-    assert cli.main(command) == 0
+    assert cli.main([*command, "--items"]) == 0
     assert json.loads(channelled.read_text(encoding="utf-8"))["passages"]["q1"][-1] == 3

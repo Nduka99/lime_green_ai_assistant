@@ -21,7 +21,10 @@ ITEMS = [
     {"id": f"p7/a{n}", "case": "p7", "parts": ["How long does Solo dry?"]}
     for n in range(5)
 ]
-UNDERSTOOD = {"describes_exposure": False, "search_questions": ["Solo drying time"]}
+UNDERSTOOD = {
+    "describes_exposure": False,
+    "search_questions": [{"question": "Solo drying time", "items": []}],
+}
 QUOTE = {"source_id": "S1", "quote": "Solo dries in 2 days."}
 CLAIM = {"part": 1, "text": "Solo dries in 2 days.", "evidence": [QUOTE]}
 

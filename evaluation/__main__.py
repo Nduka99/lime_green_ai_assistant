@@ -320,6 +320,9 @@ def parser() -> argparse.ArgumentParser:
         "--scoped", action="store_true", help="search again inside named products (B4)"
     )
     replayed_searches.add_argument("--channels", action="store_true", help=CHANNELS)
+    replayed_searches.add_argument(
+        "--items", action="store_true", help="search each part's items too (X48)"
+    )
     again = commands.add_parser(
         "embed-again", help="an index version copied with another embedder (E5)"
     )
@@ -1251,9 +1254,9 @@ def run_replay(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
     questions = grades.read_json(folder / "questions.json")["questions"]
-    parts = grades.read_json(args.parts)["parts"] if args.parts else None
+    parts = replay.read_parts(grades.read_json(args.parts)) if args.parts else None
     with assistant.connect() as conn:
-        written, given = replay.replay(
+        written, given, seconds = replay.replay(
             key,
             questions,
             lambda question: answer.understand(question, llm.chat),
@@ -1261,13 +1264,22 @@ def run_replay(args: argparse.Namespace) -> int:
             parts,
             assistant.scoped_retriever(conn, args.version) if args.scoped else None,
             assistant.extras(conn, args.version) if args.channels else None,
+            args.items,
         )
         texts = [as_read(p) for p in store.searchable_passages(conn, args.version)]
         pictures = store.picture_passages(conn, args.version)
     rows = reach.score(key, questions, given, texts, pictures)
     found = reach.summary(rows)
     passages = {qid: [p.id for p in shown] for qid, shown in given.items()}
-    saved = {"summary": found, "rows": rows, "parts": written, "passages": passages}
+    asked, items = replay.saved_parts(written)
+    saved = {
+        "summary": found,
+        "rows": rows,
+        "parts": asked,
+        "items": items,
+        "passages": passages,
+        "seconds": seconds,
+    }
     write_json(args.out, saved)
     print(reach.text(found))
     return 0
@@ -2290,7 +2302,11 @@ def run_support_compare(args: argparse.Namespace) -> int:
 
 def run_relevance_items(args: argparse.Namespace) -> int:
     records = [record for run in args.runs for record in grades.read_json(run)]
-    found = relevance.items(records, lambda q: answer.understand(q, llm.chat)[1])
+
+    def parts(question: str) -> list[str]:
+        return [part.question for part in answer.understand(question, llm.chat)[1]]
+
+    found = relevance.items(records, parts)
     write_json(args.out, found)
     claims = sum(len(item["claims"]) for item in found)
     print(f"{len(found)} answers, {claims} claims in {args.out}")
