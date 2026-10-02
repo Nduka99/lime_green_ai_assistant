@@ -122,3 +122,41 @@ needs no download, no GPU, and no server stopped.
 ## Results
 
 *(added step by step)*
+
+**`picture-probe-2` sealed** (`1b8cf93`): 16 pictures (14 site photos and swatches, 2
+figures), 7 with stored copies accepted.
+
+**E3: fails its diagnosis rule; not built.**
+- The rule as written would move 1,592 words across 50 documents. Of the 30 drawn
+  with seed 74 and read against their pages (`scratchpad e3-sheet-*.png`), most are
+  not misplaced words.
+- **What the 30 are:**
+  - paragraphs that continue in the next column or below a figure, whose stored box
+    covers only their first part;
+  - table rows Docling merged across cells;
+  - running headers ("According to REACH Regulation…") merged into the element below.
+- **The cause is the reading, not the rule.** An element keeps one box although
+  Docling records one per part (`prov`). A correct test needs every part's box, so
+  every document read again (~33 min, plus GLM-OCR's tables).
+- That belongs to the next reading round, with the Word declarations' lost fire class
+  (kb49, kb54) kept as a known risk until then.
+
+**Amendment 1, before any picture-places run: P withdrawn.**
+- An answer attaches at most 4 pictures (`MAX_PICTURES`, X43 B4's request limit), and
+  `answer.with_extras` caps each question's pictures at 4. Each retriever's top 2
+  already fill those 4 places.
+- So any k above 2, interleaved or not, gives the same pictures for a one-search
+  question. The diagnosis's ranks 3–4 are beyond the cap.
+- `assistant.searched`, which the sets score, did not apply the cap. It now applies it,
+  so the sets measure what an answer can attach.
+- Raising the cap is a generation-cost question (B4: about 36 s per request with 4
+  pictures) and goes to E.
+- `picture-probe-2` is still scored on the final build as a fresh check of the union
+  arm.
+
+**T1, as built: a pair is never scored twice.**
+- Each answer keeps its reranker scores by (question, passage text), as it keeps query
+  embeddings. Guidance placement therefore scores only the guidance candidates, not
+  the company's top 8 again.
+- This is the plan's single call by other means: no restructuring of `answer.gather`,
+  and the same check (identical company top 8).
