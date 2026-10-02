@@ -2,6 +2,7 @@
 throwaway database (see the `pg` fixture). Pages and vectors are invented."""
 
 import math
+import uuid
 
 import psycopg
 import pytest
@@ -495,3 +496,119 @@ def test_a_picture_is_stored_once_and_named_by_its_passage(
     assert store.picture_ranking(pg, version, siglip, 5) == ranked
     assert store.picture_passages(pg, version) == {picture: found[0].id}
     assert pg.execute("SELECT count(*) FROM images").fetchone() == (1,)
+
+
+LIMITS = (30, 8, 20)  # idle minutes, hours since the start, turns
+
+
+def record_turn(
+    pg: store.Connection, version: int, conversation_id: str, turn: int, text: str
+) -> int:
+    """Record an answer for one turn whose shown view is a single claim `text`."""
+    shown = {"claims": [{"text": text}], "notice": ""}
+    return store.record_answer(
+        pg, f"question {turn}", "answered", shown, [], [], version, "e", "p", 1.0,
+        conversation_id=conversation_id, turn=turn,
+    )  # fmt: skip
+
+
+def test_a_question_without_a_conversation_starts_one_at_turn_one(
+    pg: store.Connection,
+) -> None:
+    opened = store.open_turn(pg, None, *LIMITS)
+
+    assert opened is not None
+    conversation_id, turn = opened
+    assert uuid.UUID(conversation_id).version == 4  # random, made by the server
+    assert turn == 1
+
+
+def test_each_turn_of_a_conversation_takes_the_next_number(
+    pg: store.Connection,
+) -> None:
+    opened = store.open_turn(pg, None, *LIMITS)
+    assert opened is not None
+    conversation_id = opened[0]
+
+    numbers = [store.open_turn(pg, conversation_id, *LIMITS) for _ in range(2)]
+
+    assert numbers == [(conversation_id, 2), (conversation_id, 3)]
+
+
+def test_an_unknown_conversation_has_no_next_turn(pg: store.Connection) -> None:
+    assert store.open_turn(pg, str(uuid.uuid4()), *LIMITS) is None
+
+
+@pytest.mark.parametrize(
+    ("change", "open_again"),
+    [
+        ("last_active_at = now() - interval '29 minutes'", True),
+        ("last_active_at = now() - interval '31 minutes'", False),
+        ("created_at = now() - interval '9 hours'", False),  # however active
+        ("turns = 20", False),
+    ],
+)
+def test_a_conversation_ends_when_idle_too_old_or_full(
+    pg: store.Connection, change: str, open_again: bool
+) -> None:
+    opened = store.open_turn(pg, None, *LIMITS)
+    assert opened is not None
+    pg.execute(f"UPDATE conversations SET {change}")  # the test's own literal SQL
+
+    assert (store.open_turn(pg, opened[0], *LIMITS) is not None) == open_again
+
+
+def test_earlier_turns_are_the_last_answers_before_the_turn_oldest_first(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    ids = []
+    for conversation in range(2):
+        opened = store.open_turn(pg, None, *LIMITS)
+        assert opened is not None
+        ids.append(opened[0])
+        for turn in range(1, 6):
+            if turn > 1:
+                store.open_turn(pg, opened[0], *LIMITS)
+            record_turn(pg, version, opened[0], turn, f"reply {conversation}.{turn}")
+
+    earlier = store.earlier_turns(pg, ids[0], 6, 4)
+    first_two = store.earlier_turns(pg, ids[0], 3, 4)
+
+    assert earlier == [
+        (f"question {turn}", {"claims": [{"text": f"reply 0.{turn}"}], "notice": ""})
+        for turn in range(2, 6)
+    ]
+    assert [question for question, _ in first_two] == ["question 1", "question 2"]
+
+
+def test_an_answer_in_a_conversation_keeps_its_turn_and_search_questions(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    opened = store.open_turn(pg, None, *LIMITS)
+    assert opened is not None
+
+    answer_id = store.record_answer(
+        pg, "and Solo?", "answered", {}, [], [], version, "e", "p", 1.0,
+        search_questions=["What is Solo?"], conversation_id=opened[0], turn=1,
+    )  # fmt: skip
+
+    row = pg.execute(
+        "SELECT conversation_id::text, turn, search_questions FROM answers "
+        "WHERE id = %s",
+        (answer_id,),
+    ).fetchone()
+    assert row == (opened[0], 1, ["What is Solo?"])
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        record_turn(pg, version, opened[0], 1, "the same turn twice")
+
+
+def test_a_turn_needs_its_conversation_and_a_conversation_its_turn(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+
+    with pytest.raises(psycopg.errors.CheckViolation):
+        store.record_answer(pg, "q", "answered", {}, [], [], version, "e", "p", 1.0,
+                            turn=1)  # fmt: skip

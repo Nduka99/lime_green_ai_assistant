@@ -501,7 +501,13 @@ def answer(
     claims, rejected = verify(drafts, sources)
     if not claims:
         return Answer(
-            question, "insufficient_evidence", INSUFFICIENT, (), passages, rejected
+            question,
+            "insufficient_evidence",
+            INSUFFICIENT,
+            (),
+            passages,
+            rejected,
+            tuple(parts),
         )
     # The parts checklist: the caution is decided by code, not by the model's own
     # account of how much it answered.
@@ -512,6 +518,7 @@ def answer(
         claims,
         passages,
         rejected,
+        tuple(parts),
     )
 
 

@@ -395,12 +395,17 @@ def record_answer(
     embedding_model: str,
     prompt_sha256: str,
     seconds: float,
+    search_questions: Sequence[str] = (),
+    conversation_id: str | None = None,
+    turn: int | None = None,
 ) -> int:
-    """Store one answer's audit record (plain, JSON-compatible data); return its id."""
+    """Store one answer's audit record (plain, JSON-compatible data); return its id.
+    An answer in a conversation keeps its conversation and turn (`open_turn`)."""
     row = conn.execute(
         "INSERT INTO answers (question, status, shown, removed, passage_ids, "
-        "index_version_id, embedding_model, prompt_sha256, seconds) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        "index_version_id, embedding_model, prompt_sha256, seconds, "
+        "search_questions, conversation_id, turn) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
         (
             question,
             status,
@@ -411,11 +416,57 @@ def record_answer(
             embedding_model,
             prompt_sha256,
             seconds,
+            Jsonb(list(search_questions)),
+            conversation_id,
+            turn,
         ),
     ).fetchone()
     assert row is not None  # RETURNING always yields the row
     conn.commit()
     return int(row[0])
+
+
+def open_turn(
+    conn: Connection,
+    conversation_id: str | None,
+    idle_minutes: int,
+    max_hours: int,
+    max_turns: int,
+) -> tuple[str, int] | None:
+    """Reserve the next turn: (conversation id, turn number), or None when the
+    conversation is unknown, idle for `idle_minutes`, `max_hours` old or at
+    `max_turns`. Without an id, a new conversation starts at turn 1.
+
+    One UPDATE checks the limits and takes the number: under Read Committed a
+    concurrent turn waits for it and re-checks the row, so no two turns share a
+    number and no lock is held while the answer is written."""
+    if conversation_id is None:
+        row = conn.execute(
+            "INSERT INTO conversations (turns) VALUES (1) RETURNING id, turns"
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "UPDATE conversations SET turns = turns + 1, last_active_at = now() "
+            "WHERE id = %s AND last_active_at > now() - make_interval(mins => %s) "
+            "AND created_at > now() - make_interval(hours => %s) AND turns < %s "
+            "RETURNING id, turns",
+            (conversation_id, idle_minutes, max_hours, max_turns),
+        ).fetchone()
+    conn.commit()
+    return (str(row[0]), int(row[1])) if row else None
+
+
+def earlier_turns(
+    conn: Connection, conversation_id: str, turn: int, count: int
+) -> list[tuple[str, Any]]:
+    """The last `count` answered turns before `turn`, oldest first: each question
+    and the view its reader was shown. A turn that failed recorded nothing."""
+    rows = conn.execute(
+        "SELECT question, shown FROM answers WHERE conversation_id = %s "
+        "AND turn < %s ORDER BY turn DESC LIMIT %s",
+        (conversation_id, turn, count),
+    ).fetchall()
+    return [(question, shown) for question, shown in reversed(rows)]
 
 
 def load_passages(conn: Connection, passage_ids: Sequence[int]) -> list[Passage]:

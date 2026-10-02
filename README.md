@@ -261,6 +261,19 @@ The command line, the page and the JSON API (`POST /api/v1/answers`, or
 same checks and presentation data. Separate model requests can still produce
 different wording, even with a fixed seed.
 
+The API holds conversations. A request without `conversation_id` starts one; the reply
+carries `conversation_id`, `turn` and `understood_as` (the search questions the follow-up
+was read as) beside the answer, and the next request sends the id back:
+
+```json
+{"question": "How much water does it need per 25kg?", "conversation_id": "0b9f4c1e-…"}
+```
+
+The server rebuilds the last four turns from what it showed, so a client cannot send a
+history (any extra field is refused with 422). A conversation ends after 30 idle
+minutes, 8 hours or 20 turns; continuing it then returns 404 with a fixed message to
+start a new one (`evaluation/reports/X36-follow-ups.md`, ADR 0035).
+
 To trace and measure answers, start VictoriaTraces and VictoriaMetrics inside WSL
 (`docker compose -f deploy/compose.yaml --profile observability up -d`) and serve with
 `uv run --env-file .env limespec serve`. Each request is one trace, with a span per

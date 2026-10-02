@@ -114,3 +114,6 @@ class Answer:
     claims: tuple[Claim, ...]
     passages: tuple[Passage, ...]  # the passages the model was given, best first
     rejected: tuple[Rejection, ...]
+    # The search questions the first request wrote, shown as "Understood as" on a
+    # follow-up; empty for a safety referral, which is never searched.
+    understood: tuple[str, ...] = ()

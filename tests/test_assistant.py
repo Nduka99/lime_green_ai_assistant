@@ -1,5 +1,6 @@
 """The one call behind every interface, end to end with fake model servers."""
 
+import uuid
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from limespec.answer import HISTORY_PROMPT, PROMPT_SHA256, answer
 from limespec.ingest import IngestError, prepare_index
 from limespec.models import Passage
 from limespec.retrieve import Embed, Rerank
+from limespec.view import view
 
 
 def two_days_chat(system: str, user: str, schema: dict[str, Any]) -> object:
@@ -75,6 +77,68 @@ def test_a_conversation_is_read_by_the_first_request_in_process(
     assert system.endswith(HISTORY_PROMPT)
     assert user.startswith("Conversation so far:\nCustomer: What is Mortex?")
     assert result.status == "answered"
+
+
+def test_a_stored_conversation_reads_what_its_reader_was_shown(
+    monkeypatch: pytest.MonkeyPatch,
+    fixture_pages: list[tuple[str, bytes, str]],
+    fake_embed_1024: Embed,
+    fake_rerank: Rerank,
+    postgres_url: str,
+    pg: store.Connection,
+    spans: InMemorySpanExporter,
+) -> None:
+    live_postgres_index(pg, fixture_pages, fake_embed_1024)
+    firsts: list[str] = []
+
+    def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+        if "describes_exposure" in schema["properties"]:
+            firsts.append(user)
+            user = "Question: How long does Mortex take to set?"
+        return two_days_chat(system, user, schema)
+
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    monkeypatch.setattr(llm, "rerank", fake_rerank)
+    monkeypatch.setattr(llm, "chat", chat)
+
+    first = assistant.open_turn(None)
+    shown, _ = assistant.ask_and_record("How long to set Mortex?", turn=first)
+    second = assistant.open_turn(first.conversation_id)
+    _, answer_id = assistant.ask_and_record("and to cure?", turn=second)
+
+    assert (first.number, first.history) == (1, [])
+    assert (second.conversation_id, second.number) == (first.conversation_id, 2)
+    # History is rebuilt from the stored view, never sent by the client.
+    assert second.history == [
+        ("How long to set Mortex?", view(shown)["claims"][0]["text"])
+    ]
+    assert firsts[1] == (
+        "Conversation so far:\nCustomer: How long to set Mortex?\n"
+        "Assistant: Mortex takes about two days to set.\n\nQuestion: and to cure?"
+    )
+    row = pg.execute(
+        "SELECT conversation_id::text, turn, search_questions FROM answers "
+        "WHERE id = %s",
+        (answer_id,),
+    ).fetchone()
+    assert row == (first.conversation_id, 2, ["How long does Mortex take to set?"])
+    answer_spans = [s for s in spans.get_finished_spans() if s.name == "answer"]
+    attributes = dict(answer_spans[-1].attributes or {})
+    assert attributes["gen_ai.conversation.id"] == first.conversation_id
+    assert attributes["limespec.turn"] == 2
+
+
+def test_an_ended_or_unknown_conversation_has_no_next_turn(
+    monkeypatch: pytest.MonkeyPatch, postgres_url: str, pg: store.Connection
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    first = assistant.open_turn(None)
+    monkeypatch.setattr(config, "CONVERSATION_MAX_TURNS", 1)
+
+    for asked in [first.conversation_id, str(uuid.uuid4())]:
+        with pytest.raises(assistant.ConversationEnded, match="has ended"):
+            assistant.open_turn(asked)
 
 
 def test_ask_answers_from_the_live_index_with_both_model_requests(

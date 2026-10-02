@@ -137,5 +137,14 @@ APP_PORT = 8090
 # The API refuses longer questions (OWASP LLM10, unbounded consumption). The longest
 # question in the evaluation sets is 237 characters.
 MAX_QUESTION_CHARS = 1000
+# Conversations (PLAN §0e, ADR 0035). The first request reads the last HISTORY_TURNS
+# turns as the user saw them (X36 measured 4). A conversation ends after
+# CONVERSATION_IDLE_MINUTES without a turn, CONVERSATION_MAX_HOURS after it started
+# (OWASP session management: 15-30 minutes idle for low-risk applications, plus an
+# absolute timeout) or at CONVERSATION_MAX_TURNS turns (OWASP LLM10).
+HISTORY_TURNS = 4
+CONVERSATION_IDLE_MINUTES = 30
+CONVERSATION_MAX_HOURS = 8
+CONVERSATION_MAX_TURNS = 20
 # /readyz asks each model server's /health; a loaded server answers at once.
 HEALTH_TIMEOUT_SECONDS = 2.0

@@ -27,7 +27,42 @@ from limespec.answer import (
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
 from limespec.retrieve import Embed, Rerank, rerank_top
-from limespec.view import view
+from limespec.view import reply_text, view
+
+
+class ConversationEnded(Exception):
+    """The conversation is unknown, idle too long, too old or at its turn limit: the
+    reader starts a new one."""
+
+
+@dataclass(frozen=True)
+class Turn:
+    """A reserved turn of a stored conversation, with the earlier turns its first
+    request reads: each message and the reply its reader saw (`view.reply_text`)."""
+
+    conversation_id: str
+    number: int
+    history: History
+
+
+def open_turn(conversation_id: str | None) -> Turn:
+    """Reserve the next turn of a conversation, or the first turn of a new one, and
+    rebuild its history from the stored answers (PLAN §0e): never from the client,
+    since a forged assistant turn would be an injection (D60)."""
+    with connect() as conn:
+        opened = store.open_turn(
+            conn,
+            conversation_id,
+            config.CONVERSATION_IDLE_MINUTES,
+            config.CONVERSATION_MAX_HOURS,
+            config.CONVERSATION_MAX_TURNS,
+        )
+        if opened is None:
+            raise ConversationEnded(f"conversation {conversation_id} has ended")
+        found, number = opened
+        earlier = store.earlier_turns(conn, found, number, config.HISTORY_TURNS)
+    history = [(question, reply_text(shown)) for question, shown in earlier]
+    return Turn(found, number, history)
 
 
 def ask(question: str) -> Answer:
@@ -229,12 +264,19 @@ def searched(conn: store.Connection, version_id: int, query: str) -> list[Passag
 
 
 def ask_and_record(
-    question: str, on_stage: Callable[[str], None] = no_stage, history: History = ()
+    question: str,
+    on_stage: Callable[[str], None] = no_stage,
+    history: History = (),
+    turn: Turn | None = None,
 ) -> tuple[Answer, int]:
     """Answer from the served Postgres index and store the audit record; return the
     answer and the record's id. `on_stage` hears each stage as it starts. `history`
-    is the conversation so far, given in process only: the API never takes it from a
-    client, since a forged assistant turn would be an injection (D60)."""
+    is the conversation so far, given in process only (evaluation): the API never
+    takes it from a client, since a forged assistant turn would be an injection
+    (D60). A `turn` of a stored conversation brings its own history instead, and the
+    record keeps the turn."""
+    if turn is not None:
+        history = turn.history
     with telemetry.span("answer"), connect() as conn:
         version_id = served_index(conn)
         started = time.perf_counter()
@@ -258,8 +300,13 @@ def ask_and_record(
             embedding_model=config.EMBEDDING_MODEL,
             prompt_sha256=PROMPT_SHA256,
             seconds=seconds,
+            search_questions=result.understood,
+            conversation_id=turn.conversation_id if turn else None,
+            turn=turn.number if turn else None,
         )
         telemetry.record_answer(result, answer_id, version_id, seconds)
+        if turn is not None:
+            telemetry.record_turn(turn.conversation_id, turn.number)
     return result, answer_id
 
 
