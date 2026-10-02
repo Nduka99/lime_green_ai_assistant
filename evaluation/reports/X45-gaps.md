@@ -233,3 +233,44 @@ G5's five text misses:
 
 G2 holds within its interval; G3, G6 and G7 pass. As registered, the decision goes to
 the user.
+
+## Round 2 (X46; the user chose one more round, 2 October)
+
+**A correction to E3's diagnosis.**
+- Docling was run again on three of the sampled pages: each sampled element has
+  exactly one box in Docling's own record (`prov`).
+- So the cause is not elements keeping one box of several. Docling's reading-order
+  step merges a paragraph's continuation (from the next column, or below a figure)
+  into the item without adding that part's box.
+- Reading every document again with all boxes would not help, so the GPU window
+  approved for it is not used.
+
+**E3′, a narrower rule, measured before any code.**
+- A word moves only when the page shows it beside another text element's line (within
+  that element's height, to its right) whose text lacks it.
+- Result: 460 moves in 16 documents. Of 30 drawn with seed 75 and read against the
+  pages (`scratchpad e3b-sheet-*.png`), 1 is a true misplacement (Contour's "A1" beside
+  "Fire Class").
+- The rest are continuations in a neighbouring column, which sit beside another
+  paragraph exactly as a key's value does. **Fails** (bar 27 of 30).
+- Page geometry alone cannot tell a merged continuation from a misplaced value. The
+  Word declarations' classes need another source: the Word file's own table rows,
+  which Docling's Word reader keeps (X43 A3a: pairs 1.000 counted with whole tables).
+  That is left for the reading round, with kb49 and kb54 as the known gap.
+
+**R1, written before it is built: lines every card of a grid repeats are stated
+once.**
+- In a colour grid, a card line that every card holds identically is read once, after
+  the colour names, not after each colour.
+- A line only some cards hold stays after its own colour. This is E1's principle (one
+  copy of repeated text) within a page.
+- Expected cost: kb06's nugget ("Ochre Order this colour sample Free", written from
+  version 17's per-card reading) can no longer match contiguously. It is reported as
+  such, not rewritten.
+- **Build:** version 28 = version 26's flags (`--compiled-descriptions`) with R1.
+- **Gates:**
+  - W1 and W2b within 0.005;
+  - G1 to G6 as registered;
+  - G7 has passed (search code unchanged).
+- If G1 v2 is back at 82 or more, version 28 replaces 26 as E's candidate, with the
+  gates still failing listed in ADR 0031.
