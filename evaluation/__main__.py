@@ -710,6 +710,26 @@ def parser() -> argparse.ArgumentParser:
         help="the sitting's verdicts file, e.g. the settled majority's",
     )
     reliable.add_argument("--out", type=Path)
+    barred = commands.add_parser("release-bar", help="gate R1, item by item (R0, E9)")
+    barred.add_argument("name")
+    barred.add_argument(
+        "runs", type=Path, nargs="+", help="answers files, the arm judged last"
+    )
+    barred.add_argument(
+        "--dir", type=Path, required=True, help="a graded blind sitting"
+    )
+    barred.add_argument(
+        "--verdicts", default="verdicts.json", help="the settled majority's file"
+    )
+    barred.add_argument(
+        "--exposure", type=Path, required=True, help="the arm's `exposure` output"
+    )
+    barred.add_argument(
+        "--graders", type=Path, nargs="*", default=[], help="second graders' files"
+    )
+    barred.add_argument("--live", default="", help="the live run (item 4)")
+    barred.add_argument("--repeat", default="", help="the arm's repeat run (item 6)")
+    barred.add_argument("--out", type=Path)
     bundled = commands.add_parser(
         "grading-bundle", help="blind items for second graders"
     )
@@ -2025,13 +2045,13 @@ def run_grades(args: argparse.Namespace) -> int:
 
 def load_runs(paths: list[Path]) -> dict[str, pairs.Records]:
     """Answers files by run name (the file name without "answers-"), in the order
-    given: at least two, the candidate last."""
+    given, the candidate last."""
     runs = {}
     for path in paths:
         records = grades.read_json(path)
         runs[path.stem.removeprefix("answers-")] = {r["id"]: r for r in records}
-    if len(runs) < 2 or len(runs) != len(paths):
-        raise ValueError("give at least two runs, each with a different file name")
+    if len(runs) != len(paths):
+        raise ValueError("give each run a different file name")
     return runs
 
 
@@ -2055,6 +2075,8 @@ def run_unblind(args: argparse.Namespace) -> int:
     key = grades.read_json(folder / "key.json")
     questions = grades.read_json(folder / "questions.json")["questions"]
     runs = load_runs(args.runs)
+    if len(runs) < 2:
+        raise ValueError("give at least two runs to compare")
     order = grades.read_json(args.dir / "order.json")
     if not (args.dir / "verdicts.json").exists():
         raise ValueError(f"grade the pairs first: no verdicts.json in {args.dir}")
@@ -2365,6 +2387,40 @@ def run_reliability(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_release_bar(args: argparse.Namespace) -> int:
+    folder = sets.require(args.name, args.root, args.registry)
+    key = grades.read_json(folder / "key.json")
+    questions = grades.read_json(folder / "questions.json")["questions"]
+    runs = load_runs(args.runs)
+    arm = list(runs)[-1]
+    order = grades.read_json(args.dir / "order.json")
+    graded = pairs.unblind(grades.read_json(args.dir / args.verdicts), order)
+    rows = reliability.case_rows(key, questions, graded, runs)
+    labels: dict[str, list[str]] = {}
+    if (args.dir / "claims.json").exists():
+        claims = grades.read_json(args.dir / "claims.json")
+        labels = reliability.claims_by_arm(claims, order).get(arm, {})
+    primary = graders.flat(grades.read_json(args.dir / "verdicts.json"))
+    kappas = [
+        graders.agreement(primary, graders.flat(grades.read_json(path)))["kappa"]
+        for path in args.graders
+    ]
+    result = reliability.release_bar(
+        rows,
+        arm,
+        guardrails.check(key, questions, runs[arm]),
+        grades.read_json(args.exposure),
+        kappas,
+        reliability.forbidden_refusals(rows, arm, labels),
+        args.live,
+        args.repeat,
+    )
+    if args.out:
+        write_json(args.out, result)
+    print(json.dumps(result, indent=1))
+    return 0 if result["passed"] else 1
+
+
 def run_grading_bundle(args: argparse.Namespace) -> int:
     folder = sets.require(args.name, args.root, args.registry)
     key = grades.read_json(folder / "key.json")
@@ -2637,6 +2693,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_relevance_score(args)
         if args.command == "reliability":
             return run_reliability(args)
+        if args.command == "release-bar":
+            return run_release_bar(args)
         if args.command == "grading-bundle":
             return run_grading_bundle(args)
         if args.command == "grade-with-model":

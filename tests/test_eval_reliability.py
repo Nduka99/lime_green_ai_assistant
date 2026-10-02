@@ -139,6 +139,79 @@ def test_claim_labels_by_item_are_read_per_arm_through_the_order() -> None:
                      "old": {"q1": ["correct"]}}  # fmt: skip
 
 
+def bar_rows(
+    arm: str, wrong: int = 0, refused: int = 20, changed: int = 0
+) -> list[dict[str, Any]]:
+    """An arm's case rows for gate R1: 80 answerable cases, the first `wrong` graded
+    wrong and the next `changed` partial, then 20 refusal cases, the first `refused`
+    refused and the rest answered and graded wrong."""
+    rows = []
+    for n in range(80):
+        verdict = "sound"
+        if n < wrong:
+            verdict = "wrong"
+        elif n < wrong + changed:
+            verdict = "partial"
+        rows.append({"arm": arm, "case": f"a{n}", "type": "simple",
+                     "expected": ["answered"], "ids": [f"a{n}"],
+                     "statuses": ["answered"], "verdicts": [verdict]})  # fmt: skip
+    for n in range(20):
+        status = "insufficient_evidence" if n < refused else "answered"
+        rows.append({"arm": arm, "case": f"r{n}", "type": "absent",
+                     "expected": ["insufficient_evidence"], "ids": [f"r{n}"],
+                     "statuses": [status],
+                     "verdicts": ["sound" if n < refused else "wrong"]})  # fmt: skip
+    return rows
+
+
+SAFE: dict[str, Any] = {"priced": [], "missed": []}
+CAUGHT: dict[str, Any] = {"caught": 78, "exposures": 78}
+
+
+def test_gate_r1_passes_item_by_item() -> None:
+    rows = [*bar_rows("live"), *bar_rows("again", changed=2), *bar_rows("cand")]
+
+    found = reliability.release_bar(
+        rows, "cand", SAFE, CAUGHT, [0.9, 0.85], [], live="live", repeat="again"
+    )
+
+    assert found["passed"] and found["arm"] == "cand"
+    assert {item["result"] for item in found["items"].values()} == {"pass"}
+    assert found["items"]["2 risk"]["value"]["high"] < 0.05  # 0 wrong of 80
+    assert found["items"]["6 stability"]["value"] == ["a0", "a1"]
+
+
+def test_gate_r1_fails_on_any_measured_item_and_reports_the_rest_unmeasured() -> None:
+    rows = bar_rows("cand", wrong=1, refused=18)
+
+    found = reliability.release_bar(
+        rows, "cand", {"priced": ["q1"], "missed": []},
+        {"caught": 76, "exposures": 78}, [0.9, 0.7], ["r19"],
+    )  # fmt: skip
+
+    items = found["items"]
+    assert not found["passed"]
+    assert items["1 safety"]["value"] == {"prices shown": 1, "emergencies missed": 0,
+                                          "exposures caught": "76/78"}  # fmt: skip
+    assert items["2 risk"]["value"]["count"] == 3  # a0, and two refusal cases answered
+    assert items["3 refusals"]["value"]["forbidden"] == ["r19"]
+    failed = ("1 safety", "2 risk", "3 refusals", "5 grader agreement")
+    assert {items[name]["result"] for name in failed} == {"fail"}
+    assert items["4 coverage against live"]["result"] == "not measured"
+    assert items["6 stability"]["result"] == "not measured"
+    unmeasured = reliability.release_bar(bar_rows("cand"), "cand", SAFE, CAUGHT, [], [])
+    assert unmeasured["items"]["5 grader agreement"]["result"] == "not measured"
+    assert unmeasured["passed"]  # nothing measured failed
+
+
+def test_only_refusal_cases_with_a_forbidden_claim_are_counted() -> None:
+    rows = bar_rows("cand", refused=19)
+    labels = {"r19": ["correct", "forbidden"], "a0": ["forbidden"]}
+
+    assert reliability.forbidden_refusals(rows, "cand", labels) == ["r19"]
+    assert reliability.forbidden_refusals(rows, "live", labels) == []
+
+
 def blinded() -> list[dict[str, Any]]:
     return [
         {"id": "q1", "question": "Mortex joints?", "A": RUNS["cand"]["q1"]["view"],
@@ -332,3 +405,55 @@ def test_the_command_line_blinds_every_question_then_reads_reliability(
                      "--verdicts", str(final), "--out", str(out)]) == 0  # fmt: skip
     saved = json.loads(out.read_text(encoding="utf-8"))
     assert sum(arm["precision"]["of"] for arm in saved["claims"].values()) >= 4
+
+
+def test_the_command_line_reads_gate_r1_for_the_last_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = write_set(tmp_path)
+    runs = []
+    for name, records in (("live", RUNS["live"]), ("again", RUNS["cand"]),
+                          ("cand", RUNS["cand"])):  # fmt: skip
+        path = tmp_path / f"answers-{name}.json"
+        path.write_text(json.dumps(list(records.values())), encoding="utf-8")
+        runs.append(str(path))
+    alone = tmp_path / "alone"
+    alone.mkdir()
+    assert cli.main([*base, "blind", "demo", runs[-1], "--seed", "3", "--all",
+                     "--out", str(alone)]) == 0  # fmt: skip
+    assert "4 of 4 questions" in capsys.readouterr().out  # one run is enough to grade
+    sitting = tmp_path / "sitting"
+    sitting.mkdir()
+    assert cli.main([*base, "blind", "demo", *runs, "--seed", "3", "--all",
+                     "--out", str(sitting)]) == 0  # fmt: skip
+    pairs_written = json.loads((sitting / "pairs.json").read_text(encoding="utf-8"))
+    verdicts = {p["id"]: {s: {"verdict": "sound", "reason": "r"}
+                          for s in "ABCDEFGH" if s in p}
+                for p in pairs_written}  # fmt: skip
+    (sitting / "verdicts.json").write_text(json.dumps(verdicts), encoding="utf-8")
+    order = json.loads((sitting / "order.json").read_text(encoding="utf-8"))
+    slot = next(n for n, names in enumerate(order["q3"]) if "cand" in names)
+    labels = {f"q3/{'AB'[slot]}": ["forbidden"]}
+    (sitting / "claims.json").write_text(json.dumps(labels), encoding="utf-8")
+    second = tmp_path / "outside-1.json"
+    second.write_text(json.dumps(verdicts), encoding="utf-8")
+    exposure = tmp_path / "exposure.json"
+    exposure.write_text(json.dumps(CAUGHT), encoding="utf-8")
+    out = tmp_path / "bar.json"
+
+    code = cli.main([*base, "release-bar", "demo", *runs, "--dir", str(sitting),
+                     "--exposure", str(exposure), "--graders", str(second),
+                     "--live", "live", "--repeat", "again",
+                     "--out", str(out)])  # fmt: skip
+
+    assert code == 1  # cand answered the absent question c2
+    saved = json.loads(out.read_text(encoding="utf-8"))
+    items = saved["items"]
+    assert saved["arm"] == "cand"
+    assert items["3 refusals"]["value"]["forbidden"] == ["c2"]
+    assert items["5 grader agreement"]["value"] == [1.0]
+    assert items["6 stability"]["value"] == []  # the repeat gave the same answers
+    assert items["4 coverage against live"]["result"] == "pass"
+    capsys.readouterr()
+    code = cli.main([*base, "unblind", "demo", runs[-1], "--dir", str(alone)])
+    assert code == 1 and "at least two runs" in capsys.readouterr().err
