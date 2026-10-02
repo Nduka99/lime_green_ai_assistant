@@ -35,9 +35,35 @@ KEYWORD_CONFIG = "public.english_keep_stop"
 KEYWORD_TEXT = sql.SQL("(title || ' ' || context || ' ' || text)")
 
 
-def bm25_index(version_id: int) -> str:
-    """Each version's own BM25 index, so its word statistics cover that version."""
-    return f"passages_bm25_v{version_id}"
+# Search channels (X44 F2): the company's own content, general guidance, pictures.
+CHANNELS = ("company", "guidance", "picture")
+
+
+def bm25_index(version_id: int, channel: str) -> str:
+    """A version's BM25 index for one channel. Each keeps its own word statistics, so
+    adding guidance or pictures to a version cannot move the company's keyword scores
+    (X47 ladder, X48)."""
+    return f"passages_bm25_v{version_id}_{channel}"
+
+
+def keyword_indexes(conn: Connection, version_id: int) -> None:
+    """Create a version's BM25 index for each channel, keeping any that exist.
+    `limespec keyword-index` adds them to a version built before X48."""
+    for name in CHANNELS:
+        # The version and channel are literals: the planner must see the predicate.
+        conn.execute(
+            sql.SQL(
+                "CREATE INDEX IF NOT EXISTS {} ON passages USING bm25 ({}) "
+                "WITH (text_config = {}) "
+                "WHERE index_version_id = {} AND channel = {}"
+            ).format(
+                sql.Identifier(bm25_index(version_id, name)),
+                KEYWORD_TEXT,
+                sql.Literal(KEYWORD_CONFIG),
+                sql.Literal(version_id),
+                sql.Literal(name),
+            )
+        )
 
 
 def vector_text(vector: Sequence[float]) -> str:
@@ -59,7 +85,7 @@ def write_version(
     pictures: Mapping[str, bytes] | None = None,
     picture_vectors: Mapping[str, Sequence[float]] | None = None,
 ) -> int:
-    """Store one index version (not yet live) with its BM25 index; return its id.
+    """Store one index version (not yet live) with its BM25 indexes; return its id.
 
     A page captured with the same bytes before is reused, not stored twice. `images`
     names each passage's picture ("" for none), in passage order; `pictures` holds the
@@ -129,19 +155,7 @@ def write_version(
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s)",
                 rows,
             )
-        # A partial index keeps its own word statistics. The version id is a
-        # literal, because the planner must see the predicate to use the index.
-        conn.execute(
-            sql.SQL(
-                "CREATE INDEX {} ON passages USING bm25 ({}) "
-                "WITH (text_config = {}) WHERE index_version_id = {}"
-            ).format(
-                sql.Identifier(bm25_index(version[0])),
-                KEYWORD_TEXT,
-                sql.Literal(KEYWORD_CONFIG),
-                sql.Literal(version[0]),
-            )
-        )
+        keyword_indexes(conn, version[0])
     return int(version[0])
 
 
@@ -177,18 +191,20 @@ def known_vectors(
 
 
 def delete_version(conn: Connection, version_id: int) -> None:
-    """Remove a version that is not live: its passages and its BM25 index."""
+    """Remove a version that is not live: its passages and its BM25 indexes."""
     with conn.transaction():
         deleted = conn.execute(
             "DELETE FROM index_versions WHERE id = %s AND NOT live", (version_id,)
         )
         if deleted.rowcount != 1:
             raise ValueError(f"no index version {version_id} that is not live")
-        conn.execute(
-            sql.SQL("DROP INDEX IF EXISTS {}").format(
-                sql.Identifier(bm25_index(version_id))
+        # Versions built before X48 also have one index over every channel.
+        names = [f"passages_bm25_v{version_id}"]
+        names += [bm25_index(version_id, name) for name in CHANNELS]
+        for name in names:
+            conn.execute(
+                sql.SQL("DROP INDEX IF EXISTS {}").format(sql.Identifier(name))
             )
-        )
 
 
 def set_live(conn: Connection, version_id: int) -> None:
@@ -255,21 +271,28 @@ def keyword_ranking(
     if not re.search(r"\w", question):
         return []
     score = sql.SQL("{} <@> to_bm25query({}, {})").format(
-        KEYWORD_TEXT, sql.Literal(question), sql.Literal(bm25_index(version_id))
+        KEYWORD_TEXT,
+        sql.Literal(question),
+        sql.Literal(bm25_index(version_id, channel)),
     )
-    rows = conn.execute(
-        sql.SQL(
-            "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
-            "AND NOT commercial{}{} ORDER BY {}, id LIMIT {}"
-        ).format(
-            sql.Literal(version_id),
-            score,
-            in_scope(scope),
-            in_channel(channel),
-            score,
-            sql.Literal(limit),
-        )
-    ).fetchall()
+    query = sql.SQL(
+        "SELECT id FROM passages WHERE index_version_id = {} AND {} < 0 "
+        "AND NOT commercial{}{} ORDER BY {}, id LIMIT {}"
+    ).format(
+        sql.Literal(version_id),
+        score,
+        in_scope(scope),
+        in_channel(channel),
+        score,
+        sql.Literal(limit),
+    )
+    try:
+        rows = conn.execute(query).fetchall()
+    except psycopg.errors.UndefinedObject as error:
+        raise ValueError(
+            f"index version {version_id} has no {channel} keyword index; run "
+            f"`limespec keyword-index --version {version_id}`"
+        ) from error
     return [row[0] for row in rows]
 
 

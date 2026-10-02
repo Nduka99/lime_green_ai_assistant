@@ -154,6 +154,13 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
+def run_keyword_index(version: int) -> None:
+    """Give an index version built before X48 its BM25 index per channel."""
+    with assistant.connect() as conn:
+        store.keyword_indexes(conn, version)
+    print(f"index version {version}: a BM25 index per channel")
+
+
 def run_read_images(vlm: str, vectors: bool = False) -> int:
     """Store every picture of the pages and documents once, then read the text in
     each with a vision model (GLM-OCR at `vlm`, X43 B) and give each its SigLIP2
@@ -310,6 +317,10 @@ def main(argv: list[str] | None = None) -> int:
     serve_parser.add_argument("--port", type=int, default=config.APP_PORT)
     search_parser = commands.add_parser("search", help="show the passages retrieved")
     search_parser.add_argument("question")
+    keyword_parser = commands.add_parser(
+        "keyword-index", help="add a BM25 index per channel to an older version (X48)"
+    )
+    keyword_parser.add_argument("--version", type=int, required=True)
     read_parser = commands.add_parser(
         "read-pdfs",
         help="read every stored PDF into elements, each in its own process "
@@ -376,6 +387,8 @@ def main(argv: list[str] | None = None) -> int:
             run_ask(args.question)
         elif args.command == "serve":
             run_serve(args.port)
+        elif args.command == "keyword-index":
+            run_keyword_index(args.version)
         else:
             run_search(args.question)
     except (IngestError, llm.ModelServerError, psycopg.Error) as error:

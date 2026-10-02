@@ -33,6 +33,31 @@ def test_search_prints_ranked_passages_with_their_pages(
     assert "https://example.test/support/faq" in output
 
 
+def test_keyword_index_gives_an_older_version_its_channel_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    ingest(pg, fake_embed_1024)
+    row = pg.execute("SELECT max(id) FROM index_versions").fetchone()
+    assert row is not None
+    version = row[0]
+    pg.execute(f'DROP INDEX "{store.bm25_index(version, "company")}"')
+    pg.commit()
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+
+    assert cli.main(["keyword-index", "--version", str(version)]) == 0
+    assert "a BM25 index per channel" in capsys.readouterr().out
+    found = pg.execute(
+        "SELECT count(*) FROM pg_indexes WHERE indexname = %s",
+        (store.bm25_index(version, "company"),),
+    ).fetchone()
+    assert found == (1,)
+
+
 def test_search_without_a_live_index_explains_what_to_run(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

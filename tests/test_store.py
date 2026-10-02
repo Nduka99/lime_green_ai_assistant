@@ -163,28 +163,82 @@ def test_keyword_ranking_reads_query_syntax_as_plain_words(
     assert headings == {"Samples", "Duro Render"}
 
 
-def test_each_version_has_its_own_bm25_index_removed_with_it(
+def bm25_names(pg: store.Connection) -> set[str]:
+    return {
+        row[0]
+        for row in pg.execute(
+            "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'passages_bm25_v%'"
+        ).fetchall()
+    }
+
+
+def test_each_version_has_a_bm25_index_per_channel_removed_with_it(
     pg: store.Connection,
 ) -> None:
     first = build(pg)
     second = build(pg)
     store.set_live(pg, second)
 
-    names = {
-        row[0]
-        for row in pg.execute(
-            "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'passages_bm25_v%'"
-        ).fetchall()
+    assert bm25_names(pg) == {
+        store.bm25_index(version, channel)
+        for version in (first, second)
+        for channel in store.CHANNELS
     }
-    assert names == {store.bm25_index(first), store.bm25_index(second)}
     store.delete_version(pg, first)
     assert pg.execute("SELECT count(*) FROM passages").fetchone() == (3,)
-    remaining = pg.execute(
-        "SELECT count(*) FROM pg_indexes WHERE indexname = %s",
-        (store.bm25_index(first),),
-    ).fetchone()
-    assert remaining == (0,)
+    assert bm25_names(pg) == {store.bm25_index(second, c) for c in store.CHANNELS}
     assert store.keyword_ranking(pg, second, "sample", 10) != []
+
+
+def test_guidance_passages_do_not_move_the_company_keyword_scores(
+    pg: store.Connection,
+) -> None:
+    guide = ("https://example.test/guide.pdf", "GOV.UK — Guide",
+             "2026-09-12T10:00:00+00:00", "sha-guide")  # fmt: skip
+    # Words the company passages share, repeated, change BM25's word statistics.
+    extra = [
+        (guide[0], guide[1], f"Part {n}", "Delivery samples delivery samples", "", 1)
+        for n in range(6)
+    ]
+    alone = build(pg)
+    beside = store.write_version(
+        pg, [*PAGES, guide], [*PASSAGES, *extra],
+        [padded(v) for v in [*VECTORS, *[[0.5, 0.5]] * 6]], MANIFEST,
+    )  # fmt: skip
+
+    def scores(version: int) -> list[tuple[str, float]]:
+        rows = pg.execute(
+            "SELECT heading, (title || ' ' || context || ' ' || text) "
+            "<@> to_bm25query('delivery samples', %s) FROM passages "
+            "WHERE index_version_id = %s AND channel = 'company' ORDER BY heading",
+            (store.bm25_index(version, "company"), version),
+        ).fetchall()
+        return [(heading, round(score, 9)) for heading, score in rows]
+
+    assert scores(beside) == scores(alone)
+    assert store.keyword_ranking(pg, beside, "delivery", 10, channel="guidance")
+
+
+def test_a_version_without_channel_indexes_names_the_command(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    pg.execute(f'DROP INDEX "{store.bm25_index(version, "company")}"')
+
+    with pytest.raises(ValueError, match=f"keyword-index --version {version}"):
+        store.keyword_ranking(pg, version, "sample", 10)
+
+
+def test_keyword_indexes_keep_the_indexes_a_version_has(
+    pg: store.Connection,
+) -> None:
+    version = build(pg)
+    pg.execute(f'DROP INDEX "{store.bm25_index(version, "picture")}"')
+
+    store.keyword_indexes(pg, version)
+    store.keyword_indexes(pg, version)
+
+    assert bm25_names(pg) == {store.bm25_index(version, c) for c in store.CHANNELS}
 
 
 def test_search_fuses_both_rankings_then_reranks(pg: store.Connection) -> None:
