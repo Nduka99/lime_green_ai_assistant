@@ -349,7 +349,15 @@ def main(argv: list[str] | None = None) -> int:
     models_parser.add_argument(
         "--quick", action="store_true", help="compare sizes only, not SHA-256"
     )
+    openapi_parser = commands.add_parser(
+        "openapi", help="write the API's OpenAPI schema (the web app's types)"
+    )
+    openapi_parser.add_argument("out", type=Path)
     args = parser.parse_args(argv)
+    if args.command == "openapi":
+        text = json.dumps(app.openapi(), indent=1, ensure_ascii=False) + "\n"
+        args.out.write_text(text, encoding="utf-8", newline="\n")
+        return 0
     if args.command == "read-pdfs":
         return run_read_pdfs(args.vlm)
     if args.command == "read-images":

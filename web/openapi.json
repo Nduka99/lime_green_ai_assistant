@@ -1,0 +1,416 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Lime Green Assistant",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/api/v1/answers": {
+   "post": {
+    "summary": "Create Answer",
+    "description": "Answer from the live Postgres index and record it for audit.",
+    "operationId": "create_answer_api_v1_answers_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecordedAnswer"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/answers/stream": {
+   "post": {
+    "summary": "Stream Answer",
+    "description": "The same answer as server-sent events: `stage` as each stage starts, then\n`answer` once it is verified, or `error`. Unverified text is never sent.",
+    "operationId": "stream_answer_api_v1_answers_stream_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AnswerRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/event-stream": {
+        "itemSchema": {
+         "type": "object",
+         "properties": {
+          "data": {
+           "type": "string"
+          },
+          "event": {
+           "type": "string"
+          },
+          "id": {
+           "type": "string"
+          },
+          "retry": {
+           "type": "integer",
+           "minimum": 0
+          }
+         }
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/healthz": {
+   "get": {
+    "summary": "Healthz",
+    "description": "Liveness: the process answers HTTP. It checks nothing else, so a slow model\nor database never gets a working process restarted.",
+    "operationId": "healthz_healthz_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "string"
+         },
+         "type": "object",
+         "title": "Response Healthz Healthz Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/readyz": {
+   "get": {
+    "summary": "Readyz",
+    "description": "Readiness: whether an answer can be served now. HTTP 503 until the database\nhas a matching live index and every model server has loaded its model.",
+    "operationId": "readyz_readyz_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Readiness"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "AnswerRequest": {
+    "properties": {
+     "question": {
+      "type": "string",
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Question"
+     },
+     "conversation_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "uuid"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Conversation Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "question"
+    ],
+    "title": "AnswerRequest",
+    "description": "A question for the v1 API, checked after surrounding spaces are removed, and\nthe conversation it continues, if any. Any other field is refused."
+   },
+   "AnswerView": {
+    "properties": {
+     "question": {
+      "type": "string",
+      "title": "Question"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "notice": {
+      "type": "string",
+      "title": "Notice"
+     },
+     "claims": {
+      "items": {
+       "$ref": "#/components/schemas/ClaimView"
+      },
+      "type": "array",
+      "title": "Claims"
+     },
+     "sources": {
+      "items": {
+       "$ref": "#/components/schemas/Source"
+      },
+      "type": "array",
+      "title": "Sources"
+     },
+     "closest_pages": {
+      "items": {
+       "$ref": "#/components/schemas/Page"
+      },
+      "type": "array",
+      "title": "Closest Pages"
+     }
+    },
+    "type": "object",
+    "required": [
+     "question",
+     "status",
+     "notice",
+     "claims",
+     "sources",
+     "closest_pages"
+    ],
+    "title": "AnswerView"
+   },
+   "ClaimView": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "sources": {
+      "items": {
+       "type": "integer"
+      },
+      "type": "array",
+      "title": "Sources"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text",
+     "sources"
+    ],
+    "title": "ClaimView"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "Page": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "url"
+    ],
+    "title": "Page"
+   },
+   "Readiness": {
+    "properties": {
+     "ready": {
+      "type": "boolean",
+      "title": "Ready"
+     },
+     "checks": {
+      "additionalProperties": {
+       "type": "boolean"
+      },
+      "type": "object",
+      "title": "Checks"
+     }
+    },
+    "type": "object",
+    "required": [
+     "ready",
+     "checks"
+    ],
+    "title": "Readiness"
+   },
+   "RecordedAnswer": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "conversation_id": {
+      "type": "string",
+      "title": "Conversation Id"
+     },
+     "turn": {
+      "type": "integer",
+      "title": "Turn"
+     },
+     "understood_as": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Understood As"
+     },
+     "answer": {
+      "$ref": "#/components/schemas/AnswerView"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "conversation_id",
+     "turn",
+     "understood_as",
+     "answer"
+    ],
+    "title": "RecordedAnswer"
+   },
+   "Source": {
+    "properties": {
+     "number": {
+      "type": "integer",
+      "title": "Number"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "heading": {
+      "type": "string",
+      "title": "Heading"
+     },
+     "quote": {
+      "type": "string",
+      "title": "Quote"
+     },
+     "link": {
+      "type": "string",
+      "title": "Link"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "captured": {
+      "type": "string",
+      "title": "Captured"
+     }
+    },
+    "type": "object",
+    "required": [
+     "number",
+     "title",
+     "heading",
+     "quote",
+     "link",
+     "url",
+     "captured"
+    ],
+    "title": "Source",
+    "description": "One verified quote, numbered so claims can point to it."
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}

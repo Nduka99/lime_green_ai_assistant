@@ -253,8 +253,22 @@ Then ask on the command line, or run the web page:
 ```powershell
 uv run --env-file .env limespec ask "What is Grippa used for?"
 uv run --env-file .env limespec ask      # prompts "Ask a question:"
-uv run --env-file .env limespec serve    # the page at http://127.0.0.1:8090 (--port to change)
+uv run --env-file .env limespec serve    # the web app at http://127.0.0.1:8090 (--port to change)
 ```
+
+The web app is a conversation thread (React and TypeScript, in `web/`). Build it once
+with [Node.js](https://nodejs.org/) 24, and `limespec serve` serves it from `web/dist`:
+
+```powershell
+npm ci --prefix web          # the versions pinned in web/package-lock.json
+npm run build --prefix web   # type-checks, then writes web/dist
+```
+
+For work on the app itself, `npm run dev --prefix web` serves it on port 5173 and
+passes `/api` to a running `limespec serve` (`API_URL`, default port 8090). Its types
+come from the API's schema: after an API change, run
+`uv run limespec openapi web/openapi.json` and `npm run types --prefix web` (a test
+fails until the committed schema matches the API).
 
 The command line, the page and the JSON API (`POST /api/v1/answers`, or
 `/api/v1/answers/stream` for stage-by-stage progress) give the same answer from the
@@ -287,7 +301,9 @@ answer carries that answer's `trace_id`.
 
 ```powershell
 uv run python scripts/check.py # every check a change must pass, in one command
-uv run pytest                  # 196 tests, 100% coverage; no models, but the dev Postgres
+uv run pytest                  # Python tests, 100% coverage; no models, but the dev Postgres
+npm test --prefix web          # the web app's tests, 100% coverage
+npm run e2e --prefix web       # the thread in Microsoft Edge, with WCAG 2.2 AA checks (axe)
 uv run pytest -m live --no-cov # the brief's three kinds of question, with the servers running
 uv run ruff check . ; uv run mypy src tests evaluation
 ```

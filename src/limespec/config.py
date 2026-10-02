@@ -134,6 +134,8 @@ SIGLIP_TEXT_TOKENS = 64  # the question padded as the model card does
 # another.
 APP_HOST = "127.0.0.1"
 APP_PORT = 8090
+# The web app's build (`npm run build` in web/), served by `limespec serve`.
+WEB_DIST = Path("web/dist")
 # The API refuses longer questions (OWASP LLM10, unbounded consumption). The longest
 # question in the evaluation sets is 237 characters.
 MAX_QUESTION_CHARS = 1000

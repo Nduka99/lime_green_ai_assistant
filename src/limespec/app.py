@@ -1,11 +1,11 @@
-"""The web page and the JSON API: the same answer as the command line, over HTTP.
+"""The JSON API and the web app: the same answer as the command line, over HTTP.
 
-Every route shows `view(answer)`, the same data the CLI prints. The page calls
-`assistant.ask`; the v1 API returns the same answer with the id of its audit
-record and its place in a conversation. An unreachable model or a missing index is
-an operational error: HTTP 503 with one fixed message, never an answer. The cause is
-logged on the server and never sent to the client, since it can name internal
-addresses (OWASP API8:2023).
+Every answer is `view(answer)`, the same data the CLI prints: the v1 API returns
+it with the id of its audit record and its place in a conversation, and the web app
+(`web/`, built into `web/dist` and served here) shows it as a thread. An unreachable
+model or a missing index is an operational error: HTTP 503 with one fixed message,
+never an answer. The cause is logged on the server and never sent to the client,
+since it can name internal addresses (OWASP API8:2023).
 
 A conversation (PLAN §0e, ADR 0035) is a sequence of single-turn answers. A request
 without `conversation_id` starts one; the reply gives its id and the turn's number,
@@ -18,15 +18,15 @@ import logging
 import queue
 import threading
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Annotated, TypedDict
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, StringConstraints
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from limespec import assistant, config, llm, telemetry
 from limespec.assistant import ConversationEnded, Turn
@@ -35,10 +35,23 @@ from limespec.llm import ModelServerError
 from limespec.models import Answer
 from limespec.view import AnswerView, view
 
-app = FastAPI(title="Lime Green Assistant")
+# No interactive docs: the schema the web app is built against is committed as
+# web/openapi.json (`limespec openapi`), and an API's inventory is not served to
+# every visitor (OWASP API9:2023).
+app = FastAPI(
+    title="Lime Green Assistant", docs_url=None, redoc_url=None, openapi_url=None
+)
 telemetry.instrument(app)
 logger = logging.getLogger(__name__)
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+# Sent with every response (OWASP Secure Headers Project): the page runs only its own
+# scripts and styles, cannot be framed, and sends no referrer to the sources it links.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; object-src 'none'; "
+    "base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
 UNAVAILABLE = "The assistant cannot answer right now. Please try again later."
 ENDED = "This conversation has ended. Please start a new conversation."
 
@@ -71,24 +84,25 @@ class Readiness(TypedDict):
     checks: dict[str, bool]
 
 
-@app.get("/", response_class=HTMLResponse)
-def page(request: Request, q: str = "") -> HTMLResponse:
-    """The question form, with the answer below it once a question is asked."""
-    question = q.strip()
-    answer: AnswerView | None = None
-    error = ""
-    if question:
-        try:
-            answer = view(assistant.ask(question))
-        except (IngestError, ModelServerError) as problem:
-            logger.warning("answer failed: %s", problem)
-            error = UNAVAILABLE
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {"question": question, "answer": answer, "error": error},
-        status_code=503 if error else 200,
-    )
+class SecurityHeaders:
+    """Adds SECURITY_HEADERS to every HTTP response. A plain ASGI middleware, so the
+    answer stream passes through unbuffered and keeps its trace context."""
+
+    def __init__(self, inner: ASGIApp) -> None:
+        self.inner = inner
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in SECURITY_HEADERS.items():
+                    headers[name] = value
+            await send(message)
+
+        await self.inner(scope, receive, send_with_headers)
+
+
+app.add_middleware(SecurityHeaders)
 
 
 def opened_turn(request: AnswerRequest) -> Turn:
@@ -189,3 +203,9 @@ def readyz(response: Response) -> Readiness:
     if not ready:
         response.status_code = 503
     return {"ready": ready, "checks": checks}
+
+
+# The web app last, so every route above is matched first: `npm run build` in web/
+# writes web/dist; until then its paths are 404.
+web = StaticFiles(directory=config.WEB_DIST, html=True, check_dir=False)
+app.mount("/", web, name="web")
