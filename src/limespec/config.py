@@ -99,10 +99,11 @@ PASSAGE_BUDGET = 32
 # A part may list the several things it asks about, each as a search question naming
 # its subject (at most MAX_ITEMS). With ITEM_SEARCHES on, each item is searched too and
 # adds its best ITEM_TOP passages not yet given, within PASSAGE_BUDGET: SCOPED_TOP's
-# value, a named thing's own best few, not tuned (X48). Off until X48's run decides.
+# value, a named thing's own best few, not tuned. On by X48's final run: the four
+# replays reached 411 parts against 403 without them (ADR 0032).
 MAX_ITEMS = 6
 ITEM_TOP = 4
-ITEM_SEARCHES = False
+ITEM_SEARCHES = True
 MAX_QUOTES_PER_CLAIM = 3
 CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
 # "see": the generator sees the pictures among the passages it is given, at most

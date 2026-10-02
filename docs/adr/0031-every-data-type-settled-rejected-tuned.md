@@ -130,6 +130,7 @@
   - Kept by its rule.
   - It helps list questions (v3 +11) and crowds others, so it is the first candidate
     for routing by question type.
+  - Settled by ADR 0032: kept everywhere (+12 even when every part is searched alone).
 - **v2's shortfall.** Version 25 had 83; version 29 has 81 (bar 82). The ladder found
   the cause: every loss is in one case (c06), whose two About-page facts moved down with
   the web reader's page form and then cross the company's 8th place as guidance and
@@ -137,7 +138,9 @@
 - **Question-type routing.**
   - Apply E4, more picture places, and guidance only to the question types they help;
     routing only ever adds to the company search.
-  - It is researched and planned in the next chat, before E.
+  - Settled by ADR 0032. The type routes were cut on their measured ceilings (+4, 0,
+    0). A search per thing a part asks about was adopted instead (411 against 403), with
+    one BM25 index per channel.
 - **Known gaps.**
   - Two Word declarations' fire and strength classes (one template). To be fixed inside
     the reading.

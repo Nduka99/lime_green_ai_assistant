@@ -122,3 +122,69 @@ Otherwise A is adopted.
   with items or without.
 - What is left is accepted, and no retrieval round follows.
 - Next: E on v6, then v5, then deployment preparation.
+
+## Result (2 October, 10:30–12:23; `data/runs/x48/final.log`)
+
+Computed by the rule script written before the run. The 8080 and 8090 pages were back
+at 11:47; every model server answered `/health` with 200.
+
+**Per-channel indexes**
+
+| Check | Result | Verdict |
+|---|---|---|
+| Identity, version 29 against 31 | 262 of 264 questions identical; parts reached identical in every set (108/82/77/118) | **Fails as written** |
+| `kb-probe` | guidance 6/6, pictures 14/20, no text question lost | Pass |
+| Picture sets | `image-facts` 0.825, `picture-probe` 0.938, `picture-probe-2` 0.875 (all as version 28) | Pass |
+| `web-facts` | 0.955 against 0.952: +0.003 [+0.000, +0.009] | Pass |
+| Search p95 | 1.35, 1.33, 1.36 s (median 1.35) | Pass |
+
+- **Why the two questions differ** (v3q012, v4q127): the company's 8th place.
+  - About 20 colour pages' compiled product lists score exactly the same for those
+    queries: −13.947522 in both versions, read from each version's company index.
+  - Keyword search breaks ties by passage id, and ids follow each build's insertion
+    order, so the two versions order the tied lists differently.
+  - Vector rankings were identical. The scores show that other channels no longer move
+    company keyword scores. The rule compared order where it should have compared scores.
+- **As registered, the shared index would be kept.** The user chose to keep the
+  per-channel indexes on this evidence (2 October). The arms below were measured on them.
+
+**Item searches**
+
+| Arm (version 28, per-channel indexes) | frozen90 | v2 | v3 | v4 | Sum | Per-question search p95 | Median | Most passages |
+|---|---|---|---|---|---|---|---|---|
+| Today (shared index, Qwen's search questions) | 111 | 80 | 88 | 121 | 400 | | | |
+| P (Qwen's search questions) | 112 | 81 | 87 | 121 | 401 | | | |
+| A (Gemma's search questions) | 112 | 83 | 89 | 119 | 403 | 8.13 s | 3.62 s | 23 |
+| **B (A + item searches)** | 112 | **89** | 89 | **121** | **411** | 9.68 s | 3.78 s | 32 |
+
+- **B passes every rule:**
+  - 411 ≥ 403 + 3;
+  - no set below A;
+  - p95 9.68 ≤ 8.13 + 2.0 s;
+  - at most 32 passages.
+
+  **B is adopted, so `ITEM_SEARCHES` is on.**
+- **Gemma splits far more questions than Qwen did.** Questions with 2 or more keyed parts
+  searched as 2 or more parts or items:
+
+  | Set | Gemma | Qwen |
+  |---|---|---|
+  | frozen90 | 37/50 | 29/50 |
+  | v2 | 35/35 | 17/35 |
+  | v3 | 21/25 | 11/25 |
+  | v4 | 36/36 | 20/36 |
+
+  - It wrote items for 7 v2 questions and none in frozen90.
+  - Splitting alone (A against P) gained only 2 parts.
+- **The oracle overstated the room.** The oracle split reached 458–472 because the key's
+  part questions were written from the evidence ("What third-party Agrément is
+  stated?"). Gemma splits v2 as finely and gives as many passages (16 per question), yet
+  reaches 83 against the oracle's 125. The realistic gain of searching each thing is what
+  B shows: +11 over today, +8 over A.
+- **Per-question times are the replay harness's.** It gives the main search and the
+  scoped search no shared model cache, whereas an answer's searches share one, so these
+  overstate an answer's search time. The arms are comparable with each other.
+
+**Frozen for E (ADR 0032):** version 28 with per-channel indexes, Gemma's first request
+with items, and item searches on. The 75 parts of the 486 in the version that still do
+not reach the model are accepted, as the user decided.
