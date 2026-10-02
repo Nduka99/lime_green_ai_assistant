@@ -8,21 +8,26 @@ Quotation checks establish where the words came from. They do not prove that a
 claim interprets them correctly or answers every part of a question. The results
 below show both successes and remaining failures.
 
-> **Status, September 2026.** This repository is being developed into a
-> production platform. The interview submission is tag `submission-v2`; the
-> version every later change is measured against is tag `v5-baseline`. The
-> submission's evaluation notebook and result files stay at that commit,
+> **Status, October 2026.** The interview submission (tag `submission-v2`) has been
+> developed into a platform: a Postgres index of Lime Green's site, data sheets,
+> declarations, pictures and two GOV.UK documents; conversations with follow-up
+> questions; and a web app. Every change is measured against tag `v5-baseline`, and
+> the platform's results are under *Results*. It is not yet deployed. The submission's
+> evaluation notebook and result files stay at commit
 > [`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe).
 
 ```text
-question -> keyword + vector search -> reranking -> local LLM
-         -> quote, number and regulation checks -> answer with sources
+question (+ the last 4 turns the reader saw)
+  -> understanding: emergency check, standalone search questions
+  -> keyword + vector search for each, pictures and guidance ranked apart -> reranking
+  -> local LLM -> quote, number and regulation checks -> answer with sources
 ```
 
 ## Example answers
 
-Real output from the shipped setup (Qwen3.6-35B-A3B on an 8 GB laptop GPU), one
-question for each kind the brief asks to test. Links are shortened here; each
+Real output from the submission's setup (September: Qwen3.6-35B-A3B on an 8 GB laptop
+GPU, 68 indexed pages), one question for each kind the brief asks to test; the
+platform's answers draw on more sources and differ in wording. Links are shortened here; each
 opens the live page at the quoted sentence.
 
 **Straightforward:** `uv run --env-file .env limespec ask "Does Duro lime render base coat contain any cement?"`
@@ -83,31 +88,35 @@ Closest pages:
 
 | The assistant should | How | Where |
 |---|---|---|
-| Retrieve relevant information | Keyword search and vector search over 315 passages from 68 pages, merged, then a reranker orders the best 20; the model gets the top 8 | `ingest.py`, `retrieve.py` |
-| Use a local LLM to answer | Qwen3.6-35B-A3B on llama.cpp returns short claims, each with the exact quote it relies on | `answer.py`, `llm.py` |
+| Retrieve relevant information | Keyword search (BM25) and vector search over 2,355 passages from 268 documents (the site's pages, its PDF and Word documents, the pictures they show, two GOV.UK documents), merged and reranked; company content, pictures and guidance are ranked apart, and each thing a question asks about is searched on its own | `ingest.py`, `retrieve.py`, `assistant.py` |
+| Use a local LLM to answer | Gemma 4 26B-A4B on llama.cpp returns short claims, each with the exact quote it relies on | `answer.py`, `llm.py` |
 | Provide the sources | Every factual claim the model writes lists its page, section, quote, capture date and a link to the quote on the live page; refusals and safety referrals are fixed text | `verify.py`, `view.py` |
 | Minimise unsupported information | Code checks every quote is in the cited passage, and every number and named regulation is in the quote; a failing claim is removed, never repaired | `verify.py` |
 | Say when information is insufficient | The model reports what the pages cannot answer; the reader gets a fixed refusal and the closest pages, or a caution when only part is answered | `answer.py` |
 
-The answer path is `answer.py` → `retrieve.py` → `verify.py`; the whole
-application is about 1,400 lines in `src/limespec/`.
+The answer path is `assistant.py` → `answer.py` → `retrieve.py` → `verify.py`; the
+application is about 7,000 lines of Python in `src/limespec/`, and the web app is in
+`web/`.
 
 ## Design decisions
 
 - **Local inference.** llama.cpp runs the generator, the embedding model and the
-  reranker as three local servers. Questions and model requests stay on the
-  machine. Fetching pages and opening source links access the website.
-- **Qwen3.6-35B-A3B writes the answers.** It was the best of three local models on
-  the frozen evaluation: 77 of 90 answers sound, against 74 for Gemma 4 26B-A4B and
-  36 for Nemotron 3 Nano 4B, the small model deployed first. On 60 held-out
-  questions asked through the live page, blind pairwise judging put Qwen and Gemma
-  level and Nemotron behind, so Qwen stayed. It uses about 3 billion of its 35
-  billion parameters per token, so its expert layers sit in system RAM while search
-  stays on the 8 GB graphics card.
+  reranker as local servers (and GLM-OCR, which reads tables and pictures, while an
+  index is built). Questions and model requests stay on the machine. Fetching pages
+  and opening source links access the website.
+- **Gemma 4 26B-A4B writes the answers, with thinking off.** Compared on the same
+  retrieved passages by rules written before each run (E8, ADR 0029), it answered 50
+  of 203 near-miss questions it should have refused, against 76 for Qwen3.6-35B-A3B,
+  the submission's model, and answered 243 of 244 answerable ones. It uses about 4
+  billion of its 26 billion parameters per token, so its expert layers sit in system
+  RAM while search stays on the 8 GB graphics card.
 - **Two kinds of search, then a reranker.** Keyword search (BM25) finds exact
-  product names and vector search (Qwen3-Embedding 0.6B) finds the same idea in
-  other words; reciprocal-rank fusion merges the two lists, and a cross-encoder
-  (BGE v2-m3) reorders the best 20 so the answer passage comes first more often.
+  product names and vector search (Qwen3-Embedding 4B, on the CPU) finds the same idea
+  in other words; reciprocal-rank fusion merges the two lists, and a cross-encoder
+  (BGE v2-m3) reorders them so the answer passage comes first more often. Company
+  content fills an answer's eight places; pictures (found by their words and, with
+  SigLIP2, by what they show) and GOV.UK guidance are ranked apart and added after it
+  (ADRs 0030 and 0032).
 - **Postgres, not a separate vector database or RAG framework.** The submission kept
   its 315 passages in one SQLite file; the platform keeps them in Postgres (pgvector
   and BM25), with every index version and answer recorded, measured to rank as well
@@ -120,20 +129,29 @@ application is about 1,400 lines in `src/limespec/`.
   first model request checks whether the question describes an accident (a product
   swallowed, or in the eyes or on the skin); if it does, the reader gets fixed NHS
   and vet referral text and the model writes nothing.
-- **Pages chosen by rule.** Every product, knowledge-base, FAQ, Warmshell, About and
-  Contact page in the sitemap (68 pages), not pages picked to suit test questions.
-  Fetching follows `robots.txt` and waits a second between requests.
+- **Sources chosen by rule.** Every page in the sitemap (160), the PDF and Word
+  documents they link (Docling reads layout and reading order, GLM-OCR table structure
+  and pdfium what each page shows; Word files go through LibreOffice), the pictures
+  they show (each read for its own words: alt text and the text in it, never a
+  generated description), and two GOV.UK documents (Open Government Licence), not
+  pages picked to suit test questions. Fetching follows `robots.txt` and waits a
+  second between requests.
+- **Conversations, one standalone question at a time.** Only the first model request
+  reads the last four turns, as the reader saw them; it rewrites a follow-up such as
+  "how much water does it need?" into standalone search questions, and everything
+  after it answers one question as before. The server keeps the history, and a client
+  cannot send one (X36, ADR 0035).
 
 ## Constraints
 
-- One laptop with an 8 GB NVIDIA GPU (RTX 4060) and 64 GB of RAM. Measured while
-  answering, the three servers of the shipped setup use about 25 GB of system RAM
-  (Qwen 21.3 GB, because its expert layers live there) and at most 6.3 GB of GPU
-  memory, so another machine needs at least 32 GB of RAM and an 8 GB NVIDIA GPU.
-- HTML pages only. Linked PDF data sheets, live prices and stock are outside the
-  knowledge base.
-- A time-limited exercise: a working, tested prototype, not a production service,
-  and not a substitute for professional building or medical advice.
+- One laptop with an 8 GB NVIDIA GPU (RTX 4060) and 64 GB of RAM. The submission's
+  three servers used about 25 GB of system RAM and at most 6.3 GB of GPU memory; Gemma
+  in one slot beside the reranker, with the embedder on the CPU, holds about 5.2 GB of
+  the GPU (X36). Another machine needs at least 32 GB of RAM and an 8 GB NVIDIA GPU.
+- Pictures are read for their words only, so questions about what something looks
+  like are refused. Live prices, stock and delivery are outside the knowledge base.
+- A platform in development, not yet deployed, and not a substitute for professional
+  building or medical advice.
 - The model decides whether an answer is complete and whether a question
   describes an exposure. These decisions can fail even when quotation checks pass.
 - A fresh ingest reads the current website. Page counts, passage counts and
@@ -169,16 +187,19 @@ pages and the index (`data/`) stay on your machine and are never committed.
 size, SHA-256 and licence; `uv run limespec models` checks the files in `models/`
 against it (`--quick` compares sizes only).
 
-1. Download `Qwen3-Embedding-0.6B-f16.gguf` from
-   [Qwen3-Embedding-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main),
-   put it in `models/`, and start the embedding server:
+1. Copy `.env.example` to `.env` and set its values, including a long random
+   `LIMESPEC_MODEL_API_KEY`. Every model server needs it: set `LLAMA_API_KEY` to the
+   same value in the terminal before starting one, and requests without it are refused.
+   Download `Qwen3-Embedding-4B-Q8_0.gguf` from
+   [Qwen3-Embedding-4B-GGUF](https://huggingface.co/Qwen/Qwen3-Embedding-4B-GGUF/tree/main)
+   into `models/Qwen3-Embedding-4B-GGUF/` and start the embedding server on the CPU:
 
    ```powershell
-   llama-server -m models/Qwen3-Embedding-0.6B-f16.gguf --embedding --pooling last -c 2048 -b 2048 -ub 2048 -ngl all --fit off --port 8081
+   llama-server -m models/Qwen3-Embedding-4B-GGUF/Qwen3-Embedding-4B-Q8_0.gguf --embedding --pooling last -np 1 -c 2048 -b 2048 -ub 2048 --device none --port 8084
    ```
 
 2. Start Postgres inside WSL (`docker compose -f deploy/compose.yaml --profile dev
-   up -d`), copy `.env.example` to `.env` and set its values, then fetch the pages
+   up -d`, which also applies the migrations in `db/migrations/`), then fetch the pages
    listed in `sources.txt` (cached in `data/site/`, one second apart) and index them.
    Each run adds a new index version and makes it live:
 
@@ -216,7 +237,15 @@ against it (`--quick` compares sizes only).
    uv run --group ingest --env-file .env python -m limespec read-pdfs --vlm http://127.0.0.1:8083
    ```
 
-4. See which passages a question retrieves (this also needs the reranker server
+4. Read every stored picture (GLM-OCR for the text in it, SigLIP2 for what it shows),
+   then build the version the platform is measured on (version 28's options):
+
+   ```powershell
+   uv run --group ingest --env-file .env python -m limespec read-images --vlm http://127.0.0.1:8083 --vectors
+   uv run --env-file .env limespec ingest --no-live --all-pages --pdf-form page --web-form page --images --compiled-descriptions
+   ```
+
+5. See which passages a question retrieves (this also needs the reranker server
    from "Ask questions" below):
 
    ```powershell
@@ -228,25 +257,20 @@ against it (`--quick` compares sizes only).
 Answering needs three servers: the embedding server from step 1, the reranker
 and the generator. Download `bge-reranker-v2-m3-Q8_0.gguf` from
 [bge-reranker-v2-m3-GGUF](https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/tree/main)
-(the file whose SHA-256 `models.json` records)
-and `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf` (22.4 GB) from
-[Qwen3.6-35B-A3B GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/tree/main).
-Put both in `models/` and start each in its own terminal:
+and `gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf` (17 GB) from
+[gemma-4-26B-A4B-it-GGUF](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/main)
+(the files whose SHA-256 `models.json` records). Put both in `models/` and start
+each in its own terminal, with `LLAMA_API_KEY` set as in step 1:
 
 ```powershell
-llama-server -m models/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 8192 -b 2048 -ub 2048 -ngl all --fit off --port 8082
-llama-server -m models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf -c 8192 -np 1 -ngl all --n-cpu-moe 40 --fit off --port 8080
+llama-server -m models/bge-reranker-v2-m3-Q8_0.gguf --reranking -np 1 -c 2048 -b 2048 -ub 2048 --cache-ram 0 -ngl all --fit off --port 8082
+llama-server -m models/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf -c 16384 -np 1 -ngl all --n-cpu-moe 99 --fit off --load-mode none -b 2048 -ub 2048 --cache-ram 0 --port 8080
 ```
 
-`--n-cpu-moe 40` keeps every expert layer in system RAM, so the search models fit
-beside Qwen on an 8 GB card. On a smaller machine, run the light option instead,
-`NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf` (2.9 GB) from
-[NVIDIA Nemotron 3 Nano 4B GGUF](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF/tree/main):
-it replies in about 5 seconds but fully answers fewer questions (see *Results*).
-
-```powershell
-llama-server -m models/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf -c 8192 -np 1 -ngl all --fit off --port 8080
-```
+`--n-cpu-moe 99` keeps every expert layer in system RAM, so the reranker fits beside
+Gemma on an 8 GB card; `--cache-ram 0` stops each server keeping finished requests in
+RAM (8 GiB by default). Serve version 28 by setting `LIMESPEC_INDEX_VERSION=28`, or
+make it live once it has passed its gates.
 
 Then ask on the command line, or run the web page:
 
@@ -335,6 +359,32 @@ uv run python -m evaluation unblind heldout-v3 A.json B.json --dir DIR          
 ```
 
 ## Results
+
+### The platform (October)
+
+Every experiment's rules were written before its run, and every question set was
+registered by SHA-256 before use. The full records are in `evaluation/reports/` and
+`docs/adr/`.
+
+- **Held-out v6 (E9, ADR 0033):** 284 questions (213 cases), graded blind against a
+  locked key. The release bar requires at most 5% wrong answers; v6 fails it on risk:
+  11 of 126 answered cases wrong (Wilson upper bound 15.0%). Safety and refusals pass:
+  every emergency referred, no price shown, 29 of 30 refusals. Single questions of the
+  simple, condition, comparison, false-premise and injection kinds had **0 wrong in
+  65** answered; the wrong cases came from picture parts answered from a picture's
+  printed words, same-kind substitution, and lists joined across sources.
+- **Conversations (X36, ADR 0035):** on 20 conversations (86 turns), rewriting
+  follow-ups with the last four turns raised sound answers from 30 to 48 of 60
+  follow-ups (+0.300, 95% interval +0.150 to +0.464, conversations resampled), with 4
+  wrong against 15; every emergency turn was referred and no injected instruction was
+  followed. Through the running API, the stored conversations reproduced the measured
+  answers on 86 of 86 turns.
+- **Accepted limits until after deployment:** substitution (no detector reached 0.76
+  AUC, E5–E8), what a picture shows (ADR 0034), and borderless label–value tables read
+  column by column in a few data sheets. Retrieval is frozen (ADR 0032); held-out v5
+  stays sealed for the final certification.
+
+### The submission (September)
 
 These are the submission's results. Its notebook, which shows the measurement behind
 each engine change and charts both evaluations below, and the result files it reads
@@ -455,6 +505,12 @@ This grading was offline and is not part of the running assistant.
 
 The independent reviews led to concrete corrections in passage scoring, safety
 wording, incomplete model replies and reranker response validation.
+
+For the platform's evaluations, question sets and keys were written by a separate
+model family, in chats that had never seen the system, and registered
+before any run. One LLM grader then graded every answer blind against the key by
+`evaluation/briefs/grading-guide.md`, with the answers' systems hidden until every
+verdict was saved.
 
 ## Licence
 
