@@ -302,6 +302,12 @@
     "questions.json": "a8cf3911269a0adcde5d623755e65bece56e9085eafd36d312091a4916010738"
    }
   },
+  "picture-probe-2": {
+   "description": "X45: 16 pictures drawn with seed 73 (none in image-facts, image-text, kb-probe or picture-probe), questions written from the pictures; sealed before any picture-places arm runs",
+   "files": {
+    "questions.json": "a9d151d876ac9cbde51c0f6140476664803590b3a55a4bf498e5e0c00f1cba51"
+   }
+  },
   "relevance-dev": {
    "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
    "files": {
