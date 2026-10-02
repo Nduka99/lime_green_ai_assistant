@@ -122,6 +122,68 @@ the user's consent and restored by the startup script.
 4. `picture-parts` over 8 sets, 474 questions (1 h).
 5. Restore, then check health.
 
-## Result
+## Result (2 October; `data/runs/e10/`, sitting `sitting-e10` registered)
 
-*(added after the run)*
+**B fails three gates as written, so A is kept.** The change is reverted, and the
+system stays as E9 ran it.
+
+| Gate | Result |
+|---|---|
+| G1 Wrong cases | **fail**: A 11 → B 7 (the −4 bar is met), but 2 cases newly wrong in B (c033, c126), where at most 1 is allowed |
+| G2 Coverage | **fail**: A 108 → B 103 of 173 (the bar allows −2) |
+| G3a Picture questions marked | **fail**: 57/72 (bar 0.85) |
+| G3b Text questions marked | pass: 5/353 (1.4%) |
+| G4 Safety | pass: `exposure-v1` 78/78 with 1 false alarm; no price shown; every emergency referred |
+| G5 Reach | pass: 229 = 229 of 294 |
+
+- **Risk.** A 11/126 (upper bound 15.0%); B 7/121 (upper bound 11.5%).
+- **Run.** v6 took 4,797 s, with one schema error (v6q008, the same as in E9).
+- **Grading.** 169 items kept their E9 verdict (both arms answered the same). The 230
+  others were graded blind in one sitting.
+- **One slip in blindness.** While checking v6q047's quotes, the grader printed the run
+  names and so saw which letter was which arm for that one question. The verdict
+  (`replacement` joined into the remedies list: wrong) follows the guide's list-member
+  test, as in E9.
+
+**Why it failed (read case by case)**
+
+- **The mark works on its target.**
+  - Five of the six mechanism-1 cases are no longer wrong: c036, c117, c157, c166 and
+    c192. Three of them became partial.
+  - c170 is still wrong: the product's colour was given for its label's.
+- **It marks too much (5 cases of coverage lost).** Each question mentions a picture but
+  can be answered from words, so the mark removed a correct answer:
+  - c057: where the mesh sits in the build-up drawing;
+  - c156: who appears in a graphic (its words name him);
+  - c125: whether the samples are textured;
+  - c022: how the mortar is packed;
+  - c019: the Gunnersbury close-up's alt text.
+- **Moves that are not the mark's (3 cases).**
+  - c033: a new list member, "replacement".
+  - c126: a dormer count taken from another document, on the rushed wording whose
+    dormer part was not marked.
+  - c027: a refusal.
+  - Against these, c207 stopped being wrong.
+  - So changing the first request's prompt moves about 2–3 cases each way. That is the
+    noise floor of one prompt change, and G1's "at most 1 new wrong case" was tighter
+    than it.
+- **G3a's bar was mis-specified (written before the run, so it stands).**
+  - The 15 unmarked picture-set questions are "is there a chart of …" (8) and "what does
+    the Autumn colour look like" (7). Words answer both kinds: alt text, captions,
+    colour pages.
+  - The definition rightly leaves them unmarked. The gate assumed all 72 should be
+    marked.
+- **G3b's 5 marked text questions are real errors.** Four wordings of one v3 case ask
+  what an image's *alt text* says, and v2q018 asks for finishes "from the images".
+
+**What it means**
+- A mark made from the question alone cannot tell "what this picture shows" (no words
+  answer it) from "what this drawing's labels or this graphic's caption say" (words
+  answer it). The question alone does not carry that difference; the passages do.
+- A later attempt would need that distinction in the data, not only in the question.
+  That belongs to a reading change, and retrieval is frozen until deployment.
+- Until then, mechanism 1 is an accepted limit. The user guide steers people away from
+  "what does it look like" questions, and the proposed scope's five types contain no
+  visual parts.
+- Mechanism 3 was not run (above). Single-question types are unchanged: in the five-type
+  scope both arms are at 0 wrong.

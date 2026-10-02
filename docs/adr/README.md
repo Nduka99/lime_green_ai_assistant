@@ -15,5 +15,6 @@ and rejected. Records 0001–0025 are in the development repository
 | [0031](0031-every-data-type-settled-rejected-tuned.md) | Every data type after X42–X47: settled, rejected, still being tuned |
 | [0032](0032-retrieval-frozen-for-e.md) | Retrieval frozen for E: one BM25 index per channel, a search per thing a part asks about |
 | [0033](0033-generation-on-heldout-v6.md) | Generation on held-out v6: R1 fails on risk, single questions hold, v5 stays sealed; picture mode off |
+| [0034](0034-picture-parts-not-adopted.md) | Picture parts: a mark from the question alone is not adopted (over-marks); lists not changed |
 
 Experiment reports with the full evidence are in `evaluation/reports/`.

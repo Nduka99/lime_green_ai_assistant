@@ -19,7 +19,7 @@ and the tests can replace both.
 """
 
 import hashlib
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from limespec import config
@@ -50,13 +50,6 @@ INSUFFICIENT = (
 # the reader sees exactly what is not answered (E5 stage E).
 UNANSWERED_PARTS = "Nothing verified was found for these parts of the question:"
 ASK_THE_TEAM = "Please contact Lime Green's technical team about them."
-# Pictures are read for their words only, so a part asking what one shows has no
-# answer: the first request marks it, and code removes any claim for it and says why,
-# as code decides the emergency text (E10).
-PICTURE_PARTS = (
-    "This assistant reads the words in pictures but cannot see them, so it cannot say:"
-)
-PICTURED = "asks what a picture shows; pictures are read for their words only"
 # Shown when every part has a verified claim but another claim failed verification.
 PARTIAL = (
     "Only statements verified against the indexed pages are shown, and they may not "
@@ -115,14 +108,7 @@ question does not ask, and do not answer it.
 Give each search question its "items": when it still covers several things (several \
 products, or several facts about one product), write each of them as a search \
 question of its own that names its subject, so it can be searched alone. When it \
-covers one thing, its items are empty.
-
-Mark each search question "asks_what_a_picture_shows": true when it asks what a \
-particular picture, photo, drawing, chart or product pack shows or looks like, such \
-as a colour, shape, pattern, texture or layout, or what or who can be seen in it. \
-Mark it false when words could state the answer, including words printed in a \
-picture (such as a weight on a bag or a label on a drawing) and how a product, colour \
-or finish is described."""
+covers one thing, its items are empty."""
 )
 # Each search question with its items (X48): one search may miss some of several
 # things, and an item without its subject finds nothing, so each item names it.
@@ -143,9 +129,8 @@ UNDERSTAND_SCHEMA: dict[str, Any] = {
                         "maxItems": config.MAX_ITEMS,
                         "items": {"type": "string", "minLength": 1},
                     },
-                    "asks_what_a_picture_shows": {"type": "boolean"},
                 },
-                "required": ["question", "items", "asks_what_a_picture_shows"],
+                "required": ["question", "items"],
                 "additionalProperties": False,
             },
         },
@@ -276,12 +261,11 @@ def is_claim(claim: object, source_ids: Sequence[str], parts: int) -> bool:
 def is_search_question(value: object) -> bool:
     return (
         isinstance(value, dict)
-        and set(value) == {"question", "items", "asks_what_a_picture_shows"}
+        and set(value) == {"question", "items"}
         and is_text(value["question"])
         and isinstance(value["items"], list)
         and len(value["items"]) <= config.MAX_ITEMS
         and all(is_text(item) for item in value["items"])
-        and isinstance(value["asks_what_a_picture_shows"], bool)
     )
 
 
@@ -298,11 +282,7 @@ def read_understanding(output: object) -> tuple[bool, list[Part]]:
     ):
         raise ModelServerError("the model's reply does not match the first schema")
     parts = [
-        Part(
-            q["question"].strip(),
-            tuple(item.strip() for item in q["items"]),
-            q["asks_what_a_picture_shows"],
-        )
+        Part(q["question"].strip(), tuple(item.strip() for item in q["items"]))
         for q in output["search_questions"]
     ]
     return output["describes_exposure"], parts
@@ -487,61 +467,35 @@ def answer(
     user = user_prompt(parts, sources)
     output = chat(ANSWER_PROMPT, user, answer_schema(list(sources), len(parts)))
     drafts = read_output(output, list(sources), len(parts))
-    pictured = {n for n, part in enumerate(understood, 1) if part.pictured}
-    claims, rejected = without_pictured(*verify(drafts, sources), pictured)
+    claims, rejected = verify(drafts, sources)
     if not claims:
-        notice = "\n".join([INSUFFICIENT, *pictured_lines(parts, pictured)])
-        return Answer(question, "insufficient_evidence", notice, (), passages, rejected)
+        return Answer(
+            question, "insufficient_evidence", INSUFFICIENT, (), passages, rejected
+        )
     # The parts checklist: the caution is decided by code, not by the model's own
     # account of how much it answered.
     return Answer(
         question,
         "answered",
-        caution(parts, claims, rejected, pictured),
+        caution(parts, claims, rejected),
         claims,
         passages,
         rejected,
     )
 
 
-def pictured_lines(parts: Sequence[str], pictured: Collection[int]) -> list[str]:
-    """The notice's lines for the parts that ask what a picture shows (E10)."""
-    seen = [part for number, part in enumerate(parts, 1) if number in pictured]
-    return [PICTURE_PARTS, *(f"- {part}" for part in seen)] if seen else []
-
-
 def caution(
-    parts: Sequence[str],
-    claims: Sequence[Claim],
-    rejected: Sequence[Rejection],
-    pictured: Collection[int] = (),
+    parts: Sequence[str], claims: Sequence[Claim], rejected: Sequence[Rejection]
 ) -> str:
-    """The notice under an answer: the parts no verified claim answers, listed, and
-    apart from them the parts that ask what a picture shows; else the general caution
-    when a claim was removed; else nothing."""
+    """The notice under an answer: the parts no verified claim answers, listed; else
+    the general caution when a claim was removed; else nothing."""
     answered = {claim.part for claim in claims}
-    missing = [
-        part
-        for number, part in enumerate(parts, 1)
-        if number not in answered and number not in pictured
-    ]
-    lines = [UNANSWERED_PARTS, *(f"- {part}" for part in missing)] if missing else []
-    lines += pictured_lines(parts, pictured)
-    if lines:
-        return "\n".join([*lines, ASK_THE_TEAM])
+    missing = [part for number, part in enumerate(parts, 1) if number not in answered]
+    if missing:
+        return "\n".join(
+            [UNANSWERED_PARTS, *(f"- {part}" for part in missing), ASK_THE_TEAM]
+        )
     return PARTIAL if rejected else ""
-
-
-def without_pictured(
-    claims: Sequence[Claim], rejected: Sequence[Rejection], pictured: Collection[int]
-) -> tuple[tuple[Claim, ...], tuple[Rejection, ...]]:
-    """The claims for parts that ask what a picture shows, moved to the removed ones:
-    no quote can show what a picture looks like (E10)."""
-    kept = tuple(claim for claim in claims if claim.part not in pictured)
-    moved = [
-        Rejection(claim.text, PICTURED) for claim in claims if claim.part in pictured
-    ]
-    return kept, (*rejected, *moved)
 
 
 def closest_pages(

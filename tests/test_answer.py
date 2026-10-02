@@ -7,11 +7,8 @@ import pytest
 from limespec import config, store
 from limespec.answer import (
     ANSWER_PROMPT,
-    ASK_THE_TEAM,
     INSUFFICIENT,
     PARTIAL,
-    PICTURE_PARTS,
-    PICTURED,
     SAFETY_REFERRAL,
     UNDERSTAND_PROMPT,
     UNDERSTAND_SCHEMA,
@@ -29,7 +26,7 @@ from limespec.answer import (
 )
 from limespec.ingest import prepare_index
 from limespec.llm import ModelServerError
-from limespec.models import Part, Passage, Rejection
+from limespec.models import Part, Passage
 from limespec.retrieve import Embed, Rerank
 
 MORTAR = Passage(
@@ -63,8 +60,7 @@ class FakeModel:
     """Stands in for llama-server and records each request.
 
     It answers the first request with `exposure` and `parts` (by default the
-    question itself, as one part), marking the parts numbered in `pictured` as
-    asking what a picture shows, and the answer request with the canned `reply`.
+    question itself, as one part) and the answer request with the canned `reply`.
     """
 
     def __init__(
@@ -73,13 +69,11 @@ class FakeModel:
         exposure: bool = False,
         parts: list[str] | None = None,
         items: list[list[str]] | None = None,
-        pictured: tuple[int, ...] = (),
     ) -> None:
         self.reply = reply
         self.exposure = exposure
         self.parts = parts
         self.items = items
-        self.pictured = pictured
         self.requests: list[tuple[str, str, dict[str, Any]]] = []
 
     def __call__(self, system: str, user: str, schema: dict[str, Any]) -> object:
@@ -90,13 +84,9 @@ class FakeModel:
             return {
                 "describes_exposure": self.exposure,
                 "search_questions": [
-                    {
-                        "question": q,
-                        "items": i,
-                        "asks_what_a_picture_shows": n in self.pictured,
-                    }
-                    for n, (q, i) in enumerate(zip(asked, items, strict=True), 1)
-                ],  # fmt: skip
+                    {"question": q, "items": i}
+                    for q, i in zip(asked, items, strict=True)
+                ],
             }
         return self.reply
 
@@ -216,19 +206,18 @@ def test_the_first_reply_is_read_as_a_yes_or_no_and_its_search_questions(
     output = {
         "describes_exposure": value,
         "search_questions": [
-            {"question": " Duro? ", "items": [], "asks_what_a_picture_shows": False},
-            {"question": "Solo or Duro?", "items": [" Solo? ", "Duro?"],
-             "asks_what_a_picture_shows": True},
+            {"question": " Duro? ", "items": []},
+            {"question": "Solo or Duro?", "items": [" Solo? ", "Duro?"]},
         ],
-    }  # fmt: skip
+    }
 
     assert read_understanding(output) == (
         value,
-        [Part("Duro?"), Part("Solo or Duro?", ("Solo?", "Duro?"), pictured=True)],
+        [Part("Duro?"), Part("Solo or Duro?", ("Solo?", "Duro?"))],
     )
 
 
-ONE = {"question": "q", "items": [], "asks_what_a_picture_shows": False}
+ONE = {"question": "q", "items": []}
 FIRST = {"describes_exposure": False, "search_questions": [ONE]}
 
 
@@ -245,8 +234,6 @@ FIRST = {"describes_exposure": False, "search_questions": [ONE]}
         FIRST | {"search_questions": ["q"]},  # a plain string, not a search question
         FIRST | {"search_questions": [ONE | {"question": "  "}]},
         FIRST | {"search_questions": [{"question": "q"}]},  # no items
-        FIRST | {"search_questions": [{"question": "q", "items": []}]},  # no mark
-        FIRST | {"search_questions": [ONE | {"asks_what_a_picture_shows": "no"}]},
         FIRST | {"search_questions": [ONE | {"items": "a"}]},
         FIRST | {"search_questions": [ONE | {"items": [" "]}]},
         FIRST | {"search_questions": [ONE | {"items": ["a"] * 7}]},  # > MAX_ITEMS
@@ -305,40 +292,6 @@ def test_a_partly_supported_answer_names_the_parts_it_does_not_answer() -> None:
     for result in (not_every_part, claim_removed):
         assert result.status == "answered"
         assert [c.text for c in result.claims] == ["Mortex is a low-carbon mix."]
-
-
-def test_a_part_asking_what_a_picture_shows_is_never_answered() -> None:
-    supported = ("Mortex is a low-carbon mix.", [("S1", "It is a low-carbon mix.")])
-    # A quoted claim the checks pass, given for the part about a picture.
-    seen = reply(
-        ("The bag is lime green.", [("S1", "It is a low-carbon mix.")]), part=2
-    )
-    claims = {"claims": reply(supported)["claims"] + seen["claims"]}
-    parts = ["What is Mortex?", "What colour is the Mortex bag?"]
-    marked = FakeModel(claims, parts=parts, pictured=(2,))
-
-    found = answer("q", retrieve, marked)
-
-    assert [c.text for c in found.claims] == ["Mortex is a low-carbon mix."]
-    assert found.rejected == (Rejection("The bag is lime green.", PICTURED),)
-    assert found.notice == "\n".join(
-        [PICTURE_PARTS, "- What colour is the Mortex bag?", ASK_THE_TEAM]
-    )
-    # The mark changes what is shown, never the answer request itself.
-    unmarked = FakeModel(claims, parts=parts)
-    answer("q", retrieve, unmarked)
-    assert marked.requests[1] == unmarked.requests[1]
-
-
-def test_a_refusal_names_the_parts_that_ask_what_a_picture_shows() -> None:
-    model = FakeModel(reply(), parts=["What colour is the bag?"], pictured=(1,))
-
-    found = answer("What colour is the bag?", retrieve, model)
-
-    assert found.status == "insufficient_evidence"
-    assert found.notice == "\n".join(
-        [INSUFFICIENT, PICTURE_PARTS, "- What colour is the bag?"]
-    )
 
 
 def test_prompt_injected_reference_text_cannot_create_an_unsupported_claim() -> None:

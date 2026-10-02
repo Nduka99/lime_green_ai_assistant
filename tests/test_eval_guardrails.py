@@ -120,7 +120,7 @@ def test_the_command_line_asks_the_first_request_of_the_answer_path(
     def chat(system: str, user: str, schema: dict[str, Any]) -> object:
         seen.append(system)
         exposed = "Mortex went" in user or "ate" in user
-        asked = [{"question": "q", "items": [], "asks_what_a_picture_shows": False}]
+        asked = [{"question": "q", "items": []}]
         return {"describes_exposure": exposed, "search_questions": asked}
 
     monkeypatch.setattr(llm, "chat", chat)

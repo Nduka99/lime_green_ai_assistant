@@ -77,7 +77,6 @@ from evaluation import (
     pages,
     pairs,
     parsing,
-    pictured,
     reach,
     relevance,
     reliability,
@@ -766,12 +765,6 @@ def parser() -> argparse.ArgumentParser:
     )
     exposed.add_argument("name", help="e.g. exposure-v1")
     exposed.add_argument("--out", type=Path, required=True)
-    marked = commands.add_parser(
-        "picture-parts",
-        help="parts the first request marks as asking what a picture shows (E10)",
-    )
-    marked.add_argument("names", nargs="+", help="sets with questions.json")
-    marked.add_argument("--out", type=Path, required=True)
     verified = commands.add_parser(
         "generator-outcomes", help="verified outcomes of two passes' replies (X41)"
     )
@@ -2493,21 +2486,6 @@ def run_exposure(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_picture_parts(args: argparse.Namespace) -> int:
-    found = {}
-    for name in args.names:
-        folder = sets.require(name, args.root, args.registry)
-        questions = grades.read_json(folder / "questions.json")["questions"]
-        found[name] = pictured.read(
-            questions, lambda q: answer.understand(q, llm.chat)[1]
-        )
-        marked, total = len(found[name]["marked"]), found[name]["questions"]
-        print(f"{name}: {marked} of {total} questions have a part marked as asking "
-              "what a picture shows")  # fmt: skip
-    write_json(args.out, found)
-    return 0
-
-
 def run_generator_outcomes(args: argparse.Namespace) -> int:
     requests = {r["id"]: r for r in grades.read_json(args.requests)["requests"]}
     ids = {i for r in requests.values() for i in r["passage_ids"]}
@@ -2727,8 +2705,6 @@ def main(argv: list[str] | None = None) -> int:
             return run_settle(args)
         if args.command == "exposure":
             return run_exposure(args)
-        if args.command == "picture-parts":
-            return run_picture_parts(args)
         if args.command == "generator-outcomes":
             return run_generator_outcomes(args)
         if args.command == "degradation-curve":
