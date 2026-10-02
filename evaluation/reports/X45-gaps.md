@@ -160,3 +160,76 @@ figures), 7 with stored copies accepted.
   the company's top 8 again.
 - This is the plan's single call by other means: no restructuring of `answer.gather`,
   and the same check (identical company top 8).
+- **Check passed on 60 questions** (30 `kb-probe`, 30 frozen90, version 25):
+  - the company top 8 are identical, 60 of 60;
+  - a passage's score is the same whether scored alone or with others (largest
+    difference 0.000000): bge-reranker scores each pair on its own.
+
+**E1, E2 and E4 built** (`819e199`).
+- **E1:** the site's `contentinfo` landmark (WAI-ARIA's role for a page's contact and
+  site information), read once from the home page.
+  - It becomes one passage, "Contact us": phone, opening hours, address and the "About
+    Us" statement.
+  - This is the standard landmark, not a site class name.
+- **E2:** each swatch card keeps its own lines.
+  - The sample page now reads "Ochre / Order this colour sample / Free".
+  - Colour pages are unchanged.
+  - **Gate passed:** W1 (`web-pages-v2`) and W2b (`web-pages-holdout-v2`) are identical
+    to before on every measure (recall 1.000 / 1.000, precision 0.9927 / 0.9875,
+    headings, section paths, lists, alts).
+- **E4:** `ingest --compiled-descriptions`.
+- **Builds:** version 26 = E1 + E2 + E4 and version 27 = E1 + E2, built by scratch
+  `x45-chain.sh` and gated by `x45-gates.sh`.
+
+**Builds and gates** (`data/runs/x45/v26/`, `v27/`; versions built 2 October, 04:27 and 04:29):
+
+| Gate (bar) | Version 25 (X44) | 27: E1 + E2 | 26: E1 + E2 + E4 |
+|---|---|---|---|
+| G1 frozen90 (≥ 102) | 108 | 107 | **111** |
+| G1 v2 (≥ 82) | 83 | **77** | **80** |
+| G1 v3 (≥ 75) | 78 | 78 | **89** |
+| G1 v4 (≥ 118) | 118 | 118 | **121** |
+| G2 `web-facts` vs 19 (0.969) | 0.966 | 0.966 [−0.009, +0.000] | 0.952 [−0.052, +0.000] |
+| G3 `x9-tables` | 0.980 | 0.980 | 0.980 |
+| G4 `image-facts` (≥ 0.850) | 0.825 | 0.825 | 0.825 |
+| `picture-probe` / `picture-probe-2` (fresh) | 0.938 / — | 0.938 / 0.875 | 0.938 / 0.875 |
+| G5 text (≥ 0.90) | 0.841 | 0.886 | 0.886 |
+| G5 pictures (≥ 0.75) | 0.700 | 0.700 | 0.700 |
+| G5 guidance (≥ 0.80) | 1.00 | 1.00 | 1.00 |
+| G5 strata below 17 | web content | none | none |
+| G6 `web-links` | 0 | 0 | 0 |
+| G7 search p95 (≤ 1.5 s) | 1.77 s | — | **1.31 s** (twice; median 1.07–1.10 s; API 3.4 GB; 7.7 GB free) |
+
+- **E4 is kept by its rule.** Version 26 reaches more parts than 27 on every replay (401
+  against 380). It costs `web-facts` 5 facts (0.952 against 0.966).
+- **E1 and E2 work.** `kb-probe`'s web content went from 6 of 8 to 8 of 8: the opening
+  hours (kb05) and free colour samples (kb06).
+- **T1 and T2 close G7:** p95 1.77 s → 1.31 s, with identical company results.
+- **E2 costs v2 three parts** (version 25 83 → version 27 77, with one more lost to a
+  ranking shift).
+  - It reads every swatch card's "Order this colour sample / Free", 24 times over.
+  - The sample page's colour list becomes a long, repetitive passage that outranks the
+    page's "Order Samples" section and the sample terms, which hold v2's evidence
+    (v2q009, v2q037: 5 of the 6 parts lost).
+  - The general fix is to state lines that every card of a grid repeats once per grid
+    (E1's principle within a page). It was not registered, so it is not applied here.
+
+**Result: version 26 is the best index yet, but fails three gates as registered.**
+
+| Gate | Version 26 | Bar | Cause |
+|---|---|---|---|
+| G1 v2 | 80 | 82 | E2's repeated card lines (above) |
+| G4 | 0.825 | 0.850 | Drawings and photos with no words, below each retriever's first 2 and beyond the cap of 4 |
+| G5 text | 0.886 (39 of 44) | 0.90 | See below |
+| G5 pictures | 0.700 | 0.75 | Same cause as G4 |
+
+G5's five text misses:
+- kb49 and kb54: the Word fire and strength classes. The fix is E3 done properly,
+  which needs every document read again keeping all of each element's boxes.
+- kb28: a look-alike safety data sheet; the answer path's scoped search names the
+  product.
+- kb61 and kb63: two-part questions asked as one search; the answer path searches each
+  part.
+
+G2 holds within its interval; G3, G6 and G7 pass. As registered, the decision goes to
+the user.
