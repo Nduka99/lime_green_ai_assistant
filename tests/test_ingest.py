@@ -552,6 +552,16 @@ def test_every_cached_page_and_a_pdf_can_be_indexed(
         (version,),
     ).fetchall() == [(2, "Performance")]
 
+    _, without = ingest(
+        pg,
+        fake_embed_1024,
+        live=False,
+        all_pages=True,
+        documents=[document],
+        leave_out=["DURO.pdf"],
+    )
+    assert without["pages"] == "1"  # the document is left out, the page kept
+
 
 def test_web_forms_read_pages_by_the_new_reader(fake_embed: Embed) -> None:
     html = (

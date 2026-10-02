@@ -4,6 +4,7 @@ a question, serve runs the web page, and search shows what retrieval finds."""
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import psycopg
@@ -80,6 +81,7 @@ def run_ingest(
     web_form: str = "",
     with_pictures: bool = False,
     compiled_descriptions: bool = False,
+    leave_out: Sequence[str] = (),
 ) -> None:
     found = []
     if pdf_form:
@@ -95,6 +97,7 @@ def run_ingest(
             web_form,
             with_pictures,
             compiled_descriptions,
+            leave_out,
         )
     if live:
         print(f"index version: {version} (live)")
@@ -295,6 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="each product grid's compiled list carries the descriptions (X45 E4)",
     )
+    ingest_parser.add_argument(
+        "--leave-out",
+        action="append",
+        default=[],
+        help="leave out pages and documents whose address holds this text (X47)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -361,6 +370,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.web_form,
                 args.images,
                 args.compiled_descriptions,
+                args.leave_out,
             )
         elif args.command == "ask":
             run_ask(args.question)

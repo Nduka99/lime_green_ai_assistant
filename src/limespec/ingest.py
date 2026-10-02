@@ -501,6 +501,11 @@ def contact_rows(pages: Sequence[tuple[str, bytes, str]]) -> list[store.PassageR
     return []
 
 
+def left_out(url: str, leave_out: Sequence[str]) -> bool:
+    """Whether an address holds any of the left-out texts, case folded (X47)."""
+    return any(part.casefold() in url.casefold() for part in leave_out)
+
+
 def stored_pictures() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, bytes]]:
     """The places pictures are shown (`limespec read-images`), the text read in each
     and each one's PNG, from config.IMAGES."""
@@ -544,19 +549,23 @@ def ingest(
     web_form: str = "",
     with_pictures: bool = False,
     compiled_descriptions: bool = False,
+    leave_out: Sequence[str] = (),
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
     `documents.index_documents`); `web_form` reads pages by `limespec.webpage`;
     `with_pictures` adds a passage per picture `limespec read-images` stored and read;
-    `compiled_descriptions`: see `prepare_index`.
+    `compiled_descriptions`: see `prepare_index`. A page or document whose address
+    holds any of `leave_out` (case folded) is not indexed, nor its pictures (X47).
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
     left not live can be evaluated first (`LIMESPEC_INDEX_VERSION`).
     """
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
+    urls = [url for url in urls if not left_out(url, leave_out)]
+    documents = [d for d in documents if not left_out(d[0][0], leave_out)]
     known = store.known_vectors(conn, config.EMBEDDING_MODEL)
     pictures = stored_pictures() if with_pictures else ([], {}, {})
     prepared = prepare_index(
