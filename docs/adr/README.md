@@ -16,5 +16,6 @@ and rejected. Records 0001–0025 are in the development repository
 | [0032](0032-retrieval-frozen-for-e.md) | Retrieval frozen for E: one BM25 index per channel, a search per thing a part asks about |
 | [0033](0033-generation-on-heldout-v6.md) | Generation on held-out v6: R1 fails on risk, single questions hold, v5 stays sealed; picture mode off |
 | [0034](0034-picture-parts-not-adopted.md) | Picture parts: a mark from the question alone is not adopted (over-marks); lists not changed |
+| [0035](0035-follow-ups-rewritten-with-the-conversation.md) | Follow-ups: the first request rewrites them with the last 4 turns the user saw (X36 passed) |
 
 Experiment reports with the full evidence are in `evaluation/reports/`.
