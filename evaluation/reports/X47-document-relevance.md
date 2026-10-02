@@ -60,3 +60,28 @@ A page left out also takes its pictures with it.
   assistant answers from. Every candidate is listed with what it holds alone, including
   the v6 cases it would leave unanswerable.
 - The base is version 28 if X46 adopts it, otherwise version 26.
+
+## The data-type ladder (added 2 October, before any ladder run)
+
+X43 added the new web reader, Word files, GOV.UK guidance and pictures in one build,
+and later rounds judged arms against baselines that still held other changes (E4 was
+judged against a build with E2's repetition). The cross-check that should have come
+first is one change per build from the last known-good index, version 17. Each step
+adds one thing to the step before:
+
+| Step | Build | Adds |
+|---|---|---|
+| L0 | version 17 (exists) | the pre-multimodal reference |
+| L1 | new web reader + PDFs, `--leave-out .docx --leave-out gov.uk`, no pictures | X42–X46 web reading (E1, E2, R1, F3a) |
+| L2 | L1 without leaving out `.docx` | Word declarations |
+| L3 | L2 without leaving out `gov.uk` | GOV.UK guidance (own channel) |
+| L4 | L3 with `--images` (= version 29) | pictures (own channel) |
+| L5 | L4 with `--compiled-descriptions` (= version 28) | E4 |
+
+- **Measured at each step:** the four replays with `--channels`, `web-facts`,
+  `kb-probe` by stratum, and search p95 (scratch `g7.py`).
+- **Rule:** a step is kept only if no replay set falls by more than 1 part against
+  the step before, and the step raises its own strata in `kb-probe` (or, for L1, the
+  replays or `web-facts`).
+- A step that fails is reported with the parts it loses. The decision to drop a data
+  type goes to the user.
