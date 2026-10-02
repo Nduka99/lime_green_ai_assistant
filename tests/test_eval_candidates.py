@@ -23,7 +23,13 @@ ITEMS = [
 ]
 UNDERSTOOD = {
     "describes_exposure": False,
-    "search_questions": [{"question": "Solo drying time", "items": []}],
+    "search_questions": [
+        {
+            "question": "Solo drying time",
+            "items": [],
+            "asks_what_a_picture_shows": False,
+        }
+    ],
 }
 QUOTE = {"source_id": "S1", "quote": "Solo dries in 2 days."}
 CLAIM = {"part": 1, "text": "Solo dries in 2 days.", "evidence": [QUOTE]}

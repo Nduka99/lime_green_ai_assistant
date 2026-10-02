@@ -47,10 +47,13 @@ def as_read(passage: Passage) -> str:
 class Part:
     """One thing a question asks, as the first request wrote it: its search question
     and, when it asks about several things (several products, or several facts about
-    one product), each of them as a search question naming its subject (X48)."""
+    one product), each of them as a search question naming its subject (X48).
+    `pictured`: it asks what a particular picture shows, which no answer can state,
+    since pictures are read for their words only (E10)."""
 
     question: str
     items: tuple[str, ...] = ()
+    pictured: bool = False
 
 
 @dataclass(frozen=True)
