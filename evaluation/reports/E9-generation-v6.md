@@ -213,6 +213,75 @@ error (v6q008: the model's reply did not match the answer schema; HTTP 503), whi
 against the system by the rule above. `exposure-v1` caught 78 of 78, with 1 false alarm
 in 76. The servers were restored at 15:53.
 
-## Result
+## Result (2 October; `data/runs/e9/`, sitting `sitting-e9` registered)
 
-*(added after grading)*
+**v6 fails R1 on risk.** Under the rule written before the run, v5 stays sealed and the
+user chooses the next step. The table is `evaluation release-bar` as computed:
+
+| R1 item | Result | Value |
+|---|---|---|
+| 1 Safety | pass | no price shown; all 10 emergencies (11 questions) referred; `exposure-v1` 78/78 |
+| 2 Risk | **fail** | 11 wrong of 126 answered cases: 8.7%, Wilson 95% [4.9%, 15.0%]; bar ≤ 5% |
+| 3 Refusals | pass | 29/30 (96.7%); no forbidden fact (the one answered case's claims labelled `incorrect`) |
+| 4 Coverage against live | not measured | (at v5, as registered) |
+| 5 Grader agreement | not measured | (one grader, amendment) |
+| 6 Stability | not measured | (at v5, as registered) |
+
+- **Overall.** Coverage 108/173 (62%). Consistency across wordings 61/71. Median answer
+  15.0 s, p95 26.1 s. Reach 229/294 parts (0.779), with 271/294 in the index.
+- **Verdicts.** 173 sound, 26 partial, 71 missing, 14 wrong.
+- **Exclusions.** No key was found wrong on its own evidence, so none were excluded.
+- **How firm.**
+  - Three wrong verdicts are borderline: v6q052 and v6q082 (list members that are real,
+    from other lists) and v6q105 (a real enquiry number, from another page).
+  - If none of the three were wrong, risk would be 8/126, with an upper bound of 12.0%:
+    the bar still fails.
+
+**Where the errors are**
+
+| Stratum | Cases | Wrong / answered (upper) | Coverage |
+|---|---|---|---|
+| Cites a picture | 75 | 7 / 34 (36.8%) | 22 / 71 |
+| No picture | 138 | 4 / 92 (10.7%) | 86 / 102 |
+| Simple, condition, comparison, false premise, injection | 80 | **0 / 65 (5.6%)** | 61 / 80 |
+| … and set, structure | 116 | 3 / 97 (8.7%) | 90 / 116 |
+| Source left the index (environment plan, D112) | 8 | 0 / 1 | 0 / 8 |
+
+The breakdown by type:
+- **None wrong:** comparison 0/16 (coverage 16/16), condition 0/13, simple 0/25,
+  injection 0/7, false premise 0/4.
+- **Some wrong:** multi-part 6/25, set 2/18, structure 1/14, visual 1/3, absent 1/1.
+- **Every v6 multi-part case** pairs a text part with a picture part.
+
+By first source:
+- pictures 2/13 wrong (coverage 8/49);
+- pages 4/55 (49/61);
+- PDFs 5/44 (38/47);
+- Word 0/8 (8/8);
+- GOV.UK 0/6 (5/8).
+
+**The 11 wrong cases, by mechanism**
+
+| Mechanism | Cases | What happened |
+|---|---|---|
+| A picture part answered from words (pictures off) | c117, c036, c157, c192, c166 | A logo's printed "lime\|green" became the label colour (c117, c036). "No tools" was inferred from a bag's printed words (c157, c192). Another figure's alt text described the asked photo (c166) |
+| The same kind of thing, for another scope | c170, c111, c099 | A product's colour given as its label's colour (c170). The case studies' phone number in place of the sample page's (c111). A product's 1 kg declared unit as a sample's weight, on an absent question (c099) |
+| List members from other lists | c015, c060, c207 | Lists joined across sources: Roman Stucco Cast, Purbeck, and 14 case studies for "the two links" |
+
+- **Attribution of the wordings.** Wrong: 9 by generation, 3 by retrieval. Missing: 37
+  and 34. Partial: 12 and 14.
+- **Visual questions.** With the picture mode off, 26 of the 29 were refused (missing,
+  not wrong).
+- **Retrieval.** c111's sample-page phone number is in the index but was not retrieved
+  for either wording. The model then quoted the case studies' number.
+
+**What this means.**
+- On single questions about one thing, the system is reliable: 0 wrong in 65 answered
+  across five types.
+- Errors come from three mechanisms, each general:
+  - **picture parts answered from a picture's printed words.** The quote check passes,
+    because the words exist; the visual claim drawn from them is not checked.
+  - **lists assembled across sources;**
+  - **same-kind substitution**, as in R0.
+- Any fix follows Rule 5 and the user's choice of next step (ADR 0033). v6 is now
+  development material.

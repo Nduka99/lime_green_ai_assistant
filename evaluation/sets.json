@@ -221,7 +221,11 @@
     "key.json": "3a6619bf359fa27d44af7f66cdcc52ced667500a45b9ea3df93e5010f30dc53f",
     "plan-before-part-15.json": "a5ac7ff5b400342a811301ebccaa41eb1d95c037a188d204839fcc3488331350",
     "plan.json": "3a1341e40b730ae11e730838f797d906c62a52e5e20ec038cea63cb300f43bcf",
-    "questions.json": "ff6eae0f48fd7e5ef6e050aec1e456632ed348513bf1156607c53db77506edac"
+    "questions.json": "ff6eae0f48fd7e5ef6e050aec1e456632ed348513bf1156607c53db77506edac",
+    "sitting-e9/claims.json": "a18b9137b4ff478f7df926e4ed8740e893141804c7791ee011b32d93d0a06f77",
+    "sitting-e9/order.json": "a936e452a970f3f709ced9b3c337ade345a226d9d9c2b0e7466360f207b04238",
+    "sitting-e9/pairs.json": "cad357d1ba1334b2fedc484e4f5667af93fb39285fdd3f49d5fcea5abd2d205f",
+    "sitting-e9/verdicts.json": "3173fae5a8c627a7d1927273c1af54d0365f99e42b600e5278703b63f12378ec"
    }
   },
   "image-facts": {
