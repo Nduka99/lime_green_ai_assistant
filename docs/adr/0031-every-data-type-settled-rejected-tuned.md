@@ -130,8 +130,10 @@
   - Kept by its rule.
   - It helps list questions (v3 +11) and crowds others, so it is the first candidate
     for routing by question type.
-- **v2's shortfall.** Version 25 had 83; version 29 has 81 (bar 82). The ladder isolates
-  the cause (step L1 adds the web-reading changes alone).
+- **v2's shortfall.** Version 25 had 83; version 29 has 81 (bar 82). The ladder found
+  the cause: every loss is in one case (c06), whose two About-page facts moved down with
+  the web reader's page form and then cross the company's 8th place as guidance and
+  pictures change the shared BM25 word statistics (X47 ladder result).
 - **Question-type routing.**
   - Apply E4, more picture places, and guidance only to the question types they help;
     routing only ever adds to the company search.
@@ -142,8 +144,9 @@
   - Wordless drawings beyond each retriever's first 2 (`image-facts` 0.825; bar 0.850).
   - A look-alike safety data sheet (kb28).
 - **The data-type ladder (X47).** Version 17 → web reader → Word → GOV.UK → pictures →
-  E4, one change per step. Running when this record was written; its result decides
-  which additions stay.
+  E4, one change per step. Result (2 October): web reader, Word and GOV.UK kept by the
+  rule; pictures (v2 −4, the shared word statistics) and E4 (its kb-probe stratum was
+  already full) fail the rule as written, and whether they stay is the user's decision.
 - **Document relevance (X47).**
   - News, case studies, inspirations and EPD/carbon reports are measured by leaving each
     out.

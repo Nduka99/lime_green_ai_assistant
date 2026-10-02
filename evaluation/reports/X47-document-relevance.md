@@ -85,3 +85,87 @@ adds one thing to the step before:
   replays or `web-facts`).
 - A step that fails is reported with the parts it loses. The decision to drop a data
   type goes to the user.
+
+## Ladder result (2 October, 06:50–09:25)
+
+Builds: L1 = version 30, L2 = 31, L3 = 32; L4 and L5 are versions 29 and 28, measured
+again. Runs in `data/runs/x47/L0..L5/`; log `data/runs/x47/ladder.log`. Replays are parts
+reached; `kb-probe` columns are questions found.
+
+| Step | frozen90 | v2 | v3 | v4 | Sum | web-facts | word | guidance | pictures (3 strata) | listing | other text | p95 (s) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| L0 v17 | 103 | 83 | 76 | 119 | 381 | 0.921 | 0/6 | 0/6 | 0/20 | 6/6 | 20/26 | 1.41 |
+| L1 web reader | 108 | 82 | 77 | 118 | 385 | 0.969 | 0/6 | 0/6 | 0/20 | 6/6 | 22/26 | 1.67 |
+| L2 + Word | 108 | 82 | 77 | 118 | 385 | 0.969 | 4/6 | 0/6 | 0/20 | 6/6 | 22/26 | 1.25 |
+| L3 + GOV.UK | 107 | 85 | 77 | 118 | 387 | 0.966 | 4/6 | 6/6 | 0/20 | 6/6 | 22/26 | 1.89 |
+| L4 + pictures | 107 | 81 | 77 | 118 | 383 | 0.966 | 4/6 | 6/6 | 14/20 | 6/6 | 22/26 | 1.35 |
+| L5 + E4 | 111 | 80 | 88 | 121 | 400 | 0.952 | 4/6 | 6/6 | 14/20 | 6/6 | 22/26 | 1.34 |
+
+"Other text" is web content, PDF text and tables, and cross-type. L4 and L5 reproduce
+versions 29 and 28's earlier replays exactly.
+
+**The rule, step by step.**
+
+| Step | Replay change against the step before | Own measure | Verdict as registered |
+|---|---|---|---|
+| L1 | +5, −1, +1, −1 | replays 381 → 385; `web-facts` 0.921 → 0.969 | **Kept** |
+| L2 | 0, 0, 0, 0 | `word` 0 → 4 of 6 | **Kept** |
+| L3 | −1, +3, 0, 0 | `guidance` 0 → 6 of 6 | **Kept** |
+| L4 | 0, **−4**, 0, 0 | pictures 0 → 14 of 20 | **Fails**: v2 falls by 4 |
+| L5 | +4, −1, +11, +3 | `listing` already 6 of 6 at L4 | **Fails**: its stratum cannot rise |
+
+- **L4's failure is not the pictures' content.**
+  - Pictures took no company place: each search's 8 company passages come first and the
+    pictures follow them.
+  - The 4 parts belong to one case (c06, Warmshell Internal), covered below.
+- **L5's failure is the rule's wording, not a loss.**
+  - `listing` was at its ceiling before E4, so no step could raise it.
+  - E4's own evidence is the replays: +17 parts summed, and v2 −1. That passes X45's E4
+    rule (summed parts rise, no set falls by more than 1). It costs `web-facts` 5 facts
+    (0.966 → 0.952), as X45 found.
+- **Search time is noise at this resolution.** One run of 60 searches ranges from 1.25 to
+  1.89 s with no order: L4 adds a channel and measures faster than L3. Version 28
+  passes G7 again (1.34 s, bar 1.5 s).
+
+**Where v2's two parts went (83 at version 17, 81 at version 29).**
+
+| Step | v2 | Case c06 (30 parts) | c06's About-page parts (10) | Other cases (110 parts) |
+|---|---|---|---|---|
+| L0 | 83 | 24 | 10 | 59 |
+| L1 | 82 | 17 | 6 | 65 |
+| L2 | 82 | 17 | 6 | 65 |
+| L3 | 85 | 19 | 8 | 66 |
+| L4 | 81 | 15 | 4 | 66 |
+| L5 | 80 | 17 | 6 | 63 |
+
+- **Every loss is in one case.** Case c06 asks about Warmshell Internal in 5 wordings of
+  6 parts. Two of its parts (the "third-party BDA Agrément" and the "25-year materials
+  warranty") are stated only on the About Lime Green page.
+- **L1, the web reader: c06 −7, other cases +6.**
+  - In page form, those two facts sit inside a 1,331-character section headed by a
+    co-founder's introduction. Version 17 held them in a 668-character passage headed "We
+    are the only company to offer a complete solution for wood fibre insulation", which
+    ranked higher.
+  - Elsewhere the reader gains 6 parts.
+- **L3 and L4: the same passage crosses the company's 8th place.**
+  - The company passages changed. No guidance passage reached these questions, and the
+    pictures given at L4 followed the 8 company places without taking one.
+  - The About passage entered the company's top 8 at L3 (+2 in c06, and one more part in
+    c01 from another passage) and left it at L4 (−4).
+  - The cause is the keyword index. Each version has one BM25 index over all its
+    passages, so its word statistics (document frequencies, average length) include
+    guidance and picture passages. Adding a channel changes the company's keyword
+    scores, although ranking keeps the channels apart (ADR 0030).
+  - Vector search is unaffected: it scans each channel exactly.
+- **L5, E4: other cases −3** (v2q009's sample terms, as X45 found).
+- **So v2's two parts:** one is the web reader's net change, concentrated in c06's
+  About-page facts. The other is that same passage moving with the shared word
+  statistics. No data type removes v2 evidence by its content.
+
+**Not decided here (the user's decision):**
+- whether pictures (L4) and E4 (L5) stay, given the rule's verdicts above;
+- whether to register a structural fix for the shared word statistics: a BM25 index per
+  channel, so that adding guidance or pictures cannot move company results. That is
+  ADR 0030's separation carried into the keyword index. Its rule would be written before
+  any build: company results identical to a version built without the other channels,
+  replays measured.
