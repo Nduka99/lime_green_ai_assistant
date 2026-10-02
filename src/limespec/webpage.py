@@ -138,9 +138,18 @@ def listings(soup: BeautifulSoup, root: Tag, held: Held | None = None) -> None:
 def colour_list(soup: BeautifulSoup, grid: Tag) -> Tag:
     """A colour grid as a list: each swatch's colour name with its picture, named by
     the colour (X43 B), then the swatch card's own lines, such as "Order this colour
-    sample" and "Free" (X45 E2). Links and forms are already gone as furniture."""
+    sample" and "Free" (X45 E2). A line every card holds alike is read once, after the
+    colours (X46 R1: one copy of repeated text, as E1 reads the footer once). Links
+    and forms are already gone as furniture."""
+    swatches = grid.select(".clr")
+    own = {id(swatch): card_lines(swatch, grid) for swatch in swatches}
+    shared: list[str] = []
+    if swatches:
+        for line in own[id(swatches[0])]:
+            if all(line in lines for lines in own.values()):
+                shared.append(line)
     found = soup.new_tag("ul")
-    for swatch in grid.select(".clr"):
+    for swatch in swatches:
         name = text_of(swatch.select_one(".name"))
         item = soup.new_tag("li")
         item.string = name
@@ -149,15 +158,32 @@ def colour_list(soup: BeautifulSoup, grid: Tag) -> Tag:
             picture["alt"] = name
             item.append(picture)
         found.append(item)
-        card = swatch.parent
-        if card is None or card is grid:
-            continue
-        for line in card.find_all("p"):
-            if swatch not in line.parents and text_of(line):
-                own = soup.new_tag("li")
-                own.string = text_of(line)
-                found.append(own)
+        for line in own[id(swatch)]:
+            if line not in shared:
+                found.append(list_item(soup, line))
+    for line in shared:
+        found.append(list_item(soup, line))
     return found
+
+
+def card_lines(swatch: Tag, grid: Tag) -> list[str]:
+    """The lines of a swatch's own card outside the swatch itself; none when the
+    swatch sits in the grid with no card of its own."""
+    card = swatch.parent
+    if card is None or card is grid:
+        return []
+    return [
+        text_of(line)
+        for line in card.find_all("p")
+        if swatch not in line.parents and text_of(line)
+    ]
+
+
+def list_item(soup: BeautifulSoup, text: str) -> Tag:
+    """An <li> holding the text."""
+    item = soup.new_tag("li")
+    item.string = text
+    return item
 
 
 def contact_information(raw_html: str) -> list[dict[str, Any]]:

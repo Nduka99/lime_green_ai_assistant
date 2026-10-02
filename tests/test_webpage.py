@@ -141,6 +141,22 @@ def test_a_swatch_card_keeps_its_own_lines_after_its_colour() -> None:
     ]  # fmt: skip
 
 
+def test_a_line_every_swatch_card_holds_is_read_once_after_the_colours() -> None:
+    card = """<div class="sample"><div class="clr"><p class="name">{}</p></div>
+    <div class="txt"><p>Order this colour sample</p><p>{}</p></div></div>"""
+    grid = card.format("Ochre", "Free") + card.format("York", "Free")
+    grid += card.format("Bath", "Out of stock")
+    page = f'<main><h1>Samples</h1><div class="clr-grid">{grid}</div></main>'
+
+    found = webpage.read_page(page)[1]
+
+    assert [e["text"] for e in found] == [
+        "Ochre", "Free", "York", "Free", "Bath", "Out of stock",
+        "Order this colour sample",
+    ]  # fmt: skip
+    assert webpage.read_page('<main><div class="clr-grid"></div></main>')[1] == []
+
+
 def test_contact_information_is_the_contentinfo_landmark_outside_main() -> None:
     page = """<body><main><h1>Duro</h1><footer><p>Inside main</p></footer></main>
     <footer><h2>Contact us</h2><p>Call: 0800 538 5746</p><form>Sign up</form></footer>
