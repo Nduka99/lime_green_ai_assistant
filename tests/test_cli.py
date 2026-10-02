@@ -273,7 +273,6 @@ def test_read_images_stores_pictures_then_reads_each_once(
     monkeypatch.setattr(cli, "site_html", lambda: [("https://x.test/", "<html/>")])
     monkeypatch.setattr(images, "collect", collect)
     monkeypatch.setattr(images, "read_text", lambda image, url: "Duro 25kg")
-    monkeypatch.setattr(images, "describe", lambda png, url: "A bag of Duro.")
     monkeypatch.setattr(llm, "healthy", lambda url: url == "http://vlm")
 
     assert cli.main(["read-images"]) == 1
@@ -282,12 +281,8 @@ def test_read_images_stores_pictures_then_reads_each_once(
 
     assert json.loads((out / "p1.json").read_text())["ocr"] == "Duro 25kg"
     assert seen["stored"]["https://x.test/d.docx"] == readings / "rendered" / "d.pdf"
-    assert "3 places of 2 pictures; 1 read, 0 described" in capsys.readouterr().out
-
-    assert cli.main(["read-images", "--describe", "http://vlm"]) == 0
-    saved = json.loads((out / "p1.json").read_text())
-    assert saved == {"ocr": "Duro 25kg", "id": "p1", "description": "A bag of Duro."}
-    assert "0 read, 2 described" in capsys.readouterr().out
+    assert "3 places of 2 pictures; 1 read and 0 vectors" in capsys.readouterr().out
+    assert json.loads((out / "p1.json").read_text()) == {"ocr": "Duro 25kg", "id": "p1"}
 
     from limespec import siglip
 

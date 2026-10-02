@@ -296,12 +296,8 @@ def text_passage(number: int) -> Passage:
     return Passage(number, "u", "T", "", f"text {number}", "")
 
 
-@pytest.mark.parametrize(
-    ("ranking", "ids"),
-    [("words", [5, 7]), ("siglip", [5, 6]), ("union", [7, 5, 6])],
-)
 def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
-    monkeypatch: pytest.MonkeyPatch, ranking: str, ids: list[int]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from limespec import siglip
 
@@ -319,7 +315,6 @@ def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
         scores = {"text 1": 5.0, "text 2": 3.0, "text 30": 9.0, "text 31": 4.0}
         return [scores.get(document.split("\n")[-1], 0.0) for document in documents]
 
-    monkeypatch.setattr(config, "PICTURE_RANKING", ranking)
     monkeypatch.setattr(store, "picture_passages", lambda conn, v: {"p5": 5})
     monkeypatch.setattr(store, "picture_ranking", lambda conn, v, vector, n: [5, 6])
     monkeypatch.setattr(store, "fused", fused)
@@ -330,11 +325,10 @@ def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
 
     found = add("Show me Duro", [text_passage(1), text_passage(2)])
 
-    assert [p.id for p in found] == [*ids, 30, 31]
-    assert channels == (
-        ["guidance"] if ranking == "siglip" else ["picture", "guidance"]
-    )
-    assert [p.id for p in add("Duro", [])] == [*ids, 30, 31]  # best guidance alone
+    # Words' best two (7, 5), then SigLIP2's (5 again, 6), then guidance on merit.
+    assert [p.id for p in found] == [7, 5, 6, 30, 31]
+    assert channels == ["picture", "guidance"]
+    assert [p.id for p in add("Duro", [])] == [7, 5, 6, 30, 31]  # best guidance alone
 
 
 def test_a_version_without_pictures_or_guidance_adds_nothing(

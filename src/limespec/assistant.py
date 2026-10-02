@@ -23,7 +23,7 @@ from limespec.answer import (
 )
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
-from limespec.retrieve import Embed, fuse, rerank_top
+from limespec.retrieve import Embed, rerank_top
 from limespec.view import view
 
 
@@ -173,22 +173,18 @@ def extras(
 def best_pictures(
     conn: store.Connection, version_id: int, query: str, embed: Embed
 ) -> list[Passage]:
-    """A search's best pictures, by `config.PICTURE_RANKING`: the best
-    `config.PICTURES_PER_SEARCH` by what they show (SigLIP2); or by that ranking fused
-    with the one by their own words ("words"); or each one's best, words first
-    ("union", UniDoc-Bench's split: X44 amendment 1)."""
+    """A search's best pictures: its best `config.PICTURES_PER_SEARCH` by their own
+    words, then its best by what they show (SigLIP2) not already among them. Each
+    retriever keeps its own places, as UniDoc-Bench splits its results: fused into
+    one ranking, a picture both rank moderately displaced each one's best (X44
+    amendment 1)."""
+    best = config.PICTURES_PER_SEARCH
     limit = config.CANDIDATES_PER_METHOD
+    words = store.fused(conn, version_id, query, embed, channel="picture")
     shown = store.picture_ranking(conn, version_id, siglip.text_vector(query), limit)
-    if config.PICTURE_RANKING == "siglip":
-        found = shown[: config.PICTURES_PER_SEARCH]
-    else:
-        words = store.fused(conn, version_id, query, embed, channel="picture")
-        if config.PICTURE_RANKING == "words":
-            found = fuse([shown, words])[: config.PICTURES_PER_SEARCH]
-        else:
-            best = config.PICTURES_PER_SEARCH
-            found = list(dict.fromkeys([*words[:best], *shown[:best]]))
-    return store.load_passages(conn, found)
+    return store.load_passages(
+        conn, list(dict.fromkeys([*words[:best], *shown[:best]]))
+    )
 
 
 def guidance_above(

@@ -51,9 +51,6 @@ TITLE_BLOCK = ".kb-head"  # a knowledge-base title block: the <h1>, a label, a d
 # X42 W3: web passages from `limespec.webpage`, by section (as `page_passages`) or
 # sections packed with their section path as context (`passages.merge`), repeats once.
 WEB_FORMS = ("sections", "page", "page-once")
-# A listing's link cards (X44 F3): "unique" reads a card's description where no other
-# page holds it; "compiled" puts every description in the page's compiled list.
-CARD_FORMS = ("unique", "compiled")
 PICTURE_VECTORS = "siglip.json"  # SigLIP2 vectors beside the pictures (X44 F2)
 
 
@@ -382,8 +379,6 @@ def prepare_index(
         {},
         {},
     ),
-    descriptions: Mapping[str, str] | None = None,
-    cards: str = "unique",
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
     documents whose passages are already built (PDFs, limespec.passages). With a
@@ -392,14 +387,14 @@ def prepare_index(
     (title, context, text) is in `known` (`store.known_vectors`, same embedder) takes
     its stored vector instead of being embedded again (X43 A4). `pictures` holds the
     places pictures are shown, the text read in each and their PNGs (X43 B):
-    each picture becomes one passage (`images.picture_passages`), searched also by
-    its description where `descriptions` holds one (X44 F6). `cards` (CARD_FORMS)
-    says where a listing's card descriptions go (X44 F3)."""
+    each picture becomes one passage (`images.picture_passages`). Pages read by
+    `limespec.webpage` are read twice: a link card's description is read only where
+    the first pass finds no page holding it (X44 F3a)."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
     seen: set[str] = set()
     held = None
-    if web_form and cards == "unique":
+    if web_form:
         # First pass: every page's own text, card descriptions left out.
         first = [
             webpage.read_page(raw.decode("utf-8", "replace"))[1] for _, raw, _ in pages
@@ -424,10 +419,7 @@ def prepare_index(
         # A product grid also becomes one passage holding its whole list (X12).
         products = lists.grid_products(raw.decode("utf-8"))
         if products:
-            on_cards = lists.grid_descriptions(raw.decode("utf-8"))
-            compiled = lists.list_passage(
-                title, products, on_cards if cards == "compiled" else None
-            )
+            compiled = lists.list_passage(title, products)
             rows.append((url, title, lists.HEADING, compiled, "", None))
     for page_row, passage_rows in documents:
         page_rows.append(page_row)
@@ -442,8 +434,7 @@ def prepare_index(
         for row in rows:
             place = (row[0], row[5])
             shown[place] = shown.get(place, "") + " " + row[3]
-        by_picture = dict(descriptions or {})
-        for row, identity in picture_passages(places, read, shown, titles, by_picture):
+        for row, identity in picture_passages(places, read, shown, titles):
             rows.append(row)
             images.append(identity)
     kept = [
@@ -498,16 +489,6 @@ def stored_pictures() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, b
     return places, read, pngs
 
 
-def stored_descriptions() -> dict[str, str]:
-    """Each stored picture's description (`limespec read-images --describe`), by id."""
-    found = {}
-    for path in config.IMAGES.glob("*.json"):
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(saved, dict) and saved.get("description"):
-            found[saved["id"]] = saved["description"]
-    return found
-
-
 def fetched_at(path: Path) -> str:
     """The cache file's modification time is when the page was captured."""
     modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
@@ -533,16 +514,12 @@ def ingest(
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
     with_pictures: bool = False,
-    with_descriptions: bool = False,
-    cards: str = "unique",
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
     `documents.index_documents`); `web_form` reads pages by `limespec.webpage`;
-    `with_pictures` adds a passage per picture `limespec read-images` stored and read;
-    `with_descriptions` searches each also by its description (X44 F6); `cards`
-    says where a listing's card descriptions go (`prepare_index`).
+    `with_pictures` adds a passage per picture `limespec read-images` stored and read.
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
@@ -551,16 +528,8 @@ def ingest(
     urls = site_pages() if all_pages else read_sources(sources or config.SOURCES_FILE)
     known = store.known_vectors(conn, config.EMBEDDING_MODEL)
     pictures = stored_pictures() if with_pictures else ([], {}, {})
-    descriptions = stored_descriptions() if with_descriptions else {}
     prepared = prepare_index(
-        cached_pages(urls),
-        embed,
-        documents,
-        web_form,
-        known,
-        pictures,
-        descriptions,
-        cards,
+        cached_pages(urls), embed, documents, web_form, known, pictures
     )
     version = store.write_version(
         conn,

@@ -1695,7 +1695,7 @@ def run_image_retrieval(args: argparse.Namespace) -> int:
     items = grades.read_json(folder / "questions.json")["questions"]
     arm = f"T+S {args.arm}" if args.visual else "T"
     if args.channels:
-        arm = f"channels ({config.PICTURE_RANKING})"
+        arm = "channels"
     results = []
     with assistant.connect() as conn:
         search = picture_search(conn, args) if args.visual else plain_search(conn)

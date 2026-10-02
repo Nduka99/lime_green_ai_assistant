@@ -9,7 +9,6 @@ the `ingest` group.
 
 import base64
 import hashlib
-import json
 import re
 from io import BytesIO
 from pathlib import Path
@@ -39,18 +38,6 @@ OCR_MAX_TOKENS = 8192  # GLM-OCR's published limit
 OCR_TIMEOUT_SECONDS = 600.0
 # A line of markup alone: a code fence (with its language) or a horizontal rule.
 MARKUP_LINE = re.compile(r"```\w*|[-*_=]{3,}")
-DESCRIBE_PROMPT = (
-    "You describe pictures for the search index of a company that makes lime "
-    "mortars, plasters, renders and insulation. Say what is visible: the objects, "
-    "materials, colours and what people are doing; for a drawing, diagram or chart, "
-    "what it depicts and its labelled parts. Write two or three plain sentences. Do "
-    "not guess names, brands, places or numbers that the picture does not show."
-)
-DESCRIPTION = {
-    "type": "object",
-    "properties": {"text": {"type": "string"}},
-    "required": ["text"],
-}
 Box = tuple[float, float, float, float]  # left, top, right, bottom, from top-left
 
 
@@ -222,35 +209,11 @@ def ocr_lines(reading: str) -> list[str]:
     return [line for line in lines if line and not MARKUP_LINE.fullmatch(line)]
 
 
-def describe(png: bytes, url: str) -> str:
-    """A vision generator's description of a picture (the server at `url`), searched
-    as the picture passage's context and never quoted or shown (X44 F6); "" when its
-    reply did not finish."""
-    body = llm.chat_payload(
-        DESCRIBE_PROMPT, "Describe this picture.", DESCRIPTION, [png]
-    )
-    try:
-        response = llm.CLIENT.post(
-            f"{url}/v1/chat/completions",
-            json=body,
-            headers=llm.auth(),
-            timeout=OCR_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        choice = response.json()["choices"][0]
-        if choice["finish_reason"] != "stop":
-            return ""
-        return " ".join(str(json.loads(choice["message"]["content"])["text"]).split())
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as error:
-        raise llm.ModelServerError(f"vision model at {url} failed: {error}") from error
-
-
 def picture_passages(
     places: list[dict[str, Any]],
     read: dict[str, str],
     shown: dict[tuple[str, int | None], str],
     titles: dict[str, str],
-    descriptions: dict[str, str] | None = None,
 ) -> list[tuple[tuple[str, str, str, str, str, int | None], str]]:
     """One passage per picture: (url, title, heading, text, context, page) and its id.
 
@@ -259,12 +222,11 @@ def picture_passages(
     DESCRIBED words or more, then the text read in it (`read`, by id) when at least
     NEW_WORDS of that is not already shown on its page (`shown`, by source and page).
     Its context, searched but never quoted, is lines: it is an image with its section
-    path, then any shorter alt text, then any description (`descriptions`, by id; X44
-    F6). So a picture has words of its own exactly when its text is not empty or its
-    context has more than one line (the picture channel's word ranking, `store`).
-    Only places in a page or document of the build (`titles`) count (X44 F5).
+    path, then any shorter alt text. So a picture has words of its own exactly when
+    its text is not empty or its context has more than one line (the picture
+    channel's word ranking, `store`). Only places in a page or document of the build
+    (`titles`) count (X44 F5).
     """
-    descriptions = descriptions or {}
     chosen: dict[str, dict[str, Any]] = {}
     for place in [place for place in places if place["source"] in titles]:
         best = chosen.get(place["id"])
@@ -282,8 +244,6 @@ def picture_passages(
         context = [" › ".join([PICTURE, *place["section"]])]
         if alt and not described:
             context.append(alt)
-        if descriptions.get(identity):
-            context.append(descriptions[identity])
         url = place["source"]
         row = (url, titles[url], PICTURE, "\n".join(lines),
                "\n".join(context), place["page"])  # fmt: skip

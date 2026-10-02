@@ -21,7 +21,6 @@ from limespec import (
 )
 from limespec.app import app
 from limespec.ingest import (
-    CARD_FORMS,
     PICTURE_VECTORS,
     WEB_FORMS,
     IngestError,
@@ -80,8 +79,6 @@ def run_ingest(
     pdf_form: str = "",
     web_form: str = "",
     with_pictures: bool = False,
-    with_descriptions: bool = False,
-    cards: str = "unique",
 ) -> None:
     found = []
     if pdf_form:
@@ -96,8 +93,6 @@ def run_ingest(
             found,
             web_form,
             with_pictures,
-            with_descriptions,
-            cards,
         )
     if live:
         print(f"index version: {version} (live)")
@@ -154,22 +149,20 @@ def run_search(question: str) -> None:
         print(f"   {passage.text[:200]!r}")
 
 
-def run_read_images(vlm: str, describer: str = "", vectors: bool = False) -> int:
+def run_read_images(vlm: str, vectors: bool = False) -> int:
     """Store every picture of the pages and documents once, then read the text in
-    each with a vision model (GLM-OCR at `vlm`, X43 B), describe each with a vision
-    generator (at `describer`, X44 F6) and give each its SigLIP2 vector (`vectors`,
-    X44 F2); what is already saved is kept."""
+    each with a vision model (GLM-OCR at `vlm`, X43 B) and give each its SigLIP2
+    vector (`vectors`, X44 F2); what is already saved is kept."""
     from PIL import Image
 
     from limespec import images, siglip
 
-    if not vlm and not describer and not vectors:
-        print("error: give --vlm, --describe or --vectors", file=sys.stderr)
+    if not vlm and not vectors:
+        print("error: give --vlm, --vectors or both", file=sys.stderr)
         return 1
-    for server in (vlm, describer):
-        if server and not llm.healthy(server):
-            print(f"error: no vision model ready at {server}", file=sys.stderr)
-            return 1
+    if vlm and not llm.healthy(vlm):
+        print(f"error: no vision model ready at {vlm}", file=sys.stderr)
+        return 1
     readings = [
         json.loads(path.read_text(encoding="utf-8"))
         for path in sorted(documents.OUT.glob("*.json"))
@@ -184,7 +177,7 @@ def run_read_images(vlm: str, describer: str = "", vectors: bool = False) -> int
     places = images.collect(dict(site_html()), readings, stored, config.IMAGES)
     text = json.dumps(places, indent=1, ensure_ascii=False)
     (config.IMAGES / "places.json").write_text(text + "\n", encoding="utf-8")
-    read = described = 0
+    read = 0
     for identity in dict.fromkeys(place["id"] for place in places):
         target = config.IMAGES / f"{identity}.json"
         png = config.IMAGES / f"{identity}.png"
@@ -196,9 +189,6 @@ def run_read_images(vlm: str, describer: str = "", vectors: bool = False) -> int
             with Image.open(png) as picture:
                 saved["ocr"] = images.read_text(picture.convert("RGB"), vlm)
             read += 1
-        if describer and "description" not in saved:
-            saved["description"] = images.describe(png.read_bytes(), describer)
-            described += 1
         target.write_text(json.dumps(saved), encoding="utf-8")
     ids = list(dict.fromkeys(place["id"] for place in places))
     made = 0
@@ -209,8 +199,8 @@ def run_read_images(vlm: str, describer: str = "", vectors: bool = False) -> int
         found = siglip.picture_vectors(ids, config.IMAGES, embed_pictures, known)
         path.write_text(json.dumps(found), encoding="utf-8")
         made = len(set(found) - set(known))
-    print(f"{len(places)} places of {len(ids)} pictures; {read} read, "
-          f"{described} described and {made} vectors made now")  # fmt: skip
+    print(f"{len(places)} places of {len(ids)} pictures; {read} read and "
+          f"{made} vectors made now")  # fmt: skip
     return 0
 
 
@@ -298,17 +288,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="add a passage per picture `read-images` stored and read (X43)",
     )
-    ingest_parser.add_argument(
-        "--descriptions",
-        action="store_true",
-        help="search each picture by its description too (X44 F6)",
-    )
-    ingest_parser.add_argument(
-        "--cards",
-        choices=CARD_FORMS,
-        default="unique",
-        help="where a listing's card descriptions go (X44 F3)",
-    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -329,9 +308,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     images_parser.add_argument("--vlm", default="", help="GLM-OCR's server")
     images_parser.add_argument(
-        "--describe", default="", help="a vision generator's server (X44 F6)"
-    )
-    images_parser.add_argument(
         "--vectors", action="store_true", help="each picture's SigLIP2 vector (X44 F2)"
     )
     one_parser = commands.add_parser(
@@ -350,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "read-pdfs":
         return run_read_pdfs(args.vlm)
     if args.command == "read-images":
-        return run_read_images(args.vlm, args.describe, args.vectors)
+        return run_read_images(args.vlm, args.vectors)
     if args.command == "read-pdf":
         reading = documents.read_one(args.sha256, args.vlm)
         text = json.dumps(reading, indent=1, ensure_ascii=False) + "\n"
@@ -377,8 +353,6 @@ def main(argv: list[str] | None = None) -> int:
                 args.pdf_form,
                 args.web_form,
                 args.images,
-                args.descriptions,
-                args.cards,
             )
         elif args.command == "ask":
             run_ask(args.question)

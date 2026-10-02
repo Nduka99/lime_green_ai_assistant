@@ -63,7 +63,7 @@ ASHLAR = """<html><body><main><h1>Ashlar Lime Mortar</h1>
 <p>For fine joints.</p></main></body></html>"""
 
 
-def test_a_listing_s_card_descriptions_go_where_the_build_says(
+def test_a_card_s_description_is_read_only_where_no_other_page_holds_it(
     fake_embed: Embed,
 ) -> None:
     site = "https://example.test/"
@@ -72,17 +72,7 @@ def test_a_listing_s_card_descriptions_go_where_the_build_says(
              (site + "ashlar", ASHLAR.encode(), when)]  # fmt: skip
 
     unique = prepare_index(pages, fake_embed, web_form="page")
-    compiled = prepare_index(pages, fake_embed, web_form="page", cards="compiled")
 
     ochre = [row[3] for row in unique.passages if row[0] == site + "ochre"]
     assert "A base coat only cards show." in ochre[0]  # no other page holds it
     assert "For fine joints." not in ochre[0]  # the product's own page holds it
-    listed = [row[3] for row in compiled.passages if row[2] == lists.HEADING]
-    assert listed[0].endswith(
-        "\nAshlar Lime Mortar\nFor fine joints.\nDuro\nA base coat only cards show."
-    )
-    assert lists.grid_descriptions(CARDS_PAGE) == {
-        "Ashlar Lime Mortar": "For fine joints.",
-        "Duro": "A base coat only cards show.",
-    }
-    assert lists.grid_descriptions("<html></html>") == {}

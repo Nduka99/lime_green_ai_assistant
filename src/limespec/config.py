@@ -110,14 +110,11 @@ MAX_PICTURES = 4
 # apart and added after it, never in its place. Each search adds its best
 # PICTURES_PER_SEARCH pictures, at most MAX_PICTURES per question, and up to
 # GUIDANCE_PER_SEARCH guidance passages that the reranker puts above the company
-# channel's last place. Pictures are ranked by SigLIP2 alone ("siglip"), by it fused
-# with their own words ("words"), or as the union of each one's best ("union"; X44
-# amendment 1): the arm X44 selects.
+# channel's last place. A search's pictures are its best PICTURES_PER_SEARCH by their
+# own words, then its best by what they show (SigLIP2), as UniDoc-Bench splits its
+# results (X44 amendment 1).
 PICTURES_PER_SEARCH = 2
 GUIDANCE_PER_SEARCH = 2
-PICTURE_RANKING = os.environ.get("LIMESPEC_PICTURE_RANKING", "siglip")
-if PICTURE_RANKING not in {"siglip", "words", "union"}:
-    raise ValueError('LIMESPEC_PICTURE_RANKING must be "siglip", "words" or "union"')
 # External documents are titled with their publisher first (general guidance).
 GUIDANCE_TITLE = "GOV.UK — "
 # SigLIP2 so400m (Apache-2.0): its text tower ranks pictures at query time on the
