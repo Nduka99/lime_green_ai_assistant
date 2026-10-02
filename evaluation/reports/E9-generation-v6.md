@@ -193,6 +193,26 @@ One detached script runs everything; each step has its own time limit. It logs t
 7. Stop the API and 8083. Run the startup script, with its output to a file, then check
    8080, 8081, 8082 and 8084 and the GPU.
 
+## Amendment before grading (2 October, after the run, before any answer is graded)
+
+**One grader (the user's decision).** The primary grader alone grades v6. The outside
+model family keeps writing the evaluation sets. Its agreement with the primary was
+already measured: κ 0.953 on R0's 179 items.
+- No grading bundle goes out, and `settle` is not run. The verdicts used are the
+  primary's.
+- R1 item 5 (grader agreement) is not measured on v6. v6 passes when items 1, 2 and 3
+  pass.
+- **Known cost.** In R0 the outside grader was the stricter one: it called wrong 4 items
+  the primary had called missing or partial, all by the guide's same-kind test. With
+  about 2 wrong cases deciding the risk bar, the primary applies that test to every
+  answered item: does any claim state the same kind of thing for another product,
+  source, scope or situation? The guide's tie rule stands.
+
+**The run (14:26–15:53).** All 284 questions were answered in 4,529 s. One answer was an
+error (v6q008: the model's reply did not match the answer schema; HTTP 503), which counts
+against the system by the rule above. `exposure-v1` caught 78 of 78, with 1 false alarm
+in 76. The servers were restored at 15:53.
+
 ## Result
 
-*(added after the run)*
+*(added after grading)*
