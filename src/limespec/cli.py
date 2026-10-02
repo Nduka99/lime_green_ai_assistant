@@ -79,6 +79,7 @@ def run_ingest(
     pdf_form: str = "",
     web_form: str = "",
     with_pictures: bool = False,
+    compiled_descriptions: bool = False,
 ) -> None:
     found = []
     if pdf_form:
@@ -93,6 +94,7 @@ def run_ingest(
             found,
             web_form,
             with_pictures,
+            compiled_descriptions,
         )
     if live:
         print(f"index version: {version} (live)")
@@ -288,6 +290,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="add a passage per picture `read-images` stored and read (X43)",
     )
+    ingest_parser.add_argument(
+        "--compiled-descriptions",
+        action="store_true",
+        help="each product grid's compiled list carries the descriptions (X45 E4)",
+    )
     ask_parser = commands.add_parser("ask", help="answer a question with its sources")
     ask_parser.add_argument("question", nargs="?", help="asked for if left out")
     serve_parser = commands.add_parser("serve", help="run the web page on this machine")
@@ -353,6 +360,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.pdf_form,
                 args.web_form,
                 args.images,
+                args.compiled_descriptions,
             )
         elif args.command == "ask":
             run_ask(args.question)

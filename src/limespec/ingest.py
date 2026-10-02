@@ -379,6 +379,7 @@ def prepare_index(
         {},
         {},
     ),
+    compiled_descriptions: bool = False,
 ) -> PreparedIndex:
     """Parse, embed and fingerprint (url, raw_bytes, fetched_at) pages, and add
     documents whose passages are already built (PDFs, limespec.passages). With a
@@ -389,7 +390,9 @@ def prepare_index(
     places pictures are shown, the text read in each and their PNGs (X43 B):
     each picture becomes one passage (`images.picture_passages`). Pages read by
     `limespec.webpage` are read twice: a link card's description is read only where
-    the first pass finds no page holding it (X44 F3a)."""
+    the first pass finds no page holding it (X44 F3a); with `compiled_descriptions`
+    a product grid's compiled list carries each card's description too (X45 E4). The
+    site's contact information is read once, from the home page (X45 E1)."""
     page_rows: list[store.PageRow] = []
     rows: list[store.PassageRow] = []
     seen: set[str] = set()
@@ -419,8 +422,15 @@ def prepare_index(
         # A product grid also becomes one passage holding its whole list (X12).
         products = lists.grid_products(raw.decode("utf-8"))
         if products:
-            compiled = lists.list_passage(title, products)
+            on_cards = (
+                lists.grid_descriptions(raw.decode("utf-8"))
+                if compiled_descriptions
+                else None
+            )
+            compiled = lists.list_passage(title, products, on_cards)
             rows.append((url, title, lists.HEADING, compiled, "", None))
+    if web_form:
+        rows += contact_rows(pages)
     for page_row, passage_rows in documents:
         page_rows.append(page_row)
         rows += passage_rows
@@ -472,6 +482,25 @@ def prepare_index(
     return PreparedIndex(page_rows, rows, vectors, manifest, images, used)
 
 
+def contact_rows(pages: Sequence[tuple[str, bytes, str]]) -> list[store.PassageRow]:
+    """The site's contact information as passages of the home page (X45 E1): read
+    once, as RefinedWeb and Trafilatura keep one copy of text a site repeats, with
+    its own headings as context."""
+    for url, raw, _ in pages:
+        if url != config.SITE:
+            continue
+        html = raw.decode("utf-8")
+        found = webpage.contact_information(html)
+        if not found:
+            return []
+        title = webpage.read_page(html)[0]
+        kept = [element | {"page": 0} for element in found]
+        packed = passages.page_passages(kept, "table")
+        return [(url, title, heading or title, text, context, None)
+                for heading, context, text, _ in packed]  # fmt: skip
+    return []
+
+
 def stored_pictures() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, bytes]]:
     """The places pictures are shown (`limespec read-images`), the text read in each
     and each one's PNG, from config.IMAGES."""
@@ -514,12 +543,14 @@ def ingest(
     documents: Sequence[tuple[store.PageRow, list[store.PassageRow]]] = (),
     web_form: str = "",
     with_pictures: bool = False,
+    compiled_descriptions: bool = False,
 ) -> tuple[int, dict[str, str]]:
     """Build a new Postgres index version from the sources and, unless `live` is
     False, make it live. `all_pages` takes every cached page of the site instead of
     the sources; `documents` are added with their passages already built (PDFs,
     `documents.index_documents`); `web_form` reads pages by `limespec.webpage`;
-    `with_pictures` adds a passage per picture `limespec read-images` stored and read.
+    `with_pictures` adds a passage per picture `limespec read-images` stored and read;
+    `compiled_descriptions`: see `prepare_index`.
 
     The version is written beside the live one and switched in a single
     transaction, so a failed build leaves the served index untouched. A version
@@ -529,7 +560,13 @@ def ingest(
     known = store.known_vectors(conn, config.EMBEDDING_MODEL)
     pictures = stored_pictures() if with_pictures else ([], {}, {})
     prepared = prepare_index(
-        cached_pages(urls), embed, documents, web_form, known, pictures
+        cached_pages(urls),
+        embed,
+        documents,
+        web_form,
+        known,
+        pictures,
+        compiled_descriptions,
     )
     version = store.write_version(
         conn,

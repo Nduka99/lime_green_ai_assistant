@@ -127,21 +127,54 @@ def listings(soup: BeautifulSoup, root: Tag, held: Held | None = None) -> None:
                 ]
         box.replace_with(names_list(soup, [name for name in names if name]))
     for grid in root.select(".clr-grid"):
-        colours = names_list(soup, [text_of(n) for n in grid.select(".name")])
-        # Each colour keeps its swatch picture, named by the colour (X43 B).
-        for item, swatch in zip(
-            colours.find_all("li"), grid.select(".clr"), strict=True
-        ):
-            picture = swatch.find("img")
-            if picture is not None:
-                picture["alt"] = text_of(item)
-                item.append(picture)
-        grid.replace_with(colours)
+        grid.replace_with(colour_list(soup, grid))
     for buttons in root.select(".ds .bts"):
         names = [text_of(button) for button in buttons.select("a")]
         buttons.replace_with(names_list(soup, names))
     for button in root.select("a.button"):
         button.decompose()  # link buttons point elsewhere
+
+
+def colour_list(soup: BeautifulSoup, grid: Tag) -> Tag:
+    """A colour grid as a list: each swatch's colour name with its picture, named by
+    the colour (X43 B), then the swatch card's own lines, such as "Order this colour
+    sample" and "Free" (X45 E2). Links and forms are already gone as furniture."""
+    found = soup.new_tag("ul")
+    for swatch in grid.select(".clr"):
+        name = text_of(swatch.select_one(".name"))
+        item = soup.new_tag("li")
+        item.string = name
+        picture = swatch.find("img")
+        if picture is not None:
+            picture["alt"] = name
+            item.append(picture)
+        found.append(item)
+        card = swatch.parent
+        if card is None or card is grid:
+            continue
+        for line in card.find_all("p"):
+            if swatch not in line.parents and text_of(line):
+                own = soup.new_tag("li")
+                own.string = text_of(line)
+                found.append(own)
+    return found
+
+
+def contact_information(raw_html: str) -> list[dict[str, Any]]:
+    """The page's contact information (X45 E1): the text of its `contentinfo`
+    landmark (a `<footer>` outside the main content, or `role="contentinfo"`), as
+    elements under its own headings. Every page shows the same one, so the build reads
+    it once, from the home page; `read_page` leaves it out as furniture."""
+    soup = BeautifulSoup(raw_html, "html.parser")
+    main = soup.find("main")
+    found: list[dict[str, Any]] = []
+    for landmark in soup.select('footer, [role="contentinfo"]'):
+        if main is not None and main in landmark.parents:
+            continue
+        for element in landmark.select("script, style, svg, form, nav"):
+            element.decompose()
+        found += elements(rendered_lines(landmark), [])
+    return found
 
 
 def rendered_lines(root: Tag, every_image: bool = False) -> list[dict[str, Any]]:

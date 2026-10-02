@@ -7,6 +7,8 @@ they retrieve, which model requests they make or what they verify.
 
 import time
 from collections.abc import Callable, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 import psycopg
@@ -20,10 +22,11 @@ from limespec.answer import (
     Retrieve,
     See,
     answer,
+    with_extras,
 )
 from limespec.ingest import IngestError
 from limespec.models import Answer, Passage
-from limespec.retrieve import Embed, rerank_top
+from limespec.retrieve import Embed, Rerank, rerank_top
 from limespec.view import view
 
 
@@ -93,44 +96,72 @@ def seer(conn: store.Connection, on_stage: Callable[[str], None]) -> See:
     return see
 
 
-def query_embedder() -> Embed:
-    """`llm.embed` remembering what it has embedded: one answer searches the same
-    query in several channels (X44 F2). Made for each answer, so nothing is kept
-    between answers."""
-    known: dict[str, list[float]] = {}
+# SigLIP2's text vectors are computed here while the search's other requests run.
+PICTURE_WORK = ThreadPoolExecutor(max_workers=2)
+
+
+@dataclass(frozen=True)
+class Models:
+    """One answer's model calls, each remembering its results: one answer searches
+    the same query in several channels and several searches (X44 F2, X45 T1).
+    `picture` starts a query's SigLIP2 vector in a thread and returns its future, so
+    it is computed while the query is embedded (X45 T2). Made for each answer, so
+    nothing is kept between answers."""
+
+    embed: Embed
+    rerank: Rerank
+    picture: Callable[[str], "Future[list[float]]"]
+
+
+def answer_models() -> Models:
+    """Fresh `Models` for one answer, calling the configured model servers."""
+    vectors: dict[str, list[float]] = {}
+    scores: dict[tuple[str, str], float] = {}
+    started: dict[str, Future[list[float]]] = {}
 
     def embed(texts: list[str]) -> list[list[float]]:
-        missing = [text for text in dict.fromkeys(texts) if text not in known]
+        missing = [text for text in dict.fromkeys(texts) if text not in vectors]
         if missing:
-            known.update(zip(missing, llm.embed(missing), strict=True))
-        return [known[text] for text in texts]
+            vectors.update(zip(missing, llm.embed(missing), strict=True))
+        return [vectors[text] for text in texts]
 
-    return embed
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        missing = [d for d in dict.fromkeys(documents) if (query, d) not in scores]
+        if missing:
+            found = llm.rerank(query, missing)
+            scores.update({(query, d): v for d, v in zip(missing, found, strict=True)})
+        return [scores[(query, document)] for document in documents]
+
+    def picture(query: str) -> Future[list[float]]:
+        if query not in started:
+            started[query] = PICTURE_WORK.submit(siglip.text_vector, query)
+        return started[query]
+
+    return Models(embed, rerank, picture)
 
 
 def retriever(
-    conn: store.Connection, version_id: int, embed: Embed | None = None
+    conn: store.Connection, version_id: int, models: Models | None = None
 ) -> Retrieve:
     """One search of an index version's company channel with the configured model
     servers. It returns its whole reranked pool; `answer.gather` takes the top 8, or
     interleaves several searches up to 12 (S2b C2). The evaluation replay uses the
-    same function."""
+    same function. With `models`, the query's picture vector starts first."""
 
     def retrieve(query: str) -> list[Passage]:
+        embed: Embed = llm.embed if models is None else models.embed
+        rerank: Rerank = llm.rerank if models is None else models.rerank
+        if models is not None:
+            models.picture(query)
         return store.search(
-            conn,
-            version_id,
-            query,
-            embed or llm.embed,
-            llm.rerank,
-            config.RERANK_CANDIDATES,
+            conn, version_id, query, embed, rerank, config.RERANK_CANDIDATES
         )
 
     return retrieve
 
 
 def scoped_retriever(
-    conn: store.Connection, version_id: int, embed: Embed | None = None
+    conn: store.Connection, version_id: int, models: Models | None = None
 ) -> Retrieve:
     """A search of an index version inside the products a query names (E5 B4): its
     best `config.SCOPED_TOP` passages, or none when the query names no product.
@@ -141,29 +172,25 @@ def scoped_retriever(
         names = named(query)
         if not names:
             return []
+        embed: Embed = llm.embed if models is None else models.embed
+        rerank: Rerank = llm.rerank if models is None else models.rerank
         return store.search(
-            conn,
-            version_id,
-            query,
-            embed or llm.embed,
-            llm.rerank,
-            config.SCOPED_TOP,
-            names,
+            conn, version_id, query, embed, rerank, config.SCOPED_TOP, names
         )
 
     return retrieve
 
 
 def extras(
-    conn: store.Connection, version_id: int, embed: Embed | None = None
+    conn: store.Connection, version_id: int, models: Models | None = None
 ) -> Extra:
     """What each search adds after the company's top places (X44 F2): its best
     pictures, then general guidance placed on merit (`guidance_above`). A version
     with no pictures never loads the picture model."""
     has_pictures = bool(store.picture_passages(conn, version_id))
+    use = models or answer_models()
 
     def add(query: str, company: Sequence[Passage]) -> list[Passage]:
-        use = embed or llm.embed
         found = best_pictures(conn, version_id, query, use) if has_pictures else []
         return [*found, *guidance_above(conn, version_id, query, company, use)]
 
@@ -171,7 +198,7 @@ def extras(
 
 
 def best_pictures(
-    conn: store.Connection, version_id: int, query: str, embed: Embed
+    conn: store.Connection, version_id: int, query: str, models: Models
 ) -> list[Passage]:
     """A search's best pictures: its best `config.PICTURES_PER_SEARCH` by their own
     words, then its best by what they show (SigLIP2) not already among them. Each
@@ -180,8 +207,9 @@ def best_pictures(
     amendment 1)."""
     best = config.PICTURES_PER_SEARCH
     limit = config.CANDIDATES_PER_METHOD
-    words = store.fused(conn, version_id, query, embed, channel="picture")
-    shown = store.picture_ranking(conn, version_id, siglip.text_vector(query), limit)
+    vector = models.picture(query)
+    words = store.fused(conn, version_id, query, models.embed, channel="picture")
+    shown = store.picture_ranking(conn, version_id, vector.result(), limit)
     return store.load_passages(
         conn, list(dict.fromkeys([*words[:best], *shown[:best]]))
     )
@@ -192,18 +220,19 @@ def guidance_above(
     version_id: int,
     query: str,
     company: Sequence[Passage],
-    embed: Embed,
+    models: Models,
 ) -> list[Passage]:
     """General guidance the reranker puts above the company's last place: its best
     candidates are reranked with the company's top places, and at most
     `config.GUIDANCE_PER_SEARCH` of those ahead of every company passage's last are
-    kept. With no company passage, the best guidance stands alone."""
-    found = store.fused(conn, version_id, query, embed, channel="guidance")
+    kept. With no company passage, the best guidance stands alone. The company's
+    passages keep the scores their own search gave them (`Models.rerank`)."""
+    found = store.fused(conn, version_id, query, models.embed, channel="guidance")
     candidates = store.load_passages(conn, found[: config.TOP_K])
     if not candidates:
         return []
     pool = [*company, *candidates]
-    ranked = rerank_top(query, pool, llm.rerank, len(pool))
+    ranked = rerank_top(query, pool, models.rerank, len(pool))
     own = {passage.id for passage in company}
     places = [n for n, passage in enumerate(ranked) if passage.id in own]
     last = places[-1] if places else len(ranked)
@@ -213,10 +242,12 @@ def guidance_above(
 
 def searched(conn: store.Connection, version_id: int, query: str) -> list[Passage]:
     """One search as an answer makes it, in every channel: the company's top places,
-    then the pictures and guidance it adds (X44 F2). The evaluation sets score it."""
-    embed = query_embedder()
-    company = store.search(conn, version_id, query, embed, llm.rerank)
-    return [*company, *extras(conn, version_id, embed)(query, company)]
+    then the pictures and guidance it adds, within an answer's limits
+    (`answer.with_extras`: X44 F2, X45 amendment 1). The evaluation sets score it."""
+    models = answer_models()
+    company = retriever(conn, version_id, models)(query)[: config.TOP_K]
+    added = extras(conn, version_id, models)(query, company)
+    return list(with_extras(company, added))
 
 
 def ask_and_record(
@@ -227,14 +258,14 @@ def ask_and_record(
     with telemetry.span("answer"), connect() as conn:
         version_id = served_index(conn)
         started = time.perf_counter()
-        embed = query_embedder()
+        models = answer_models()
         retrieve, chat = with_stages(
-            retriever(conn, version_id, embed), llm.chat, on_stage
+            retriever(conn, version_id, models), llm.chat, on_stage
         )
         see = seer(conn, on_stage) if config.PICTURES else None
-        scoped = scoped_retriever(conn, version_id, embed)
+        scoped = scoped_retriever(conn, version_id, models)
         describe = config.PICTURES == "claims"
-        extra = extras(conn, version_id, embed)
+        extra = extras(conn, version_id, models)
         result = answer(question, retrieve, chat, scoped, see, describe, extra)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]

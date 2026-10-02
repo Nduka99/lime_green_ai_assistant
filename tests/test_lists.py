@@ -63,6 +63,24 @@ ASHLAR = """<html><body><main><h1>Ashlar Lime Mortar</h1>
 <p>For fine joints.</p></main></body></html>"""
 
 
+def test_compiled_descriptions_follow_each_product_when_asked(
+    fake_embed: Embed,
+) -> None:
+    site = "https://example.test/"
+    when = "2026-10-02T10:00:00+00:00"
+    pages = [(site + "ochre", CARDS_PAGE.encode(), when)]
+
+    compiled = prepare_index(
+        pages, fake_embed, web_form="page", compiled_descriptions=True
+    )
+
+    listed = [row[3] for row in compiled.passages if row[2] == lists.HEADING]
+    assert listed[0].endswith(
+        "\nAshlar Lime Mortar\nFor fine joints.\nDuro\nA base coat only cards show."
+    )
+    assert lists.grid_descriptions("<html></html>") == {}
+
+
 def test_a_card_s_description_is_read_only_where_no_other_page_holds_it(
     fake_embed: Embed,
 ) -> None:

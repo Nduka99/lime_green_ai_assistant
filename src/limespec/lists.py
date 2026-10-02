@@ -12,7 +12,7 @@ so to every reader of the passage, and a claim quoting it links to the page itse
 since a highlight of the compiled sentence would find nothing there.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from bs4 import BeautifulSoup
 
@@ -35,7 +35,30 @@ def grid_products(raw_html: str) -> list[str]:
     return names
 
 
-def list_passage(title: str, products: Sequence[str]) -> str:
+def grid_descriptions(raw_html: str) -> dict[str, str]:
+    """Each product card's description in a page's product grid, by product name."""
+    soup = BeautifulSoup(raw_html, "html.parser")
+    root = soup.find("main") or soup.body
+    grid = root.select_one(GRID) if root else None
+    found = {}
+    for card in grid.select("article") if grid else []:
+        title, description = card.select_one("h1, h2, h3"), card.select_one(".desc")
+        if title is not None and description is not None:
+            name = " ".join(title.get_text().split())
+            found[name] = " ".join(description.get_text().split())
+    return found
+
+
+def list_passage(
+    title: str,
+    products: Sequence[str],
+    descriptions: Mapping[str, str] | None = None,
+) -> str:
     """One passage stating a page's whole product list; its first line is the heading,
-    as in every web passage."""
-    return f"{HEADING}\nThe {title} page lists these products: {'; '.join(products)}."
+    as in every web passage. With `descriptions` (by name), each product follows with
+    its card's description, as the card shows them (X45 E4)."""
+    text = f"{HEADING}\nThe {title} page lists these products: {'; '.join(products)}."
+    for name in products:
+        if descriptions and descriptions.get(name):
+            text += f"\n{name}\n{descriptions[name]}"
+    return text

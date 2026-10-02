@@ -127,6 +127,37 @@ def test_a_slideshow_of_text_slides_is_content_and_one_of_link_cards_is_not() ->
     ]
 
 
+def test_a_swatch_card_keeps_its_own_lines_after_its_colour() -> None:
+    page = """<main><h1>Samples</h1><div class="clr-grid">
+    <div class="sample"><div class="clr"><img src="/a.png"><p class="name">Ochre</p>
+    </div><div class="txt"><p>Order this colour sample</p><p>Free</p><p> </p></div>
+    </div>
+    <div class="clr"><p class="name">York</p></div></div></main>"""
+
+    found = webpage.read_page(page)[1]
+
+    assert [e["text"] for e in found] == [
+        "Ochre", "Order this colour sample", "Free", "York",
+    ]  # fmt: skip
+
+
+def test_contact_information_is_the_contentinfo_landmark_outside_main() -> None:
+    page = """<body><main><h1>Duro</h1><footer><p>Inside main</p></footer></main>
+    <footer><h2>Contact us</h2><p>Call: 0800 538 5746</p><form>Sign up</form></footer>
+    <div role="contentinfo"><p>Opening hours Mon - Fri</p></div></body>"""
+
+    found = webpage.contact_information(page)
+
+    assert [e["text"] for e in found] == [
+        "Contact us", "Call: 0800 538 5746", "Opening hours Mon - Fri",
+    ]  # fmt: skip
+    assert found[1]["section"] == ["Contact us"]
+    assert webpage.contact_information("<body><p>No footer</p></body>") == []
+    assert (
+        webpage.contact_information("<body><footer>x</footer></body>")[0]["text"] == "x"
+    )
+
+
 def test_a_callout_is_content_only_on_the_page_it_is_about() -> None:
     callout = '<section class="find-supplier"><h2>Find a supplier</h2></section>'
     own = f"<main><h1>Find a supplier</h1>{callout}</main>"

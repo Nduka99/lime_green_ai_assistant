@@ -273,19 +273,36 @@ def test_an_answer_is_traced_stage_by_stage_without_its_text(
     }
 
 
-def test_one_answer_embeds_each_query_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_one_answer_embeds_and_scores_each_pair_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from limespec import siglip
+
     asked: list[list[str]] = []
 
     def embed(texts: list[str]) -> list[list[float]]:
         asked.append(texts)
         return [[float(len(text))] for text in texts]
 
-    monkeypatch.setattr(llm, "embed", embed)
-    remember = assistant.query_embedder()
+    scored: list[list[str]] = []
 
-    assert remember(["ab", "abc", "ab"]) == [[2.0], [3.0], [2.0]]
-    assert remember(["abc"]) == [[3.0]]
+    def rerank(query: str, documents: list[str]) -> list[float]:
+        scored.append(documents)
+        return [float(len(document)) for document in documents]
+
+    monkeypatch.setattr(llm, "embed", embed)
+    monkeypatch.setattr(llm, "rerank", rerank)
+    monkeypatch.setattr(siglip, "text_vector", lambda query: [float(len(query))])
+    models = assistant.answer_models()
+
+    assert models.embed(["ab", "abc", "ab"]) == [[2.0], [3.0], [2.0]]
+    assert models.embed(["abc"]) == [[3.0]]
     assert asked == [["ab", "abc"]]
+    assert models.rerank("q", ["a", "bb"]) == [1.0, 2.0]
+    assert models.rerank("q", ["bb", "ccc"]) == [2.0, 3.0]
+    assert scored == [["a", "bb"], ["ccc"]]  # "bb" was scored once
+    assert models.picture("Duro") is models.picture("Duro")  # started once
+    assert models.picture("Duro").result() == [4.0]
 
 
 def picture(number: int) -> Passage:
@@ -321,7 +338,7 @@ def test_a_search_adds_its_best_pictures_then_guidance_on_merit(
     monkeypatch.setattr(store, "load_passages", load)
     monkeypatch.setattr(siglip, "text_vector", lambda query: [1.0])
     monkeypatch.setattr(llm, "rerank", rerank)
-    add = assistant.extras(None, 21, llm.embed)  # type: ignore[arg-type]
+    add = assistant.extras(None, 21)  # type: ignore[arg-type]
 
     found = add("Show me Duro", [text_passage(1), text_passage(2)])
 
@@ -344,10 +361,17 @@ def test_a_version_without_pictures_or_guidance_adds_nothing(
 def test_a_search_as_an_answer_makes_it_is_every_channel_s_places(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    company = [text_passage(1)]
-    monkeypatch.setattr(store, "search", lambda conn, v, q, embed, rerank: company)
+    from limespec import siglip
+
+    company = [text_passage(n) for n in range(1, 11)]
+    monkeypatch.setattr(store, "search", lambda conn, v, q, embed, rerank, top: company)
+    monkeypatch.setattr(siglip, "text_vector", lambda query: [1.0])
+    pictures = [picture(n) for n in range(50, 56)]
     monkeypatch.setattr(
-        assistant, "extras", lambda conn, v, embed: lambda q, top: [picture(5)]
+        assistant, "extras", lambda conn, v, models: lambda q, top: pictures
     )
 
-    assert [p.id for p in assistant.searched(None, 21, "Duro")] == [1, 5]  # type: ignore[arg-type]
+    found = assistant.searched(None, 21, "Duro")  # type: ignore[arg-type]
+
+    # The company's top 8, then at most MAX_PICTURES pictures (X45 amendment 1).
+    assert [p.id for p in found] == [*range(1, 9), 50, 51, 52, 53]

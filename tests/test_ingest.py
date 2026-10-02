@@ -11,6 +11,7 @@ from limespec import config, store
 from limespec.ingest import (
     IngestError,
     cache_path,
+    contact_rows,
     corpus_hash,
     extract_sections,
     fetch_missing,
@@ -600,6 +601,32 @@ def test_a_passage_embedded_before_takes_its_stored_vector(fake_embed: Embed) ->
     assert len(asked) == len(first.passages) - 1  # only the new text is embedded
     assert second.vectors[0] == [0.5] and second.vectors[1:] == first.vectors[1:]
     assert second.manifest["vectors_reused"] == "1"
+
+
+def test_the_site_s_contact_information_is_read_once_from_the_home_page(
+    fake_embed: Embed, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limespec import config as settings
+
+    monkeypatch.setattr(settings, "SITE", SITE)
+    footer = b"<footer><h2>Contact us</h2><p>Call: 0800 538 5746</p></footer>"
+    home = (
+        b"<body><main><h1>Lime Green</h1><p>Welcome.</p></main>" + footer + b"</body>"
+    )
+    other = b"<body><main><h1>Duro</h1><p>A base coat.</p></main>" + footer + b"</body>"
+    when = "2026-01-01T00:00:00+00:00"
+    pages = [(SITE + "duro", other, when), (SITE, home, when)]
+
+    prepared = prepare_index(pages, fake_embed, web_form="page")
+
+    contact = [row for row in prepared.passages if "0800 538 5746" in row[3]]
+    assert contact == [
+        (SITE, "Lime Green", "Contact us", "Contact us\nCall: 0800 538 5746",
+         "Contact us", None),
+    ]  # fmt: skip
+    plain = b"<body><main><h1>Lime Green</h1><p>Hi.</p></main></body>"
+    assert contact_rows([(SITE, plain, when)]) == []
+    assert contact_rows([(SITE + "duro", other, when)]) == []
 
 
 def test_pictures_become_passages_beside_the_text(
