@@ -6,7 +6,7 @@ verified claims, their numbered citations, the fixed notice and, for a refusal,
 the closest pages. Claims removed by verification are never shown.
 """
 
-from typing import NotRequired, TypedDict
+from typing import TypedDict
 
 from limespec.answer import closest_pages
 from limespec.models import Answer
@@ -27,9 +27,6 @@ class Source(TypedDict):
 class ClaimView(TypedDict):
     text: str
     sources: list[int]  # numbers of the sources that support it
-    # A claim from a picture (X43 B5): the picture shown beside it; its source is
-    # where the picture appears, with no quote.
-    picture: NotRequired[str]
 
 
 class Page(TypedDict):
@@ -70,10 +67,7 @@ def view(answer: Answer) -> AnswerView:
                 )
             if numbers[key] not in refs:
                 refs.append(numbers[key])
-        shown = ClaimView(text=claim.text, sources=refs)
-        if claim.picture:
-            shown["picture"] = claim.picture
-        claims.append(shown)
+        claims.append(ClaimView(text=claim.text, sources=refs))
     closest = (
         [Page(title=p.title, url=p.url) for p in closest_pages(answer.passages)]
         if answer.status == "insufficient_evidence"

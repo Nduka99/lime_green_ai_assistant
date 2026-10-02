@@ -511,9 +511,3 @@ def searchable_texts(conn: Connection, version_id: int) -> list[str]:
         (version_id,),
     ).fetchall()
     return [str(row[0]) for row in rows]
-
-
-def picture(conn: Connection, image_id: str) -> bytes | None:
-    """A stored picture's PNG, or None."""
-    row = conn.execute("SELECT png FROM images WHERE id = %s", (image_id,)).fetchone()
-    return bytes(row[0]) if row else None

@@ -2,8 +2,9 @@
 
 Every route shows `view(answer)`, the same data the CLI prints. The page calls
 `assistant.ask`; the v1 API returns the same answer with the id of its audit
-record. An unreachable model or a missing index is an operational error: a clear
-message with HTTP 503, never an answer.
+record. An unreachable model or a missing index is an operational error: HTTP 503
+with one fixed message, never an answer. The cause is logged on the server and never
+sent to the client, since it can name internal addresses (OWASP API8:2023).
 """
 
 import contextvars
@@ -15,7 +16,6 @@ from pathlib import Path
 from typing import Annotated, TypedDict
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi import Path as PathParameter
 from fastapi.responses import HTMLResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.templating import Jinja2Templates
@@ -30,7 +30,7 @@ app = FastAPI(title="Lime Green Assistant")
 telemetry.instrument(app)
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-IMAGE_ID = "^[0-9a-f]{64}$"  # a stored picture's name: the SHA-256 of its PNG
+UNAVAILABLE = "The assistant cannot answer right now. Please try again later."
 
 
 class AnswerRequest(BaseModel):
@@ -64,7 +64,8 @@ def page(request: Request, q: str = "") -> HTMLResponse:
         try:
             answer = view(assistant.ask(question))
         except (IngestError, ModelServerError) as problem:
-            error = str(problem)
+            logger.warning("answer failed: %s", problem)
+            error = UNAVAILABLE
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -80,7 +81,7 @@ def create_answer(request: AnswerRequest) -> RecordedAnswer:
         result, answer_id = assistant.ask_and_record(request.question)
     except (IngestError, ModelServerError) as problem:
         logger.warning("answer failed: %s", problem)
-        raise HTTPException(status_code=503, detail=str(problem)) from problem
+        raise HTTPException(status_code=503, detail=UNAVAILABLE) from problem
     return {"id": answer_id, "answer": view(result)}
 
 
@@ -98,7 +99,7 @@ def stream_answer(request: AnswerRequest) -> Iterator[ServerSentEvent]:
             result, answer_id = assistant.ask_and_record(request.question, report)
         except (IngestError, ModelServerError) as problem:
             logger.warning("answer failed: %s", problem)
-            events.put(ServerSentEvent(event="error", data={"detail": str(problem)}))
+            events.put(ServerSentEvent(event="error", data={"detail": UNAVAILABLE}))
         except Exception as error:  # a bug: raised below, where the server logs it
             events.put(error)
         else:
@@ -117,19 +118,6 @@ def stream_answer(request: AnswerRequest) -> Iterator[ServerSentEvent]:
         yield event
         if event.event != "stage":
             return
-
-
-@app.get("/api/v1/images/{image_id}")
-def picture(image_id: Annotated[str, PathParameter(pattern=IMAGE_ID)]) -> Response:
-    """A picture a claim describes (X43 B5): the stored copy of a picture from the
-    company's public site or documents, by the SHA-256 of its PNG."""
-    try:
-        png = assistant.picture(image_id)
-    except IngestError as problem:
-        raise HTTPException(status_code=503, detail=str(problem)) from problem
-    if png is None:
-        raise HTTPException(status_code=404, detail="no such picture")
-    return Response(png, media_type="image/png")
 
 
 @app.get("/healthz")

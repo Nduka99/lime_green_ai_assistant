@@ -106,12 +106,9 @@ ITEM_TOP = 4
 ITEM_SEARCHES = True
 MAX_QUOTES_PER_CLAIM = 3
 CLOSEST_PAGES = 3  # pages listed with the insufficient-evidence text
-# "see": the generator sees the pictures among the passages it is given, at most
-# MAX_PICTURES of them; "claims": it may also state what one shows (X43 B5). Off
-# unless set: kept only if the image strata show it is reliable.
-PICTURES = os.environ.get("LIMESPEC_PICTURES", "")
-if PICTURES not in {"", "see", "claims"}:
-    raise ValueError('LIMESPEC_PICTURES must be "see", "claims" or unset')
+# Picture passages an answer is given, at most: the generator's request limit when
+# pictures were attached (X43 B4). The generator reads their words only; claims
+# from pictures were removed after E9 (ADR 0033).
 MAX_PICTURES = 4
 # Search channels (X44 F2): company content (the site's pages, Lime Green's
 # documents) fills each search's places; pictures and general guidance are ranked

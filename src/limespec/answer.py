@@ -40,8 +40,6 @@ Retrieve = Callable[[str], list[Passage]]
 # What a search adds after the company's passages: (query, its top places) → added.
 Extra = Callable[[str, Sequence[Passage]], list[Passage]]
 Chat = Callable[[str, str, dict[str, Any]], object]  # system, user, schema → JSON
-# A chat request that attaches the pictures of the passages given, in order (X43 B5).
-See = Callable[[str, str, dict[str, Any], Sequence[Passage]], object]
 
 INSUFFICIENT = (
     "I could not find enough support in the indexed Lime Green pages to answer "
@@ -170,38 +168,20 @@ reader as "you", do not say whether the reader's work meets regulations, and do 
 not diagnose problems with the reader's building.
 7. If the passages do not answer the question, return an empty claims list."""
 
-# Added to the answer prompt when pictures are attached (X43 B5), and, when claims
-# from pictures are allowed, the rule for them.
-SEE_PROMPT = """
-
-Pictures: each passage with a picture number comes with its picture, attached \
-after the question in that order."""
-DESCRIBE_PROMPT = """ A claim may state what one of these pictures plainly shows \
-instead of quoting: give that passage's source_id as "picture" and no evidence. \
-Such a claim states only what can be seen (a colour, a finish, a texture, a shape, \
-what a drawing shows). Any number or regulation in it must be written in that \
-passage's own text."""
-PICTURE_PROMPTS = {"": "", "see": SEE_PROMPT, "claims": SEE_PROMPT + DESCRIBE_PROMPT}
-
 # Which prompts produced an answer: recorded with every answer, so a change to either
 # prompt shows up in the audit records and can be tied to its evaluation run.
-PROMPTS = UNDERSTAND_PROMPT + ANSWER_PROMPT + PICTURE_PROMPTS[config.PICTURES]
+PROMPTS = UNDERSTAND_PROMPT + ANSWER_PROMPT
 PROMPT_SHA256 = hashlib.sha256(PROMPTS.encode()).hexdigest()
 
 
-def user_prompt(
-    parts: Sequence[str], sources: Mapping[str, Passage], attached: Sequence[str] = ()
-) -> str:
+def user_prompt(parts: Sequence[str], sources: Mapping[str, Passage]) -> str:
     """The passages, delimited as reference data, then the cleaned question and its
-    numbered parts. A passage whose picture is attached is numbered as the picture
-    is (`attached`: source ids, in the pictures' order)."""
+    numbered parts."""
     blocks = []
     for source_id, passage in sources.items():
-        number = attached.index(source_id) + 1 if source_id in attached else 0
-        picture = f' picture="{number}"' if number else ""
         blocks.append(
             f'<passage id="{source_id}" page="{passage.title}" '
-            f'section="{passage.heading}"{picture}>\n{passage.text}\n</passage>'
+            f'section="{passage.heading}">\n{passage.text}\n</passage>'
         )
     numbered = "\n".join(f"{number}. {part}" for number, part in enumerate(parts, 1))
     return (
@@ -211,15 +191,12 @@ def user_prompt(
     )
 
 
-def answer_schema(
-    source_ids: list[str], parts: int, attached: Sequence[str] = ()
-) -> dict[str, Any]:
+def answer_schema(source_ids: list[str], parts: int) -> dict[str, Any]:
     """The JSON the answer request must return, enforced by the server while decoding.
 
     Source ids are limited to the passages supplied, each claim names the part it
     answers, and its quotes come before its text, so the model writes the claim
-    from the quotes it chose. With pictures `attached`, a claim may instead name
-    one of their passages as its picture (X43 B5).
+    from the quotes it chose.
     """
     evidence = {
         "type": "object",
@@ -245,23 +222,10 @@ def answer_schema(
         "required": ["part", "evidence", "text"],
         "additionalProperties": False,
     }
-    item: dict[str, Any] = claim
-    if attached:
-        picture = {
-            "type": "object",
-            "properties": {
-                "part": {"type": "integer", "minimum": 1, "maximum": parts},
-                "picture": {"type": "string", "enum": list(attached)},
-                "text": {"type": "string", "minLength": 1},
-            },
-            "required": ["part", "picture", "text"],
-            "additionalProperties": False,
-        }
-        item = {"anyOf": [claim, picture]}
     return {
         "type": "object",
         "properties": {
-            "claims": {"type": "array", "items": item, "maxItems": config.MAX_CLAIMS}
+            "claims": {"type": "array", "items": claim, "maxItems": config.MAX_CLAIMS}
         },
         "required": ["claims"],
         "additionalProperties": False,
@@ -291,17 +255,6 @@ def is_claim(claim: object, source_ids: Sequence[str], parts: int) -> bool:
         and isinstance(claim["evidence"], list)
         and 1 <= len(claim["evidence"]) <= config.MAX_QUOTES_PER_CLAIM
         and all(is_evidence(item, source_ids) for item in claim["evidence"])
-    )
-
-
-def is_picture_claim(claim: object, attached: Sequence[str], parts: int) -> bool:
-    return (
-        isinstance(claim, dict)
-        and set(claim) == {"part", "picture", "text"}
-        and type(claim["part"]) is int
-        and 1 <= claim["part"] <= parts
-        and claim["picture"] in attached
-        and is_text(claim["text"])
     )
 
 
@@ -336,7 +289,7 @@ def read_understanding(output: object) -> tuple[bool, list[Part]]:
 
 
 def read_output(
-    output: object, source_ids: Sequence[str], parts: int, attached: Sequence[str] = ()
+    output: object, source_ids: Sequence[str], parts: int
 ) -> tuple[DraftClaim, ...]:
     """The answer request's reply, checked again against every rule of its schema.
 
@@ -348,20 +301,11 @@ def read_output(
         and set(output) == {"claims"}
         and isinstance(output["claims"], list)
         and len(output["claims"]) <= config.MAX_CLAIMS
-        and all(
-            is_claim(claim, source_ids, parts)
-            or is_picture_claim(claim, attached, parts)
-            for claim in output["claims"]
-        )
+        and all(is_claim(claim, source_ids, parts) for claim in output["claims"])
     ):
         raise ModelServerError("the model's reply does not match the answer schema")
     drafts = []
     for claim in output["claims"]:
-        if "picture" in claim:
-            drafts.append(
-                DraftClaim(claim["text"], (), claim["part"], claim["picture"])
-            )
-            continue
         evidence = (
             DraftEvidence(e["source_id"], e["quote"]) for e in claim["evidence"]
         )
@@ -509,14 +453,9 @@ def answer(
     retrieve: Retrieve,
     chat: Chat,
     scoped: Retrieve | None = None,
-    see: See | None = None,
-    describe: bool = False,
     extra: Extra | None = None,
 ) -> Answer:
-    """Answer one question from the indexed pages (`scoped`, `extra`: see `gather`).
-    Given `see`, the answer request carries the pictures of the first MAX_PICTURES
-    picture passages; with `describe` too, a claim may state what one of them shows
-    (X43 B5)."""
+    """Answer one question from the indexed pages (`scoped`, `extra`: see `gather`)."""
     exposed, understood = understand(question, chat)
     if exposed:
         # Fixed text only: no retrieval, and nothing the model writes is shown.
@@ -525,20 +464,10 @@ def answer(
     items = items_to_search(understood) if config.ITEM_SEARCHES else []
     passages = gather(parts, retrieve, scoped, extra, items)
     sources = {f"S{number}": passage for number, passage in enumerate(passages, 1)}
-    pictures = [source_id for source_id, p in sources.items() if p.image]
-    attached = pictures[: config.MAX_PICTURES] if see else []
-    described = attached if describe else []
-    system = ANSWER_PROMPT
-    if attached:
-        system += SEE_PROMPT + (DESCRIBE_PROMPT if describe else "")
-    user = user_prompt(parts, sources, attached)
-    schema = answer_schema(list(sources), len(parts), described)
-    if see and attached:
-        output = see(system, user, schema, [sources[s] for s in attached])
-    else:
-        output = chat(system, user, schema)
-    drafts = read_output(output, list(sources), len(parts), described)
-    claims, rejected = verify(drafts, sources, described)
+    user = user_prompt(parts, sources)
+    output = chat(ANSWER_PROMPT, user, answer_schema(list(sources), len(parts)))
+    drafts = read_output(output, list(sources), len(parts))
+    claims, rejected = verify(drafts, sources)
     if not claims:
         return Answer(
             question, "insufficient_evidence", INSUFFICIENT, (), passages, rejected

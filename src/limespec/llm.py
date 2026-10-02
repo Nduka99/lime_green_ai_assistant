@@ -161,16 +161,13 @@ def chat_payload(
     }
 
 
-def chat(
-    system: str, user: str, schema: dict[str, Any], images: Sequence[bytes] = ()
-) -> object:
-    """Send one chat request whose reply must follow `schema`, with any `images`
-    (PNG bytes); return its JSON."""
+def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+    """Send one chat request whose reply must follow `schema`; return its JSON."""
     with telemetry.chat_span():
         try:
             response = CLIENT.post(
                 config.CHAT_URL,
-                json=chat_payload(system, user, schema, images),
+                json=chat_payload(system, user, schema),
                 headers=auth(),
                 timeout=config.CHAT_TIMEOUT_SECONDS,
             )

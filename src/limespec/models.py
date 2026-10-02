@@ -68,9 +68,6 @@ class DraftClaim:
     text: str
     evidence: tuple[DraftEvidence, ...]
     part: int = 1  # the number of the question part it answers (C2)
-    # A picture claim states what an attached picture shows: the source id of the
-    # picture's passage, and no quotes (X43 B5). Empty for a quoted claim.
-    picture: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,9 +94,6 @@ class Claim:
     text: str
     evidence: tuple[Evidence, ...]
     part: int = 1  # the number of the question part it answers (C2)
-    # A picture claim's picture (the SHA-256 of its stored PNG); its one evidence is
-    # the picture's passage, with no quote (X43 B5). Empty for a quoted claim.
-    picture: str = ""
 
 
 @dataclass(frozen=True)

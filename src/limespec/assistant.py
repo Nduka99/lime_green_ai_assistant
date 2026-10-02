@@ -20,7 +20,6 @@ from limespec.answer import (
     Chat,
     Extra,
     Retrieve,
-    See,
     answer,
     with_extras,
 )
@@ -72,28 +71,6 @@ def with_stages(
         return reply
 
     return staged_retrieve, staged_chat
-
-
-def seer(conn: store.Connection, on_stage: Callable[[str], None]) -> See:
-    """The answer request with the passages' stored pictures attached (X43 B5),
-    reporting and tracing its stages as `with_stages` does."""
-
-    def see(
-        system: str, user: str, schema: dict[str, Any], passages: Sequence[Passage]
-    ) -> object:
-        images = []
-        for passage in passages:
-            png = store.picture(conn, passage.image)
-            if png is None:
-                raise IngestError(f"picture {passage.image} is not stored")
-            images.append(png)
-        on_stage("answering")
-        with telemetry.span("answering"):
-            reply = llm.chat(system, user, schema, images)
-        on_stage("checking")
-        return reply
-
-    return see
 
 
 # SigLIP2's text vectors are computed here while the search's other requests run.
@@ -262,11 +239,9 @@ def ask_and_record(
         retrieve, chat = with_stages(
             retriever(conn, version_id, models), llm.chat, on_stage
         )
-        see = seer(conn, on_stage) if config.PICTURES else None
         scoped = scoped_retriever(conn, version_id, models)
-        describe = config.PICTURES == "claims"
         extra = extras(conn, version_id, models)
-        result = answer(question, retrieve, chat, scoped, see, describe, extra)
+        result = answer(question, retrieve, chat, scoped, extra)
         seconds = time.perf_counter() - started
         removed = [{"text": r.text, "reason": r.reason} for r in result.rejected]
         answer_id = store.record_answer(
@@ -283,12 +258,6 @@ def ask_and_record(
         )
         telemetry.record_answer(result, answer_id, version_id, seconds)
     return result, answer_id
-
-
-def picture(image_id: str) -> bytes | None:
-    """A stored picture's PNG, or None when no picture has that id (X43 B5)."""
-    with connect() as conn:
-        return store.picture(conn, image_id)
 
 
 def connect() -> store.Connection:

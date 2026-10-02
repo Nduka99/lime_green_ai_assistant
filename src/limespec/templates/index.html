@@ -21,8 +21,6 @@
   ol.sources li { margin-bottom: .9rem; }
   blockquote { margin: .3rem 0; padding-left: .8rem; border-left: 2px solid var(--line); }
   a { color: var(--accent); }
-  figure { margin: .4rem 0; }
-  figure img { max-width: 16rem; max-height: 12rem; border: 1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -54,10 +52,6 @@ checks every quote before showing it.</p>
   {% for claim in answer.claims %}
   <li>{{ claim.text }}
     {% for number in claim.sources %} <a href="#source-{{ number }}">[{{ number }}]</a>{% endfor %}
-    {% if claim.picture %}
-    <figure><img src="/api/v1/images/{{ claim.picture }}" alt="The picture this claim describes">
-      <figcaption class="muted">From the image</figcaption></figure>
-    {% endif %}
   </li>
   {% endfor %}
 </ol>
@@ -81,8 +75,8 @@ checks every quote before showing it.</p>
   {% for source in answer.sources %}
   <li id="source-{{ source.number }}">
     <a href="{{ source.url }}">{{ source.title }}</a> › {{ source.heading }}
-    {% if source.quote %}<blockquote>“{{ source.quote }}”</blockquote>{% endif %}
-    <span class="muted"><a href="{{ source.link }}">{% if source.quote %}Open the page at this quote{% else %}Open where this picture is shown{% endif %}</a> ·
+    <blockquote>“{{ source.quote }}”</blockquote>
+    <span class="muted"><a href="{{ source.link }}">Open the page at this quote</a> ·
       captured {{ source.captured }}</span>
   </li>
   {% endfor %}

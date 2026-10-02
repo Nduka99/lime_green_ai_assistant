@@ -9,7 +9,7 @@ from markupsafe import escape
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from limespec import assistant, cli, config, llm, telemetry
-from limespec.app import app
+from limespec.app import UNAVAILABLE, app
 from limespec.ingest import IngestError
 from limespec.llm import ModelServerError
 from limespec.models import Answer
@@ -87,8 +87,8 @@ def test_a_refusal_lists_the_closest_pages(
     assert '<a href="https://example.test/support/guide">Rendering Guide</a>' in page
 
 
-def test_an_operational_error_is_a_clear_503_not_an_answer(
-    monkeypatch: pytest.MonkeyPatch,
+def test_an_operational_error_is_a_fixed_503_not_an_answer(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def unavailable(question: str) -> Answer:
         raise ModelServerError("generation server at http://127.0.0.1:8080 failed")
@@ -97,10 +97,14 @@ def test_an_operational_error_is_a_clear_503_not_an_answer(
 
     page = client.get("/", params={"q": "anything"})
 
-    assert page.status_code == 503 and "generation server" in page.text
+    assert page.status_code == 503 and UNAVAILABLE in page.text
+    assert "127.0.0.1" not in page.text  # the cause stays in the server's log
+    assert caplog.messages == [
+        "answer failed: generation server at http://127.0.0.1:8080 failed"
+    ]
 
 
-def test_an_unreachable_database_is_a_clear_503(
+def test_an_unreachable_database_is_a_fixed_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(config, "DATABASE_URL", "postgresql://x:y@127.0.0.1:9/z")
@@ -109,7 +113,7 @@ def test_an_unreachable_database_is_a_clear_503(
     response = client.post("/api/v1/answers", json={"question": "anything"})
 
     assert response.status_code == 503
-    assert "cannot reach the Postgres index" in response.json()["detail"]
+    assert response.json() == {"detail": UNAVAILABLE}
 
 
 def test_the_question_is_escaped_in_the_page(
@@ -204,7 +208,7 @@ def test_v1_refuses_an_empty_or_overlong_question(
     assert asked == [longest]
 
 
-def test_v1_operational_error_is_a_clear_503_and_a_warning(
+def test_v1_operational_error_is_a_fixed_503_and_a_warning(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def unavailable(question: str) -> tuple[Answer, int]:
@@ -215,7 +219,7 @@ def test_v1_operational_error_is_a_clear_503_and_a_warning(
     response = client.post("/api/v1/answers", json={"question": "anything"})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "no live Postgres index"}
+    assert response.json() == {"detail": UNAVAILABLE}
     assert caplog.messages == ["answer failed: no live Postgres index"]
 
 
@@ -250,7 +254,7 @@ def test_the_stream_ends_with_an_error_event_not_an_answer(
 
     assert sse_events(response.text) == [
         ("stage", {"stage": "understanding"}),
-        ("error", {"detail": "generation server at http://127.0.0.1:8080 failed"}),
+        ("error", {"detail": UNAVAILABLE}),
     ]
     assert caplog.messages == [
         "answer failed: generation server at http://127.0.0.1:8080 failed"

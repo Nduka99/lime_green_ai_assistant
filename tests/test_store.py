@@ -494,6 +494,4 @@ def test_a_picture_is_stored_once_and_named_by_its_passage(
     assert store.keyword_ranking(pg, version, "pointed", 10) == []  # company only
     assert store.picture_ranking(pg, version, siglip, 5) == ranked
     assert store.picture_passages(pg, version) == {picture: found[0].id}
-    assert store.picture(pg, picture) == b"png"
-    assert store.picture(pg, "b" * 64) is None
     assert pg.execute("SELECT count(*) FROM images").fetchone() == (1,)
