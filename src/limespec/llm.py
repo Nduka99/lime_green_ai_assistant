@@ -1,7 +1,9 @@
 """A small client for the llama.cpp servers' OpenAI-compatible API."""
 
+import base64
 import json
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -13,6 +15,13 @@ class ModelServerError(RuntimeError):
     """A model server could not be reached or returned an unusable response."""
 
 
+# One client for every call to the model servers. Building a client loads the
+# certificate bundle, about 0.4 s per call on the laptop even for plain HTTP (X40), and
+# a shared client reuses connections. httpx clients are thread-safe (encode/httpx
+# discussion #1633); the streamed answer runs in a thread.
+CLIENT = httpx.Client()
+
+
 def auth() -> dict[str, str]:
     """The model servers' key as a bearer token, when one is configured."""
     if not config.MODEL_API_KEY:
@@ -20,12 +29,14 @@ def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {config.MODEL_API_KEY}"}
 
 
-def embed(texts: list[str]) -> list[list[float]]:
-    """Return one embedding vector per text, in the same order."""
+def embed(texts: list[str], url: str = "") -> list[list[float]]:
+    """Return one embedding vector per text, in the same order. `url` names another
+    embedding server (an experiment's); by default the configured one."""
+    url = url or config.EMBEDDING_URL
     with telemetry.embeddings_span():
         try:
-            response = httpx.post(
-                config.EMBEDDING_URL,
+            response = CLIENT.post(
+                url,
                 json={"input": texts, "model": config.EMBEDDING_MODEL},
                 headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
@@ -33,7 +44,7 @@ def embed(texts: list[str]) -> list[list[float]]:
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise ModelServerError(
-                f"embedding server at {config.EMBEDDING_URL} failed: {error}"
+                f"embedding server at {url} failed: {error}"
             ) from error
     try:
         items = response.json()["data"]
@@ -60,19 +71,33 @@ def embed(texts: list[str]) -> list[list[float]]:
             "the embedding server returned a malformed response"
         ) from error
     # Match by index, never response order, so vectors stay attached to their text.
-    return [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
+    ordered = [vector for _, vector in sorted(zip(indices, vectors, strict=True))]
+    return [fitted(vector) for vector in ordered]
 
 
-def rerank(query: str, documents: list[str]) -> list[float]:
+def fitted(vector: list[float]) -> list[float]:
+    """The vector at the index's size: a longer one cut to its first
+    `EMBEDDING_DIMENSIONS` values and scaled back to unit length."""
+    if len(vector) <= config.EMBEDDING_DIMENSIONS:
+        return vector
+    cut = vector[: config.EMBEDDING_DIMENSIONS]
+    length = math.sqrt(sum(value * value for value in cut)) or 1.0
+    return [value / length for value in cut]
+
+
+def rerank(query: str, documents: list[str], url: str = "") -> list[float]:
     """Return one relevance score per document, in the same order (higher is better).
 
     The reranker is a cross-encoder: it reads the question together with each
     document, so it can judge relevance that shares no words with the question.
+    `url` names another reranking server (an experiment's); by default the configured
+    one.
     """
+    url = url or config.RERANK_URL
     with telemetry.rerank_span():
         try:
-            response = httpx.post(
-                config.RERANK_URL,
+            response = CLIENT.post(
+                url,
                 json={"query": query, "documents": documents},
                 headers=auth(),
                 timeout=config.SEARCH_TIMEOUT_SECONDS,
@@ -80,7 +105,7 @@ def rerank(query: str, documents: list[str]) -> list[float]:
             response.raise_for_status()
         except httpx.HTTPError as error:
             raise ModelServerError(
-                f"reranking server at {config.RERANK_URL} failed: {error}"
+                f"reranking server at {url} failed: {error}"
             ) from error
     try:
         results = response.json()["results"]
@@ -101,16 +126,25 @@ def rerank(query: str, documents: list[str]) -> list[float]:
     return [score for _, score in sorted(zip(indices, scores, strict=True))]
 
 
-def chat(system: str, user: str, schema: dict[str, Any]) -> object:
-    """Send one chat request whose reply must follow `schema`; return the parsed JSON.
+def chat_payload(
+    system: str, user: str, schema: dict[str, Any], images: Sequence[bytes] = ()
+) -> dict[str, Any]:
+    """The body of one chat request whose reply must follow `schema`, with any
+    `images` (PNG bytes) after the user's text, in order (X43 B4).
 
     The request names no model: the server answers with whichever GGUF it has
     loaded, which lets the same client work with any model.
     """
-    payload = {
+    content: str | list[dict[str, Any]] = user
+    if images:
+        content = [{"type": "text", "text": user}]
+        for png in images:
+            address = "data:image/png;base64," + base64.b64encode(png).decode()
+            content.append({"type": "image_url", "image_url": {"url": address}})
+    return {
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": user},
+            {"role": "user", "content": content},
         ],
         "temperature": config.TEMPERATURE,
         "seed": config.SEED,
@@ -120,14 +154,20 @@ def chat(system: str, user: str, schema: dict[str, Any]) -> object:
             "json_schema": {"name": "answer", "schema": schema},
         },
         # Reasoning is discarded, so it is switched off at the chat template:
-        # a reasoning budget alone does not stop Qwen3.x from thinking.
-        "chat_template_kwargs": {"enable_thinking": False},
+        # a reasoning budget alone does not stop Qwen3.x from thinking. gpt-oss
+        # cannot switch it off and reads only `reasoning_effort` (default medium);
+        # no other template reads that name.
+        "chat_template_kwargs": {"enable_thinking": False, "reasoning_effort": "low"},
     }
+
+
+def chat(system: str, user: str, schema: dict[str, Any]) -> object:
+    """Send one chat request whose reply must follow `schema`; return its JSON."""
     with telemetry.chat_span():
         try:
-            response = httpx.post(
+            response = CLIENT.post(
                 config.CHAT_URL,
-                json=payload,
+                json=chat_payload(system, user, schema),
                 headers=auth(),
                 timeout=config.CHAT_TIMEOUT_SECONDS,
             )
@@ -161,7 +201,7 @@ def healthy(url: str) -> bool:
     """Whether the llama.cpp server behind `url` has loaded its model: its /health
     answers 200 when ready and 503 while the model is still loading."""
     try:
-        response = httpx.get(
+        response = CLIENT.get(
             str(httpx.URL(url).join("/health")),
             timeout=config.HEALTH_TIMEOUT_SECONDS,
         )

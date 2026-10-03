@@ -63,6 +63,49 @@ def median(values: Sequence[float]) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2
 
 
+def wilson(found: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """The Wilson score interval (95% by default) for `found` out of `total`; with no
+    data, the whole range. Sound at small counts and at 0, unlike the normal
+    approximation (Brown, Cai and DasGupta 2001)."""
+    if total == 0:
+        return (0.0, 1.0)
+    p = found / total
+    denominator = 1 + z * z / total
+    centre = (p + z * z / (2 * total)) / denominator
+    half = (
+        z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denominator
+    )
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def cohen_kappa(first: Sequence[str], second: Sequence[str]) -> float:
+    """Agreement between two graders' labels on the same items beyond what their label
+    frequencies give by chance (Cohen 1960); 1.0 when both give one label throughout."""
+    total = len(first)
+    observed = sum(a == b for a, b in zip(first, second, strict=True)) / total
+    labels = set(first) | set(second)
+    expected = sum(
+        (list(first).count(label) / total) * (list(second).count(label) / total)
+        for label in labels
+    )
+    if expected == 1.0:
+        return 1.0
+    return (observed - expected) / (1 - expected)
+
+
+def auc(pairs: Sequence[tuple[float, bool]]) -> float:
+    """ROC AUC of (score, positive) pairs: the chance a positive scores above a
+    negative, ties counting half (Mann-Whitney)."""
+    positives = [score for score, positive in pairs if positive]
+    negatives = [score for score, positive in pairs if not positive]
+    if not positives or not negatives:
+        return 0.0
+    wins = sum(
+        1.0 if p > n else 0.5 if p == n else 0.0 for p in positives for n in negatives
+    )
+    return wins / (len(positives) * len(negatives))
+
+
 def bootstrap_interval(
     values: Sequence[float], rounds: int = 10000, seed: int = 42
 ) -> tuple[float, float]:
@@ -106,4 +149,31 @@ def paired_bootstrap(
         "low": resampled[int(0.025 * rounds)],
         "high": resampled[int(0.975 * rounds)],
         "p_value": (extreme + 1) / (rounds + 1),
+    }
+
+
+def paired_cluster_bootstrap(
+    better: Sequence[float],
+    baseline: Sequence[float],
+    clusters: Sequence[str],
+    rounds: int = 10000,
+    seed: int = 42,
+) -> dict[str, float]:
+    """Difference of means on the same questions and its 95% interval, resampling
+    whole clusters: questions from one table (or one turn) are not independent."""
+    groups: dict[str, list[float]] = {}
+    for new, old, cluster in zip(better, baseline, clusters, strict=True):
+        groups.setdefault(cluster, []).append(new - old)
+    names = sorted(groups)
+    observed = mean([difference for name in names for difference in groups[name]])
+    rng = random.Random(seed)
+    means = []
+    for _ in range(rounds):
+        drawn = [groups[names[rng.randrange(len(names))]] for _ in names]
+        means.append(mean([difference for group in drawn for difference in group]))
+    means.sort()
+    return {
+        "difference": observed,
+        "low": means[int(0.025 * rounds)],
+        "high": means[int(0.975 * rounds)],
     }

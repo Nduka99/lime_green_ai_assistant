@@ -12,7 +12,8 @@ text is recorded; that stays in the audit table, linked by the record id.
 One answer's trace:
 
     POST /api/v1/answers          the request (FastAPI instrumentation)
-      answer                      index version, status, record id, claims kept/removed
+      answer                      index version, status, record id, claims kept/removed,
+                                  conversation id and turn
         understanding
           chat                    the emergency check: model, tokens, finish reason
         searching
@@ -289,3 +290,11 @@ def record_answer(
     metrics.answer_duration.record(seconds, status)
     metrics.claims.add(len(result.claims), {"limespec.claim.outcome": "kept"})
     metrics.claims.add(len(result.rejected), {"limespec.claim.outcome": "removed"})
+
+
+def record_turn(conversation_id: str, turn: int) -> None:
+    """An answer's place in a conversation, on the current span. The conversation id
+    is the GenAI convention's (`gen_ai.conversation.id`); no message text is sent."""
+    get_current_span().set_attributes(
+        {"gen_ai.conversation.id": conversation_id, "limespec.turn": turn}
+    )

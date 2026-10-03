@@ -1,4 +1,5 @@
 import hashlib
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -10,15 +11,23 @@ from limespec import config, store
 from limespec.ingest import (
     IngestError,
     cache_path,
+    contact_rows,
     corpus_hash,
     extract_sections,
     fetch_missing,
     fetch_page,
+    file_links,
+    file_title,
     ingest,
     page_passages,
+    page_url,
+    pdf_titles,
     prepare_index,
     read_sources,
+    site_html,
+    site_pages,
     split_section,
+    stored_pictures,
 )
 from limespec.retrieve import Embed
 
@@ -45,7 +54,7 @@ def test_product_page_keeps_content_and_drops_site_furniture() -> None:
                 "Finish it with one coat of Velour or Satin Top.",
             ],
         ),
-        ("Product uses", ["Stone walls", "Not for timber"]),
+        ("Product uses", ["Stone walls\nNot for timber"]),  # a list: one paragraph
     ]
 
 
@@ -73,9 +82,50 @@ def test_do_and_dont_lists_stay_with_their_heading() -> None:
 
     assert title == "Rendering Checklist"
     assert sections == [
-        ("Application", ["Do:", "Work with a wet edge.", "Don't:", "Apply below 5°C."]),
+        # Each list is one paragraph with the lead-in that ends in a colon.
+        ("Application", ["Do:\nWork with a wet edge.", "Don't:\nApply below 5°C."]),
         ("Inspection", ["Look at the wall square on."]),  # a heading-styled <p>
     ]
+
+
+def test_a_bold_line_is_an_ordinary_paragraph_of_its_section() -> None:
+    # Bold lines as sections cut sections into short passages that crowded out
+    # other evidence (E5, A); a bold lead-in still keeps its list.
+    html = (
+        "<body><h2>Checklist</h2><p><strong>Do:</strong></p>"
+        "<ul><li>Protect from rain.</li><li>Mist the wall.</li></ul>"
+        "<p><strong>First Coat</strong></p><p>Apply diagonally.</p></body>"
+    )
+
+    assert extract_sections(html)[1] == [
+        (
+            "Checklist",
+            [
+                "Do:\nProtect from rain.\nMist the wall.",
+                "First Coat",
+                "Apply diagonally.",
+            ],
+        )
+    ]
+
+
+def test_two_lists_in_a_row_stay_two_paragraphs() -> None:
+    html = (
+        "<body><h2>Uses</h2><p>Good for:</p><ul><li>walls</li><li>floors</li></ul>"
+        "<ul><li>not roofs</li></ul><p>See the guide.</p></body>"
+    )
+
+    assert extract_sections(html)[1] == [
+        ("Uses", ["Good for:\nwalls\nfloors", "not roofs", "See the guide."])
+    ]
+
+
+def test_items_written_as_paragraphs_are_still_one_list() -> None:
+    html = (
+        "<body><h2>Types</h2><ul><li><p>Putty</p></li><li><p>NHL</p></li></ul></body>"
+    )
+
+    assert extract_sections(html)[1] == [("Types", ["Putty\nNHL"])]
 
 
 def test_a_page_without_a_body_is_an_error() -> None:
@@ -93,6 +143,21 @@ def test_long_section_splits_at_paragraph_boundaries(
     a, b, c = "a" * 15, "b" * 15, "c" * 15
 
     assert split_section("H", [a, b, c]) == [f"H\n{a}\n{b}", f"H\n{c}"]
+
+
+def test_a_list_stays_whole_when_it_fits_and_splits_between_items_when_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "MAX_PASSAGE_CHARS", 40)
+    intro, short = "i" * 20, "Use:\n" + "a" * 10 + "\n" + "b" * 10
+    long_list = "c" * 20 + "\n" + "d" * 20 + "\n" + "e" * 10
+
+    # The list does not fit beside the intro, so it moves whole to a new passage.
+    assert split_section("H", [intro, short]) == [f"H\n{intro}", f"H\n{short}"]
+    assert split_section("H", [long_list]) == [
+        "H\n" + "c" * 20,
+        "H\n" + "d" * 20 + "\n" + "e" * 10,
+    ]
 
 
 def test_long_paragraph_splits_at_sentences_within_the_maximum(
@@ -139,17 +204,33 @@ def test_an_index_keeps_passages_per_page_with_exact_byte_hashes(
     prepared = prepare_index([*fixture_pages, copy], fake_embed)
 
     assert prepared.manifest["pages"] == "5"
-    assert prepared.manifest["passages"] == "10"
-    assert len(prepared.vectors) == 10
+    # 10 page passages and the category page's compiled product list (X12).
+    assert prepared.manifest["passages"] == "11"
+    assert len(prepared.vectors) == 11
     hashes = {url: sha256 for url, _, _, sha256 in prepared.pages}
     assert hashes[copy_url] == hashlib.sha256(windows_bytes).hexdigest()
-    assert sum(url == copy_url for url, _, _, _ in prepared.passages) == 2
+    assert sum(row[0] == copy_url for row in prepared.passages) == 2
     faq_text = next(
-        text for _, _, heading, text in prepared.passages if heading.startswith("How")
+        text
+        for _, _, heading, text, *_ in prepared.passages
+        if heading.startswith("How")
     )
     assert (
         faq_text == "How long does Mortex take to set?\nAbout two days in mild weather."
     )
+
+
+def test_a_price_sentence_is_left_out_of_the_index(fake_embed: Embed) -> None:
+    html = (
+        "<body><h2>Samples</h2><p>A pack costs £5.00. It holds three colours.</p>"
+        "<h2>Fee</h2><p>The fee is £10.</p></body>"
+    )
+    page = (SITE + "samples", html.encode(), "2026-01-01T00:00:00+00:00")
+
+    prepared = prepare_index([page], fake_embed)
+
+    # The second section keeps nothing but its heading, so it is not indexed.
+    assert [row[3] for row in prepared.passages] == ["Samples\nIt holds three colours."]
 
 
 def test_corpus_hash_depends_on_urls_and_hashes_not_order() -> None:
@@ -175,8 +256,31 @@ def test_passage_hash_ignores_byte_changes_that_do_not_change_the_text(
     assert first["passages_sha256"] == second["passages_sha256"]
 
 
+def test_a_pdf_joins_the_index_with_its_page_and_context(
+    fixture_pages: list[tuple[str, bytes, str]], fake_embed: Embed
+) -> None:
+    url = "https://example.test/duro.pdf"
+    page_row = (url, "Duro Render — Data Sheet", "2026-09-12T10:00:00+00:00", "sha")
+    row = (url, page_row[1], "Performance", "Fire | Class A1", "Performance", 2)
+    read: list[str] = []
+
+    def embed(texts: list[str]) -> list[list[float]]:
+        read.extend(texts)
+        return fake_embed(texts)
+
+    prepared = prepare_index(fixture_pages[:1], embed, [(page_row, [row])])
+    moved = prepare_index(fixture_pages[:1], embed, [(page_row, [(*row[:5], 3)])])
+
+    assert prepared.pages[-1] == page_row and prepared.passages[-1] == row
+    assert read[-1] == "Duro Render — Data Sheet\nPerformance\nFire | Class A1"
+    assert prepared.manifest["passages_sha256"] != moved.manifest["passages_sha256"]
+
+
 def test_a_failed_rebuild_leaves_the_live_index_intact(
-    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+    cached_faq: Path,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first, _ = ingest(pg, fake_embed_1024)
     pg.commit()
@@ -184,8 +288,11 @@ def test_a_failed_rebuild_leaves_the_live_index_intact(
     def one_vector_short(texts: list[str]) -> list[list[float]]:
         return fake_embed_1024(texts)[:-1]
 
-    with pytest.raises(ValueError):
-        ingest(pg, one_vector_short)
+    # Another embedder reuses no stored vector, so every passage is embedded again.
+    with monkeypatch.context() as patched:
+        patched.setattr(config, "EMBEDDING_MODEL", "another-embedder")
+        with pytest.raises(ValueError):
+            ingest(pg, one_vector_short)
     pg.rollback()
 
     assert store.live_version(pg) == (first, config.EMBEDDING_MODEL)
@@ -215,6 +322,17 @@ def test_read_sources_ignores_comments_and_blank_lines(tmp_path: Path) -> None:
     )
 
     assert read_sources(sources) == ["https://example.test/a", "https://example.test/b"]
+
+
+def test_a_version_can_be_built_without_going_live(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+) -> None:
+    live, _ = ingest(pg, fake_embed_1024)
+    candidate, _ = ingest(pg, fake_embed_1024, cached_faq, live=False)
+
+    assert candidate != live
+    assert store.live_version(pg) == (live, config.EMBEDDING_MODEL)
+    assert store.index_version(pg, candidate) == (candidate, config.EMBEDDING_MODEL)
 
 
 def test_ingest_makes_a_new_version_live_from_the_cache(
@@ -369,3 +487,187 @@ def test_cached_pages_are_never_downloaded_again(
     fetch_missing([SITE + "a"], transport(requests, site(httpx.Response(200))))
 
     assert requests == [] and sleeps == []
+
+
+PRODUCT = """<html><body><main><h1>Duro Render</h1><p>A lime render.</p>
+<a href="/Documents/duro%20tds.pdf">Data Sheet</a> <a href="/Documents/sds.pdf"> </a>
+<img src="/images/bag.png" alt="Duro bag"><a href="/Documents/DoP.docx">DoP</a>
+<img data-src="/images/york.webp" alt="York"><img alt="none"></main></body></html>"""
+QUESTIONS = """<html><body><main><h1>Questions</h1><p>Ask us.</p>
+<a href="/Documents/duro%20tds.pdf">TDS</a> <a href="/Documents/faq.pdf">FAQ sheet</a>
+</main></body></html>"""
+
+
+def test_pdfs_are_titled_by_the_pages_that_link_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(config, "PAGE_CACHE", tmp_path)
+    (tmp_path / "support__faq.html").write_text(QUESTIONS, encoding="utf-8")
+    (tmp_path / "products__duro.html").write_text(PRODUCT, encoding="utf-8")
+    site = config.SITE
+
+    titles = pdf_titles(site_html())
+
+    assert site_pages() == [site + "products/duro", site + "support/faq"]
+    assert page_url("home") == site
+    assert file_links(PRODUCT) == [
+        ("document", site + "Documents/duro%20tds.pdf", "Data Sheet"),
+        ("document", site + "Documents/sds.pdf", ""),
+        ("document", site + "Documents/DoP.docx", "DoP"),
+        ("image", site + "images/bag.png", "Duro bag"),
+        ("image", site + "images/york.webp", "York"),
+    ]
+    assert titles == {
+        site + "Documents/duro%20tds.pdf": "Duro Render — Data Sheet",  # product first
+        site + "Documents/sds.pdf": "Duro Render",  # the link has no text
+        site + "Documents/DoP.docx": "Duro Render — DoP",
+        site + "Documents/faq.pdf": "Questions — FAQ sheet",
+    }
+    assert file_title(site + "Documents/duro%20tds.pdf") == "duro tds"
+
+
+def test_every_cached_page_and_a_pdf_can_be_indexed(
+    cached_faq: Path, pg: store.Connection, fake_embed_1024: Embed
+) -> None:
+    url = "https://example.test/duro.pdf"
+    title = "Duro — Data Sheet"
+    row: store.PassageRow = (
+        url,
+        title,
+        "Performance",
+        "Fire | Class A1",
+        "Performance",
+        2,
+    )
+    document = ((url, title, "2026-09-12T10:00:00+00:00", "sha-pdf"), [row])
+
+    version, manifest = ingest(
+        pg, fake_embed_1024, live=False, all_pages=True, documents=[document]
+    )
+
+    assert manifest["pages"] == "2"
+    assert pg.execute(
+        "SELECT page, context FROM passages WHERE index_version_id = %s "
+        "AND page IS NOT NULL",
+        (version,),
+    ).fetchall() == [(2, "Performance")]
+
+    _, without = ingest(
+        pg,
+        fake_embed_1024,
+        live=False,
+        all_pages=True,
+        documents=[document],
+        leave_out=["DURO.pdf"],
+    )
+    assert without["pages"] == "1"  # the document is left out, the page kept
+
+
+def test_web_forms_read_pages_by_the_new_reader(fake_embed: Embed) -> None:
+    html = (
+        "<body><main><h1>Duro</h1><p>Intro.</p><h2>Uses</h2><p>Walls.</p>"
+        "<ul><li>Brick</li><li>Stone</li></ul>"
+        "<img alt='A wall pointed with lime mortar'><h3>Indoors</h3><p>Plaster.</p>"
+        "</main></body>"
+    )
+    stamp = "2026-01-01T00:00:00+00:00"
+    page = (SITE + "duro", html.encode(), stamp)
+    copy = (SITE + "duro-copy", html.encode(), stamp)
+    empty = (SITE + "empty", b"<body><main><h1>Empty</h1></main></body>", stamp)
+
+    sections = prepare_index([page], fake_embed, web_form="sections").passages
+    packed = prepare_index([page, copy, empty], fake_embed, web_form="page").passages
+    once = prepare_index([page, copy], fake_embed, web_form="page-once").passages
+
+    assert [(row[2], row[3]) for row in sections] == [
+        ("Duro", "Duro\nIntro."),
+        ("Uses", "Uses\nWalls.\nBrick\nStone"),
+        ("Indoors", "Indoors\nPlaster."),
+    ]
+    # One page-sized passage per page, the alt text left out; the copy's text is the
+    # same, so "page-once" keeps it once.
+    whole = "Intro.\nUses\nWalls.\nBrick\nStone\nIndoors\nPlaster."
+    assert [(row[0], row[2], row[3]) for row in packed] == [
+        (SITE + "duro", "Duro", whole),
+        (SITE + "duro-copy", "Duro", whole),
+    ]
+    assert [row[0] for row in once] == [SITE + "duro"]
+
+
+def test_a_passage_embedded_before_takes_its_stored_vector(fake_embed: Embed) -> None:
+    html = "<body><h2>Uses</h2><p>Walls.</p><h2>Mixing</h2><p>Add water.</p></body>"
+    page = (SITE + "duro", html.encode(), "2026-01-01T00:00:00+00:00")
+    asked: list[str] = []
+
+    def counting(texts: list[str]) -> list[list[float]]:
+        asked.extend(texts)
+        return fake_embed(texts)
+
+    first = prepare_index([page], counting)
+    known = {(row[1], row[4], row[3]): [0.5] for row in first.passages[:1]}
+    asked.clear()
+    second = prepare_index([page], counting, known=known)
+
+    assert len(asked) == len(first.passages) - 1  # only the new text is embedded
+    assert second.vectors[0] == [0.5] and second.vectors[1:] == first.vectors[1:]
+    assert second.manifest["vectors_reused"] == "1"
+
+
+def test_the_site_s_contact_information_is_read_once_from_the_home_page(
+    fake_embed: Embed, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limespec import config as settings
+
+    monkeypatch.setattr(settings, "SITE", SITE)
+    footer = b"<footer><h2>Contact us</h2><p>Call: 0800 538 5746</p></footer>"
+    home = (
+        b"<body><main><h1>Lime Green</h1><p>Welcome.</p></main>" + footer + b"</body>"
+    )
+    other = b"<body><main><h1>Duro</h1><p>A base coat.</p></main>" + footer + b"</body>"
+    when = "2026-01-01T00:00:00+00:00"
+    pages = [(SITE + "duro", other, when), (SITE, home, when)]
+
+    prepared = prepare_index(pages, fake_embed, web_form="page")
+
+    contact = [row for row in prepared.passages if "0800 538 5746" in row[3]]
+    assert contact == [
+        (SITE, "Lime Green", "Contact us", "Contact us\nCall: 0800 538 5746",
+         "Contact us", None),
+    ]  # fmt: skip
+    plain = b"<body><main><h1>Lime Green</h1><p>Hi.</p></main></body>"
+    assert contact_rows([(SITE, plain, when)]) == []
+    assert contact_rows([(SITE + "duro", other, when)]) == []
+
+
+def test_pictures_become_passages_beside_the_text(
+    fake_embed: Embed, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from limespec import config as settings
+
+    html = b"<body><main><h1>Duro</h1><p>A base coat.</p></main></body>"
+    page = (SITE + "duro", html, "2026-01-01T00:00:00+00:00")
+    place: dict[str, object] = {
+        "id": "p1",
+        "source": SITE + "duro",
+        "page": None,
+        "alt": "A wall pointed with Duro lime mortar",
+        "section": [],
+    }
+    (tmp_path / "places.json").write_text(json.dumps([place]), encoding="utf-8")
+    (tmp_path / "p1.json").write_text(json.dumps({"id": "p1", "ocr": "Fixing 40mm"}))
+    (tmp_path / "p1.png").write_bytes(b"png")
+    monkeypatch.setattr(settings, "IMAGES", tmp_path)
+
+    prepared = prepare_index(
+        [page], fake_embed, web_form="page", pictures=stored_pictures()
+    )
+
+    assert prepared.images == ["", "p1"]
+    assert (
+        prepared.passages[1][3] == "A wall pointed with Duro lime mortar\nFixing 40mm"
+    )
+    assert prepared.passages[1][4] == "Image"
+    (tmp_path / "p1.json").write_text(json.dumps({"id": "p1"}))  # not read yet
+    assert stored_pictures()[1] == {}
+    assert prepared.pictures == {"p1": b"png"}
+    assert prepared.manifest["pictures"] == "1"

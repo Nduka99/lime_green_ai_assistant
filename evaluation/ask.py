@@ -26,17 +26,26 @@ def write_records(path: Path, records: list[dict[str, Any]]) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def ask_one(client: httpx.Client, endpoint: str, row: dict[str, str]) -> dict[str, Any]:
+def ask_one(
+    client: httpx.Client,
+    endpoint: str,
+    row: dict[str, str],
+    conversation_id: str | None = None,
+) -> dict[str, Any]:
     """One answer record: the reader's view, or the error the endpoint returned.
 
-    The v1 API (`/api/v1/answers`) takes the question as JSON and returns the view
-    with the id of its audit record; the submitted v5 answers `GET /api/answer?q=`.
+    The v1 API (`/api/v1/answers`) takes the question as JSON, with the conversation
+    it continues if any, and returns the view with the id of its audit record and
+    its place in a conversation; the submitted v5 answers `GET /api/answer?q=`.
     """
     started = time.perf_counter()
     v1 = endpoint.startswith("/api/v1/")
     try:
         if v1:
-            response = client.post(endpoint, json={"question": row["question"]})
+            body: dict[str, str] = {"question": row["question"]}
+            if conversation_id is not None:
+                body["conversation_id"] = conversation_id
+            response = client.post(endpoint, json=body)
         else:
             response = client.get(endpoint, params={"q": row["question"]})
     except httpx.HTTPError as error:
@@ -44,9 +53,11 @@ def ask_one(client: httpx.Client, endpoint: str, row: dict[str, str]) -> dict[st
     else:
         record = {"http": response.status_code}
         if response.status_code == 200 and v1:
-            body = response.json()
-            record["view"] = body["answer"]
-            record["answer_id"] = body["id"]
+            answered = response.json()
+            record["view"] = answered["answer"]
+            record["answer_id"] = answered["id"]
+            record["conversation_id"] = answered["conversation_id"]
+            record["turn"] = answered["turn"]
         elif response.status_code == 200:
             record["view"] = response.json()
         else:
@@ -60,16 +71,24 @@ def ask_all(
     client: httpx.Client,
     endpoint: str,
     out: Path,
+    converse: bool = False,
 ) -> list[dict[str, Any]]:
-    """Answer every question not yet saved, saving after each one."""
+    """Answer every question not yet saved, saving after each one. With `converse`
+    (a conversation set, in turn order), each question continues its conversation
+    (`row["conversation"]`) under the id the API gave that conversation's first
+    turn, so the server builds each history from what it showed."""
     records = read_records(out)
-    done = {record["id"] for record in records}
+    saved = {record["id"]: record for record in records}
+    started: dict[str, str] = {}
     for row in questions:
-        if row["id"] in done:
-            continue
-        records.append(ask_one(client, endpoint, row))
-        write_records(out, records)
-        latest = records[-1]
-        status = latest.get("view", {}).get("status", f"error {latest['http']}")
-        print(row["id"], status, latest["seconds"], "s", flush=True)
+        record = saved.get(row["id"])
+        if record is None:
+            asked = started.get(row["conversation"]) if converse else None
+            record = ask_one(client, endpoint, row, asked)
+            records.append(record)
+            write_records(out, records)
+            status = record.get("view", {}).get("status", f"error {record['http']}")
+            print(row["id"], status, record["seconds"], "s", flush=True)
+        if converse and "conversation_id" in record:
+            started[row["conversation"]] = record["conversation_id"]
     return records

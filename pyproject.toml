@@ -13,11 +13,15 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
-    "jinja2>=3.1.6",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
     "opentelemetry-instrumentation-fastapi>=0.66b0",
     "opentelemetry-sdk>=1.45.0",
     "psycopg[binary]>=3.3.6",
+    "pypdf>=6.19.0",
+    # SigLIP2's text tower ranks pictures by what they show at search time (X44 F2);
+    # torch comes from the CPU index below.
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
     "uvicorn>=0.52.4",
 ]
 
@@ -34,6 +38,11 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 
+# pylatexenc, psutil and pypdfium2 ship no type information.
+[[tool.mypy.overrides]]
+module = ["pylatexenc.*", "psutil.*", "pypdfium2.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
@@ -45,7 +54,45 @@ dev = [
     # FastAPI's test client (Starlette) needs httpx2; the application uses httpx.
     "httpx2>=2.12.0",
     "mypy>=2.3.1",
+    "psutil>=7.2.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.7",
 ]
+# Ingestion only (the API never installs it): Docling reads PDFs on the CPU.
+ingest = [
+    "docling-slim[convert-core,feat-chunking,format-docx,format-pdf-docling,models-local]>=2.130.0",
+    # The table model needs OpenCV; the headless build has no GUI libraries.
+    "docling-ibm-models[opencv-python-headless]>=4.0.3",
+    # 7.22.1 reads a glyph a subset font puts on code 32 instead of a word break
+    # (docling-parse #359); earlier versions drop letters in five Lime Green PDFs.
+    "docling-parse>=7.22.1",
+    # Page images come from pdfium: docling-parse's Windows renderer corrupts memory
+    # when its threads exit (docling-parse #357). The range is Docling's own.
+    "pypdfium2>=5.13.0,<6.0.0",
+    # Listed directly so the CPU index below applies (uv sources cover direct
+    # dependencies only).
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "pylatexenc>=2.11",
+]
+# Offline benchmarks of small CPU models (E5): a support checker and a sentence
+# pruner. The pruner's own model code imports nltk; its sentences are given split.
+bench = [
+    "nltk>=3.10.3",
+    "playwright>=1.63.0",
+    "torch>=2.14.0",
+    "trafilatura>=2.2.0",
+    "transformers>=5.17.0",
+]
+
+# CPU builds of PyTorch on every platform: ingestion runs on the CPU, and the default
+# Linux wheels would add gigabytes of CUDA libraries.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -176,7 +176,9 @@ def endpoint(request: httpx.Request) -> httpx.Response:
     if "photo rushed" in question:
         raise httpx.ConnectError("refused")
     if request.method == "POST":
-        return httpx.Response(200, json={"id": 7, "answer": answer_view(question)})
+        answered = {"id": 7, "conversation_id": "c-new", "turn": 1,
+                    "understood_as": [], "answer": answer_view(question)}  # fmt: skip
+        return httpx.Response(200, json=answered)
     return httpx.Response(200, json=answer_view(question))
 
 
@@ -221,6 +223,41 @@ def test_ask_posts_to_the_v1_api_and_keeps_the_audit_record_id(
     assert by_question["joints rushed?"]["http"] == 503
 
 
+def test_ask_continues_each_conversation_under_its_id_and_resumes(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "runs" / "answers-conversations.json"
+    questions = [
+        {"id": "c01t1", "conversation": "c01", "question": "What is Mortex?"},
+        {"id": "c01t2", "conversation": "c01", "question": "And its colours?"},
+        {"id": "c02t1", "conversation": "c02", "question": "What is Solo?"},
+        {"id": "c02t2", "conversation": "c02", "question": "How thick?"},
+    ]
+    sent: list[dict[str, str]] = []
+
+    def conversations(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        sent.append(body)
+        continued = body.get("conversation_id")
+        answered: dict[str, object] = {
+                    "id": len(sent), "conversation_id": continued or f"id{len(sent)}",
+                    "turn": 2 if continued else 1, "understood_as": [],
+                    "answer": answer_view(body["question"])}  # fmt: skip
+        return httpx.Response(200, json=answered)
+
+    client = httpx.Client(
+        base_url="http://app.test", transport=httpx.MockTransport(conversations)
+    )
+
+    ask.ask_all(questions[:3], client, "/api/v1/answers", out, converse=True)
+    records = ask.ask_all(questions, client, "/api/v1/answers", out, converse=True)
+
+    assert [body.get("conversation_id") for body in sent] == [None, "id1", None, "id3"]
+    assert [(r["conversation_id"], r["turn"]) for r in records] == [
+        ("id1", 1), ("id1", 2), ("id3", 1), ("id3", 2),
+    ]  # fmt: skip
+
+
 def run(capsys: pytest.CaptureFixture[str], root: Path, *argv: str) -> tuple[int, str]:
     code = cli.main(
         ["--root", str(root), "--registry", str(root / "sets.json"),
@@ -256,7 +293,7 @@ def test_command_line_registers_verifies_and_scores(
     code, text = run(capsys, tmp_path, "retrieval", "demo", "--json")
     assert json.loads(text)["parts"] == 1
     code, text = run(capsys, tmp_path, "grades", "demo", "sitting")
-    assert code == 0 and "| All | 4 | 4 / 0 / 0 |" in text
+    assert code == 0 and "| All | 4 | 4 / 0 / 0 / 0 |" in text
     code, text = run(capsys, tmp_path, "grades", "demo", "sitting", "--json")
     assert json.loads(text)["status_matched"] == {"v5": 4}
 

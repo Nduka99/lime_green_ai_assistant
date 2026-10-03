@@ -1,10 +1,11 @@
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
 
-from limespec import assistant, cli, config, llm, store, telemetry
+from limespec import acquire, assistant, cli, config, documents, llm, store, telemetry
 from limespec.app import app
 from limespec.ingest import ingest
 from limespec.models import Answer
@@ -30,6 +31,31 @@ def test_search_prints_ranked_passages_with_their_pages(
     output = capsys.readouterr().out
     assert output.startswith("1. Questions › Do you deliver on Saturdays?")
     assert "https://example.test/support/faq" in output
+
+
+def test_keyword_index_gives_an_older_version_its_channel_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    ingest(pg, fake_embed_1024)
+    row = pg.execute("SELECT max(id) FROM index_versions").fetchone()
+    assert row is not None
+    version = row[0]
+    pg.execute(f'DROP INDEX "{store.bm25_index(version, "company")}"')
+    pg.commit()
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+
+    assert cli.main(["keyword-index", "--version", str(version)]) == 0
+    assert "a BM25 index per channel" in capsys.readouterr().out
+    found = pg.execute(
+        "SELECT count(*) FROM pg_indexes WHERE indexname = %s",
+        (store.bm25_index(version, "company"),),
+    ).fetchone()
+    assert found == (1,)
 
 
 def test_search_without_a_live_index_explains_what_to_run(
@@ -159,6 +185,57 @@ def test_ingest_writes_a_live_version_and_prints_its_manifest(
     assert "passages: 2" in output
 
 
+def test_ingest_can_build_from_another_list_without_going_live(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    candidates = cached_faq.parent / "candidates.txt"
+    candidates.write_text(cached_faq.read_text())
+
+    assert cli.main(["ingest", "--sources", str(candidates), "--no-live"]) == 0
+    assert store.live_version(pg) is None
+    [(version,)] = pg.execute("SELECT id FROM index_versions").fetchall()
+    assert capsys.readouterr().out.startswith(
+        f"index version: {version} (not live; serve it with "
+        f"LIMESPEC_INDEX_VERSION={version})\n"
+    )
+
+
+def test_ingest_can_add_every_page_and_the_pdf_readings(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cached_faq: Path,
+    postgres_url: str,
+    pg: store.Connection,
+    fake_embed_1024: Embed,
+) -> None:
+    monkeypatch.setattr(config, "DATABASE_URL", postgres_url)
+    monkeypatch.setattr(llm, "embed", fake_embed_1024)
+    url = "https://example.test/duro.pdf"
+    document = (
+        (url, "Duro", "2026-09-12T10:00:00+00:00", "sha-pdf"),
+        [(url, "Duro", "Mixing", "Mix well.", "Mixing", 1)],
+    )
+    asked = []
+
+    def index_documents(form: str, titles: dict[str, str]) -> Any:
+        asked.append(form)
+        return [document]
+
+    monkeypatch.setattr(documents, "index_documents", index_documents)
+
+    arguments = ["ingest", "--no-live", "--all-pages", "--pdf-form", "rows"]
+    assert cli.main(arguments) == 0
+    assert asked == ["rows"]
+    assert "passages: 3" in capsys.readouterr().out
+
+
 def test_an_unreachable_postgres_is_reported_not_raised(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -178,7 +255,7 @@ def test_model_server_errors_are_reported_not_raised(
     postgres_url: str,
 ) -> None:
     def failing_ingest(
-        conn: store.Connection, embed: Embed
+        conn: store.Connection, embed: Embed, *rest: Any
     ) -> tuple[int, dict[str, str]]:
         raise llm.ModelServerError("embedding server at http://127.0.0.1:8081 failed")
 
@@ -187,3 +264,65 @@ def test_model_server_errors_are_reported_not_raised(
 
     assert cli.main(["ingest"]) == 1
     assert "embedding server" in capsys.readouterr().err
+
+
+def test_read_images_stores_pictures_then_reads_each_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from PIL import Image
+
+    from limespec import images
+
+    out = tmp_path / "images"
+    out.mkdir()
+    Image.new("RGB", (8, 8), "white").save(out / "p1.png")
+    Image.new("RGB", (8, 8), "white").save(out / "p2.png")
+    (out / "p2.json").write_text('{"ocr": ""}')  # read before
+    readings = tmp_path / "elements"
+    readings.mkdir()
+    (readings / "r.json").write_text(json.dumps({"urls": ["u"], "elements": []}))
+    (readings / "report.json").write_text("{}")
+    records = [
+        {"url": "https://x.test/a.png", "sha256": "a", "content_type": "image/png"},
+        {"url": "https://x.test/d.docx", "sha256": "d", "content_type": documents.WORD},
+    ]
+    seen: dict[str, Any] = {}
+
+    def collect(pages: Any, found: Any, stored: Any, folder: Path) -> list[Any]:
+        seen["stored"] = stored
+        return [{"id": "p1"}, {"id": "p2"}, {"id": "p1"}]
+
+    monkeypatch.setattr(config, "IMAGES", out)
+    monkeypatch.setattr(documents, "OUT", readings)
+    monkeypatch.setattr(acquire, "read_manifest", lambda: records)
+    monkeypatch.setattr(cli, "site_html", lambda: [("https://x.test/", "<html/>")])
+    monkeypatch.setattr(images, "collect", collect)
+    monkeypatch.setattr(images, "read_text", lambda image, url: "Duro 25kg")
+    monkeypatch.setattr(llm, "healthy", lambda url: url == "http://vlm")
+
+    assert cli.main(["read-images"]) == 1
+    assert cli.main(["read-images", "--vlm", "http://none"]) == 1
+    assert cli.main(["read-images", "--vlm", "http://vlm"]) == 0
+
+    assert json.loads((out / "p1.json").read_text())["ocr"] == "Duro 25kg"
+    assert seen["stored"]["https://x.test/d.docx"] == readings / "rendered" / "d.pdf"
+    assert "3 places of 2 pictures; 1 read and 0 vectors" in capsys.readouterr().out
+    assert json.loads((out / "p1.json").read_text()) == {"ocr": "Duro 25kg", "id": "p1"}
+
+    from limespec import siglip
+
+    (out / "siglip.json").write_text(json.dumps({"p2": [0.0, 1.0]}))
+    monkeypatch.setattr(
+        siglip,
+        "siglip_model",
+        lambda folder: (lambda paths: [[1.0, 0.0]] * len(paths), None),
+    )
+    assert cli.main(["read-images", "--vectors"]) == 0
+    assert json.loads((out / "siglip.json").read_text()) == {
+        "p1": [1.0, 0.0],
+        "p2": [0.0, 1.0],
+    }
+    assert "and 1 vectors made now" in capsys.readouterr().out
+    (out / "siglip.json").unlink()
+    assert cli.main(["read-images", "--vectors"]) == 0
+    assert "and 2 vectors made now" in capsys.readouterr().out

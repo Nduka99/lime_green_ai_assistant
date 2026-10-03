@@ -1,5 +1,49 @@
 {
  "sets": {
+  "claims-dev": {
+   "description": "E5 stage C: the 856 distinct claims shown in the S2b gate run's answers on heldout-v4, frozen90, heldout-v2 and heldout-v3, each with its question, search parts, quotes and claim-audit label (755 correct, 82 off the question, 8 incorrect, 11 forbidden); development material, not held out",
+   "files": {
+    "items.json": "03b28cfb59eccf868610c6447f28ba05ed999f97313219230abd1ceda78fa570",
+    "slots.json": "e8d432f01ecb72b023d9f3a5ab430916164403a0337791f7f46556612ca5cdd4"
+   }
+  },
+  "conv-v1": {
+   "description": "Conversation key: 20 conversations, 86 turns (62 of 66 later turns lean on earlier turns), one subject each, ten multi-turn situations; written by an independent model blind to the assistant from brief.md and the source text in plan.json, corrected once by feedback-1.md; every quote checked verbatim by check-conversations",
+   "files": {
+    "brief.md": "339886dab7c034929a73a5f6f2ca9c692d6e170078c11e6ee43cebbdb88a3fa7",
+    "feedback-1.md": "43f4f087f8d1a76fd2df715bcd3fdbc40424f55592fea2f77ee1c645755a7738",
+    "key.json": "d9581dad92d2c87bbbc550dc8951e487719a20d71386fc611bfc7d18074f2f3b",
+    "plan.json": "cc72b38e89cf019d851007e532144566e01b50a33594ffa6259276b18074f703",
+    "questions.json": "35c17f58212781c6b25007872805633cd987d337931d707f573d2393c4a849c8",
+    "sitting-x36/order.json": "20250b820e215562617d845e9fbeca9534187bf6be54f56cd544e01d14d016a0",
+    "sitting-x36/pairs.json": "174780996a8304d8cf46da82d54003e5b38a32819ff741235c0c2709fc58b1fb",
+    "sitting-x36/verdicts.json": "d33262fab615e82826ff9e3e28da76be2358046acda7a7a4dbed42d5988bfd1c"
+   }
+  },
+  "docx-pages": {
+   "description": "X43 A3a: the 8 Word declarations rendered by LibreOffice 26.2.6, 12 pages judged from their images: lines, label-value pairs, ruled grids, images, headings",
+   "files": {
+    "pages/31e56d05-p1.png": "dbe17bca0b032f957b4370a67e9aa1d0434aa29328e08ea514c6279d449e15e3",
+    "pages/31e56d05-p2.png": "e941089402d17971b237f7fcc4d03c2d67e6a16fe5202e02c79543fc9916d248",
+    "pages/42ba71fd-p1.png": "820a96cf0adfdf40ae2c2a647f2e2dd322949b608204dea83f492783ff16d708",
+    "pages/42ba71fd-p2.png": "498e2cdd6d3706bf715c8a28816f42d272fda4f18733dbcd5263338464cfabd5",
+    "pages/57e9a03c-p1.png": "2fa15ec8eedf564921627c395e72b054290e0e226e765873f66505f2854dad1d",
+    "pages/61d89882-p1.png": "ae244c0dec9d2bdeed3e4676e1346aa1da43add430e00119b1ee058224f44ac3",
+    "pages/61d89882-p2.png": "e62b4a5d73b66572c270f0026ae735778a50dbc6e94feec6392def7bf1e89db1",
+    "pages/8b19695e-p1.png": "01732a767db25dd7da88dda4f5d8315086e5ad2da63368f6b2f8bc8d845f44cd",
+    "pages/8f481a99-p1.png": "72f4f518d379b27ad4cf8c977b6877a6063eb53ee6ac98b501e9edf33c5b8e10",
+    "pages/8f481a99-p2.png": "1ff3a1eb4ae8581bab986fb2f73457b785088f3aab1b22b95a12b64ca8eeec97",
+    "pages/a0c468bc-p1.png": "e1348a829804ee31c6ac88a9ce3cea9e17ff88be3b9540b2c73e7aa311bb914e",
+    "pages/c5a1712c-p1.png": "bc863723b607f9f82bb14473520f9fae2f0dd8254cdb83199f43250a58d787bf",
+    "truth.json": "dcf21c19f2b2191215ce2276bc0f8dd43ac888d35bd585faed1bb72fe1d1b79c"
+   }
+  },
+  "exposure-v1": {
+   "description": "78 invented exposure questions and 76 look-alikes, from the dev repo's evaluation/exposure_questions.json (written 13 Sept, 20+20 held out before the separate emergency request existed); gates any change to the first model request",
+   "files": {
+    "questions.json": "f747a92ac8e245afd2e64c0070ead56d1053c977b7bd18e1703e65c53155224c"
+   }
+  },
   "frozen90": {
    "description": "Frozen evaluation (Phase 4): 18 cases x 5 wordings = 90 questions, key locked before the engine was built; retrieval runs of the four methods on the submitted index",
    "files": {
@@ -9,7 +53,31 @@
     "retrieval/run-fused.txt": "4c7ce5ed474e74c533f090a4ffa64d370cbb1f452ba277997c7cb4263d0d0e1b",
     "retrieval/run-keyword.txt": "8d3e097b948fd5b1cbd18150a9fc960d7f9c6c469d6afd5952f3d8712830c838",
     "retrieval/run-reranked.txt": "235ce2cc0b4c71711b39056820f36c365e232b32b0402bec89da2661cf56a11f",
-    "retrieval/run-vector.txt": "bbac1b90b8807f6a5ff9145473f23ec8d161c35c91890cb2fd76f4c6b6ae78dd"
+    "retrieval/run-vector.txt": "bbac1b90b8807f6a5ff9145473f23ec8d161c35c91890cb2fd76f4c6b6ae78dd",
+    "sitting-s2-knowledge/answers-s2-candidate.json": "7daf5b5bf4fd86d0be66a5688b5cad2dfcf474ea726ef410b235f1ba8abceb33",
+    "sitting-s2-knowledge/answers-s2-live.json": "d58923ea23e7192139c9b24e75f623ef7a3fc1fa2f824314b4d8db40b5d920f3",
+    "sitting-s2-knowledge/order.json": "51f62d0dae82c8a3428c1f62763b9f457e1a102d2afa25948fbfeeae269fdf55",
+    "sitting-s2-knowledge/pairs.json": "5b9303bc93130c429d1cc7ea0420c71c91c0a1625a8f9647a439d5cbcdcd61fc",
+    "sitting-s2-knowledge/verdicts.json": "3e421c9496f807fe5eee4074d67d05cdb52934d9991be1a3c72be9e6e3d9a776",
+    "sitting-s2b-gate/answers-gate-candidate.json": "d6a7d169ce16b9e2b9391106261655ec2a14d8e8e5299bc821796e1d38b01978",
+    "sitting-s2b-gate/answers-gate-live.json": "4480ea71b72e257415e0c40558e14741667e84f9b1b3fc61c13d736bf47f9776",
+    "sitting-s2b-gate/attribution.json": "179f8dccd20fd1a38d06753dbb398b4f66d02c42e30bfdb3b33ddfe9fe9bcf7e",
+    "sitting-s2b-gate/claims.json": "9618d0902798ad071e0a287ea9c81d8a4d249d12eb86ee95111430d9c6cbebe0",
+    "sitting-s2b-gate/order.json": "a7a8cfe4f13e40897b58a4c26f2517d2f5c2abbd206e8a285aa9d431027b105a",
+    "sitting-s2b-gate/pairs.json": "84425369ec091ff2685fa546cc14b0ef668d82830e1cc476407a6442de504f5a",
+    "sitting-s2b-gate/reach-gate-candidate.json": "658613c8d13e5adf185b57f9e4a18971798c87a07df6d8b30a0009e7bfb30d64",
+    "sitting-s2b-gate/reach-gate-live.json": "bd3e8b5a5f8b49e8787a049490496d7d1b81e1e27da2c6369bdd11b0466deadd",
+    "sitting-s2b-gate/verdicts.json": "9faac040f5db9d9b1bdbc3ff3e4674dce3767d6f3c3b7bf87b7100af66561928",
+    "sitting-s2b-noise/answers-s2-candidate.json": "7daf5b5bf4fd86d0be66a5688b5cad2dfcf474ea726ef410b235f1ba8abceb33",
+    "sitting-s2b-noise/answers-s2b-unfixed.json": "8f4b0e2d962af5cad80d6ab610d9de5d92014cb3af3384572cf7fc8109768901",
+    "sitting-s2b-noise/order.json": "49dff000fba7dc9886c37a3d9b3de6723e0a7f1c4a9b597906a9ff04c34ed1bb",
+    "sitting-s2b-noise/pairs.json": "e3271c1d6e39f22d2c58b6a07ce38f6cc8b7280989d456192df1d09831e0393f",
+    "sitting-s2b-noise/verdicts.json": "5f09d29abd09c2e8a3e15092082df99809959b7781ccf5b2d8477ac4fb73968f",
+    "sitting-x16-price/answers-x16-off.json": "bdb95a9e8dd3adb79a46ac4317443e0966f1ea1deb2c266158fa37c0b01a1037",
+    "sitting-x16-price/answers-x16-on.json": "ae42e2f25a0a019a56c89f35063904b0c5d6564c189ee4d20a24f1ae9b312c90",
+    "sitting-x16-price/order.json": "9801a12c0c54e098df384e03d3489ca710e3e1373c52e6c2e315ca17c5dc533c",
+    "sitting-x16-price/pairs.json": "7e8f989062f085db8f79d35f6840db0fd91c3649e68b365664e01944477090f8",
+    "sitting-x16-price/verdicts.json": "f46e36d8e1396b38b6d612be9659512967b6f3bf10fe3740b2088468ae3394e4"
    }
   },
   "heldout-v2": {
@@ -22,9 +90,33 @@
     "retrieval/run-keyword.txt": "50e2321cb70c12949e24925bf38ff9e8a7d59ee10d65cb54c8e66e04a5c8e22c",
     "retrieval/run-reranked.txt": "4f5390f4bfe9e6757b66ffec9877f1554acff635fa6f2f21b2629ba6c3d7ccca",
     "retrieval/run-vector.txt": "b293cab9e56bbe2540fbaeb753a000a66e307708d1308b84e183792a82525cb4",
+    "sitting-s2-knowledge/answers-s2-candidate.json": "5b9eca52db9a0ea8a49af93e6db1ef45b495d93494a96365b2aa02bf68e0a55f",
+    "sitting-s2-knowledge/answers-s2-live.json": "97e3d1b8e03de76a123fd00f68674fa51425ca2756727c7f5b79a4e31d7615a7",
+    "sitting-s2-knowledge/order.json": "85704db3c8216f981e64c384453c72013566a1199da01b6238e9655bdc1ef0eb",
+    "sitting-s2-knowledge/pairs.json": "2d321e618f565eb706230e5b8454cb74757c481dc29bb8e6e5e361ce1e23a261",
+    "sitting-s2-knowledge/verdicts.json": "714e704f1512f3c30b15cc845e4ca68fbf3aa1448634d2ea87e83290b276a8e8",
+    "sitting-s2b-gate/answers-gate-candidate.json": "48b8e9545e2d14957496ebf0848fff83106618f82eb1cc294ff0fd2044158a7d",
+    "sitting-s2b-gate/answers-gate-live.json": "64c6048b6dd7c23a42371d6a02428d692fb8c1043ba435241a6ac967fc2af3c4",
+    "sitting-s2b-gate/attribution.json": "fb5b522b98653da1ab5927d078d6e3f2231ad482a11bd0a4ee5816aca949595d",
+    "sitting-s2b-gate/claims.json": "efbea2ea06d0df21e643fe308f893d41bbb842a144c0418179c280a60ebadde5",
+    "sitting-s2b-gate/order.json": "500cce4d40934981227023c4d4b7735590b873f2f2146772c54a2c502ecc478e",
+    "sitting-s2b-gate/pairs.json": "c1fe410298e3663914e803851b5a5e87e81a686e4532dcd1ee23078c08048eb7",
+    "sitting-s2b-gate/reach-gate-candidate.json": "606de4c64b1af6c4b3c6a5276ac9740b57b19964b24af85e01ea1cf32fa893be",
+    "sitting-s2b-gate/reach-gate-live.json": "2e8a80e46bbec75ecc72770a1707bc58c38a95b73c67a03fc33e4224406ae08e",
+    "sitting-s2b-gate/verdicts.json": "8133259e97de2e5ea825c51ccaa6df8adab7e0b748bd3fe804774a636dcd80c5",
+    "sitting-s2b-noise/answers-s2-candidate.json": "5b9eca52db9a0ea8a49af93e6db1ef45b495d93494a96365b2aa02bf68e0a55f",
+    "sitting-s2b-noise/answers-s2b-unfixed.json": "aa27943de48d244f8011b9dcc0a55c0a6062ef96ef6624b4df5f0c803cd124eb",
+    "sitting-s2b-noise/order.json": "83722e09051af7852f6805430234f803aaf50d05947cca6b0d30dc3fa21d77de",
+    "sitting-s2b-noise/pairs.json": "91f9230c4873e2799f61a851e85c08c7087eb85c697abce97f77a015858943d2",
+    "sitting-s2b-noise/verdicts.json": "0de7ae881a04e2e8882a9a77834f1a55473108a629c6af650a7b5e9004eb65c3",
     "sitting-topk/answers-cand_k20.json": "e002c432c3951ed8cb7d396463a0bb2ea9ceb19a32eb54a826c4b3baaed78f4a",
     "sitting-topk/answers-cand_k8.json": "136ac3fc8370e46c3c3fe5c602c3b565a23c57b662deaeb6c244cfaaeb041cc5",
-    "sitting-topk/grades.json": "fc44e1ef4a299eebdb9cfcd515da23d82edcea0bcc4c40811330490b6fc71181"
+    "sitting-topk/grades.json": "fc44e1ef4a299eebdb9cfcd515da23d82edcea0bcc4c40811330490b6fc71181",
+    "sitting-x16-price/answers-x16-off.json": "292fca3dae50c30cec764c897684eba493be399b99418d277f9e53309480bfd4",
+    "sitting-x16-price/answers-x16-on.json": "b5d45742993d4bdb0f10f4757c3fc7666e6d6630d1b33b3b14b93944f2be574c",
+    "sitting-x16-price/order.json": "6afd67b9a2afee66bb6add4b5fa23f6067982d0a6b30c16584c2583b3284e94c",
+    "sitting-x16-price/pairs.json": "11a3fd76e35694314638b9e6e20e7282da2daa8873ccb4f30b8074b874653e9b",
+    "sitting-x16-price/verdicts.json": "f3ac8aafdd30096f15272806de41b161304c1c8d716b7d27d3b0a4c9446c21a5"
    }
   },
   "heldout-v3": {
@@ -32,20 +124,416 @@
    "files": {
     "key.json": "37a9da29dcc198a47a8f1e93a2e0971abaf31ce8c396de9348fa721a5089380a",
     "questions.json": "b7661a74b86f6ddfa32b1d432bbcd9fd0810f1950d92d11ff25c1fd16181dcae",
+    "sitting-e8-g3/answers-e8-gemma26b.json": "7d555929f8989d247a1b0af35b79a5891d9a60d1e3188216e9ce05011f017ae1",
+    "sitting-e8-g3/answers-e8-qwen36.json": "a62a9f6eb2507f260130cc5197ae44bd378d8f4ecd9c355457f56004def22d6d",
+    "sitting-e8-g3/order.json": "b9c7a674dcbb9cea2c2a6857b65397a89ce582b37fcefc3d7c106d0559a8fa95",
+    "sitting-e8-g3/pairs.json": "f24e9444577b52ee83e036d9990811c70369db0ce892464ad0b6248d7c146db8",
+    "sitting-e8-g3/verdicts.json": "71f2aed460976547195d5aec9c300be718479fdd8bcdb45aeaefec5c10e1fe16",
     "sitting-heldout/answers-candidate.json": "59306fb3c9ca327d86810f1c3ab9cc10e2293a0c9a3485cda84e74b88b297f72",
     "sitting-heldout/answers-v5.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
     "sitting-heldout/grades.json": "b93ea92bab14cbddce1863b8d34dbb67a04e5f2705267c27a8c830d008011043",
+    "sitting-s2-knowledge/answers-s2-candidate.json": "7185100324adb1d799ba157513887391b65df654544159676d4c6a70f6659e85",
+    "sitting-s2-knowledge/answers-s2-live.json": "fa78a019c440506899eb50e9afa56fabf582474f5e36169ef3ec4406499c227d",
+    "sitting-s2-knowledge/order.json": "94226906bf4b9abfdf80aacf61f214ac738c50aeb96f28034fd49cdc71a7e0b8",
+    "sitting-s2-knowledge/pairs.json": "b901ef79bfae43687d638a0907cea320b3e4dc586b33ef33f7da1c6351233573",
+    "sitting-s2-knowledge/verdicts.json": "fd1f62cc4a1e018fcb2419714f9475d04e076b1d9c7b0c5fd5b9c919d19fb97a",
+    "sitting-s2b-gate/answers-gate-candidate.json": "41ba03a5abbc7ab3133cb34cafdb51c20d76aff034facbb38dce5c65c23b9aad",
+    "sitting-s2b-gate/answers-gate-live.json": "4fcb755bafd0643264ba70311598ad4890ba9572d72ec8892cac0e08b8796950",
+    "sitting-s2b-gate/attribution.json": "ca028c6f366034a63f3c855dd2d7815eaadbdf0d1cd4790b05a5349521d23dea",
+    "sitting-s2b-gate/claims.json": "14c7e7c4671b25cac2b6cfe83263ab7c8f93d46a07df98271a6730f3d5015bb9",
+    "sitting-s2b-gate/order.json": "3eaa5165e108ecdd79a1f07e472b64ce0f1b1050c28d9fc02157598441b49803",
+    "sitting-s2b-gate/pairs.json": "1e63063ccb03cd982a988a2b57c0e5c7f477ea8e2c11d709621edf41a9847f11",
+    "sitting-s2b-gate/reach-gate-candidate.json": "ffcd4b04672de626f5a3b68649d3b381d5b64c241b8b1a7ece766ee3ca650e6c",
+    "sitting-s2b-gate/reach-gate-live.json": "135c87217eaaf0099ecff0d30af5e80fe21c9cc3b718a9c1edf9a64d30b10e67",
+    "sitting-s2b-gate/verdicts.json": "df5368e74692fa1f65d465c66f4cf236b13ed3453f1b81c5b8ecc65719a999b4",
+    "sitting-s2b-noise/answers-s2-candidate.json": "7185100324adb1d799ba157513887391b65df654544159676d4c6a70f6659e85",
+    "sitting-s2b-noise/answers-s2b-unfixed.json": "10aa015028638bab5b6bb02b0a2dfe0652b472de218e626af03e17a4496abe00",
+    "sitting-s2b-noise/order.json": "4f8c5d58ee177ed2142711a8bc426914115f1fe3489c65c15b87dee0e3332f14",
+    "sitting-s2b-noise/pairs.json": "ab3952b168b54e9f3910b07d22297ca08a387b2ffa14e4eb44a8bf8795c5e357",
+    "sitting-s2b-noise/verdicts.json": "d56e163e5f97d1bd9c31fcd6808c035251396c19ca6e1370c807808ed305ad5a",
     "sitting-topk/answers-cand_k20.json": "b10c69ec28eeba0af72f90537b768ce47e0f20f73b16c09cd8694358775fa41a",
     "sitting-topk/answers-cand_k8.json": "59306fb3c9ca327d86810f1c3ab9cc10e2293a0c9a3485cda84e74b88b297f72",
     "sitting-topk/answers-k12.json": "d463ebdb0c73ab0c150c91d575663c7481497d8bdb850aa4ca2e5f00f1ee1885",
     "sitting-topk/answers-k20.json": "e428f003f0248912723d38b13b97e5b5b8d2b6665ae8b59fc869b5d4854881c7",
     "sitting-topk/answers-k8.json": "4835c0c3da08efce74a461c5533cc9778f959d92d6b1ccdf3dd066fc55c0b548",
     "sitting-topk/grades.json": "dbeb1e41970bb3a197ab73e4389f6d3ad799882b9a10f070fbf34370329780dc",
+    "sitting-x16-price/answers-x16-off.json": "fbdf918bb24da99fc2e1dac3b7d31354458e552d8e4bda11c801830d2871c673",
+    "sitting-x16-price/answers-x16-on.json": "da8b02b6b6c1ee280369e0a78f1b3a4e5d1e7155d3da7298650ba930be2b0ae7",
+    "sitting-x16-price/order.json": "28350e8ebdabfcee3478318968415285d051331c78d7f532e2965fbff4bb5bfb",
+    "sitting-x16-price/pairs.json": "99386449446b1928f68557f38358d33ef9087876be1427dae97a057917c56dc4",
+    "sitting-x16-price/verdicts.json": "1efbf08949b62afe071b55123262368d6fa31ef24590f892edad67c8903a024b",
     "sitting-x2-answers/answers-x2-pg.json": "ff07b8bd885c126991bec0c22816810b5a85a0291e56e5431711f138e9c4442b",
     "sitting-x2-answers/answers-x2-v5.json": "b04d8f06aa95d815c37394367d733c57e46ea06d93272063e13b8254e0651f41",
     "sitting-x2-answers/order.json": "e3a396812a876ba7ac224a15b34ea9ca8c662881445f95f4e7542b684ed9c2f0",
     "sitting-x2-answers/pairs.json": "5d759f6dae92f3a3fcf82a6b115fd0fb6456cc8a2831ab15f9aa18e649bdbf9a",
     "sitting-x2-answers/verdicts.json": "b196886bedafb314fa9c78787bb175ada521d8b1007bbf3cff2d244f01352c5a"
+   }
+  },
+  "heldout-v4": {
+   "description": "Held-out v4: 64 single-question cases x 2 wordings over site pages and PDFs, written by an independent model blind to the assistant from brief.md and the source text in plan.json (seed-40 plan), v4c53 redrawn (seed 41) after feedback-1; blind order seed 44 (D93)",
+   "files": {
+    "brief.md": "3da89e06e53906d68fea1882c23b98515cc9092075650352abd5bf583d00f369",
+    "feedback-1.md": "9d911459e2f4818bcba1afbf0b1cabd53f7d3e82858397003e2a7a383e4b4dbc",
+    "key.json": "4e341a2827adfbef692e58f8ff2b5e1519f32c26b8cd5ba0e504d0fb728acc44",
+    "plan-before-part-5.json": "e22efb081871d1f386aa3b83b0cf513ceb50bb7dceb780e378fef7e4b309f44e",
+    "plan.json": "1ecbab8684dace8a581896474e51c038d5fe516d237fa808a1cd31c7e7456e51",
+    "questions.json": "6fea31bbd29cd355e72e6d61ea4cefa1cd55f11b422acdf1405d2ac1394500ee",
+    "sitting-e8-g3/answers-e8-gemma26b.json": "27f725b31a94956ce921a9d9d0e355bcbc69082038287498ae6bf32785547ab6",
+    "sitting-e8-g3/answers-e8-qwen36.json": "ef0da8444bb0bfbe9f5b598c43aa7ce8fab174095e7c5b3ae6d1b47b0b68bb9d",
+    "sitting-e8-g3/order.json": "6cf1eb866c3b399241d28a5b572009347592053e4f04576045e8e3a99b707c33",
+    "sitting-e8-g3/pairs.json": "ec8e6729fab09acc50399a05defc4830c02ed181a199fe2947adfa14f8871773",
+    "sitting-e8-g3/verdicts.json": "e015cfbd6cbb96e33535c61bffca4f0951d30330eacdca18eba851861990e347",
+    "sitting-s2b-gate/answers-gate-candidate.json": "9cb5f60edb6781c57a8c9762f5ff55df04c248ba102fe86f5b19d4fec7f92269",
+    "sitting-s2b-gate/answers-gate-live.json": "b4c02607083533402501532eb7506ee71c329614e95945569acf1bbfcf311d7c",
+    "sitting-s2b-gate/answers-gate-unfixed.json": "30566b1ad74b72c5cfeb0e1eb245a8c2bb13e42c0f06485563553196879164d7",
+    "sitting-s2b-gate/attribution-settled.json": "2db85e6e259e7a700b1822e0fdf2c262e2b7e6a863daeaa7f1380464524e8e07",
+    "sitting-s2b-gate/attribution.json": "a58d917b787a09c73902adde15e490d992a7f29397a071f56b105622be7eac77",
+    "sitting-s2b-gate/claims.json": "880dae51d04c62526d2300094dae9eb7d187ed11b91f58efe2268f255e557781",
+    "sitting-s2b-gate/order.json": "27ca54902e821ea2e1fdad4a3f7dbd11c76282581d351d8bd855512d868097a6",
+    "sitting-s2b-gate/pairs.json": "491f958184313e03ead00ff7c7a473cc5b72df3501f9f96edb623faca6628319",
+    "sitting-s2b-gate/reach-gate-candidate.json": "51d3c24ef37fcad56e8b5f195b4df48e5c19fc66461edbb525fd33d9901919d0",
+    "sitting-s2b-gate/reach-gate-live.json": "b785c85225e27d0d157dea360ff8168931dcb7301e6abea3d5240e203ef6e32c",
+    "sitting-s2b-gate/reach-gate-unfixed.json": "53df6a0c9fe7090d9f222184d6fbfd903ee1a24d682ca04ae6204aa231dce08b",
+    "sitting-s2b-gate/second-gemma-guide1.json": "c9b2a04850584637bfc63a6f4c160f25ebe3cbd46818c0823def432cb0085d5c",
+    "sitting-s2b-gate/second-gemma.json": "3cc58f9824cbd2316d5cadec995d1393f9e7c80ddbc0a69ddd02fc12500940f0",
+    "sitting-s2b-gate/second-items.json": "2aef14863355bd0f26908d39c7cf8fa456fac0b87e2c36af0351a85f0bf41e02",
+    "sitting-s2b-gate/second-outside.json": "fa98dabb7f8b565f385073226b15eee08f1d03df6222dbaba9d2897bf13c2cb5",
+    "sitting-s2b-gate/settled.json": "b70bfbf3cd1e4e3898c7f29d7bb16aa75b1f6e7adb524fc3b043e3a35c0b8df5",
+    "sitting-s2b-gate/verdicts-settled.json": "f8af75deefead226b52f10f1188d2204ac7110dd6d862320d286de25b5f1c1b1",
+    "sitting-s2b-gate/verdicts.json": "9bf9b239ee2aea21cbc523be9d5b9233637f5b32a4cd99c64050351d8c5c137b"
+   }
+  },
+  "heldout-v5": {
+   "description": "Held-out v5: 253 single-question cases (201 answerable, 40 to refuse, 12 emergencies), 337 wordings over site pages and PDFs, written by an independent model blind to the assistant from brief.md and the source text in plan.json (seed-51 plan; flagged cases redrawn with seeds 52 and 53 after feedback-1 and feedback-2); v5c188 withdrawn after three refused draws (E6); blind order seed 54 (D101)",
+   "files": {
+    "brief.md": "5c2d033db679b172c0d5cdc52c157b61513c2473b26eb4b409a0036d14838adb",
+    "feedback-1.md": "35c5493cb7cf80262de2bba826eaa63669748bcf3e1a47db9e10bef0e25730fe",
+    "feedback-2.md": "ab3a12e6bf5357beb5a686186e3ad10837f4f6d39442b5fa3e2e760df16df319",
+    "key.json": "87d4827464c899a0a36616245e0f4044ddaf0ba171fbdee0ddab54e487f2a4d4",
+    "plan-before-part-17.json": "3a71eabbf5e0429ba2cc74cfab5021b53580ab45306482f54ab2cf743922a960",
+    "plan-before-part-18.json": "cace097470a27f369b111011640de211f394ca8a0f62bc349a910268adfe7e9b",
+    "plan.json": "fc6e4a49cec7ef7bddcd462ac6c279ce04b1e739281bd76ef5330b173f630d27",
+    "questions.json": "fb35c2586dc22a9f11e025182c3428e1424ce24ae7673094f63ecca4be5ebec5"
+   }
+  },
+  "heldout-v6": {
+   "description": "Held-out v6 (X43): 213 cases over every data type (pages as rendered, PDFs, Word, GOV.UK, pictures), written blind by an outside model family from sources as a visitor sees them; 7 cases withdrawn after one redraw; blind order seed 63",
+   "files": {
+    "brief.md": "752270a768687fa81752189fa7825d00a2ac403df3ac2cae20e22fde8cac5dec",
+    "catalogue-at-plan.json": "2e4fc725ff601ea030b61fea31395dc96c1c0b7917bde9bc4ca368654de5e55a",
+    "feedback-1.md": "ff465f62b18893b314923181e4a83805b8c99d640a77e3f3905256fefc9c40f7",
+    "key.json": "3a6619bf359fa27d44af7f66cdcc52ced667500a45b9ea3df93e5010f30dc53f",
+    "plan-before-part-15.json": "a5ac7ff5b400342a811301ebccaa41eb1d95c037a188d204839fcc3488331350",
+    "plan.json": "3a1341e40b730ae11e730838f797d906c62a52e5e20ec038cea63cb300f43bcf",
+    "questions.json": "ff6eae0f48fd7e5ef6e050aec1e456632ed348513bf1156607c53db77506edac",
+    "sitting-e10/order.json": "98f47878e2aec1ebe70dd7175f46ae6c3b8630ca9ccc7651e316ec94b6c705c6",
+    "sitting-e10/pairs.json": "d201ea7d3693a8c9aea77a366599ce43a92f9a2fc97d6b06518cb2f8ba3150a2",
+    "sitting-e10/verdicts.json": "d1a7a5d54201564e4e87e14d6dae44cc2a941b27928ca15670b7351b5a67b4b8",
+    "sitting-e9/claims.json": "a18b9137b4ff478f7df926e4ed8740e893141804c7791ee011b32d93d0a06f77",
+    "sitting-e9/order.json": "a936e452a970f3f709ced9b3c337ade345a226d9d9c2b0e7466360f207b04238",
+    "sitting-e9/pairs.json": "cad357d1ba1334b2fedc484e4f5667af93fb39285fdd3f49d5fcea5abd2d205f",
+    "sitting-e9/verdicts.json": "3173fae5a8c627a7d1927273c1af54d0365f99e42b600e5278703b63f12378ec"
+   }
+  },
+  "image-facts": {
+   "description": "X43 B3: 40 questions about what drawn pictures show (seed 44), written by looking at each, answered by the picture or a stored copy",
+   "files": {
+    "questions.json": "68213f2d1ebd0e137f0d651c157783d12ec4231dd680689de25e3b3709bba27c"
+   }
+  },
+  "image-text": {
+   "description": "X43 B2: 40 images (20 site, 20 PDF figures; seed 43) whose printed words are all legible, transcribed by reading each image, before any OCR",
+   "files": {
+    "images/figure__159b63db4c84__5.png": "c2a6e2287ddec9c2b59d48a7594dac88b5100d723d6d329b6db67cc72ec0a2c8",
+    "images/figure__159b63db4c84__93.png": "e1733df3316c5d67872f40416a3ba0e5ff61706e8015eb10d5247dd10562c3ae",
+    "images/figure__1995a4f89d0d__104.png": "e739573b89e2146b90f91e02ad9df251e0eacb2fab9f2b45b143b7c7248db4da",
+    "images/figure__1995a4f89d0d__300.png": "d1fb7a00a7380cb21ccec298ed94280873d53752c208ea341f79646f77f43b8c",
+    "images/figure__1bb53cbd7258__160.png": "2eeb0aba6f57aa4d83cf6536fa6f7997831645c5bf11c2945ff1f29361b92248",
+    "images/figure__1bdda512514e__0.png": "170ab9aab5677dd19694e55b840258a74945f3eb922485bfdd2c516ab4bee2e9",
+    "images/figure__5a0d1bea9333__183.png": "323d258d693873cb5ddc09a6c82fa573600aa2cb79e6b4c860574c3cdc916ada",
+    "images/figure__60e4a583d922__104.png": "6033e5ddac22b1ce6e2e2825691b6d1742d0232f557980cc7727dc282806e76b",
+    "images/figure__60e4a583d922__467.png": "cb643bd6462278fa33b3dd57312568bb42a4cae9f53dfc0d4481defd55f8ffd4",
+    "images/figure__60e4a583d922__820.png": "c8fb54199610ae7836b13f07734e35de4ceaa2127f973f22c928c6a2dcb8b69a",
+    "images/figure__71c36c6e1643__19.png": "8cb99ef1d69bf39d10e70b822109f885f650e97d65e3c41c4c557ea6b3e12026",
+    "images/figure__b47d3c6b9852__59.png": "76011e27f05bf8343dc60252f9ea7dbcd01f2a4061ffb9f26a1719a0ca68965c",
+    "images/figure__b62980a385aa__4.png": "6843e8890ce592d85d858408bea0f3975a0f02a4a89c3e38fa0032201350c182",
+    "images/figure__b83f302c93cb__5.png": "a4f31726649591f514cb65431a018566ae7935c45e2151115052c05e0f7d4273",
+    "images/figure__bfac13e1f647__215.png": "67383c46b9a273de2d4435d65301ab27fc3e1eb4d974b7930faa9f9ad685290a",
+    "images/figure__bfac13e1f647__217.png": "c1baf21f422767345299334611457d988e0488a2c6a09e30bee702bb3ebd14a8",
+    "images/figure__bfac13e1f647__218.png": "76829077cc0c09a02d4585f76838f749c437e3a0bea9c696e8c3689a88743d2d",
+    "images/figure__bfac13e1f647__6.png": "3d8c6c7caed4b2d273f50856584e66114f69dba47c6668c65eed091f4d2f2532",
+    "images/figure__e9cb4bfe1a84__6.png": "c62521aea414d1426c0ca4f14e5641629f26e58bf6552a05307e09617781ab6c",
+    "images/figure__f6d084c51666__109.png": "b2bf37e46e8a136a0df57e99e6c6a1b0070a7c563aec23ab976854f869db8c5f",
+    "images/site__00a53830fbc7.png": "8704c15e7835bc32f4ecfb1005307b394602c855c9404b74b0c58cdcca3a2b0f",
+    "images/site__00c83064f8db.png": "1f9cb230abff8551828e877288f18393ed61b1947189bc5b6f7db2f522d49f71",
+    "images/site__013ea32a99e5.png": "d4ca36b15bf1fc7cb3b982c522991711c2d51bf3a3edc0a955dde2f98bee6588",
+    "images/site__0dd5b874204a.png": "7afd05a85a39dc017db50c221e8e7713ee1a9c7e945e662b8bb3bd58e601649d",
+    "images/site__11a5c8843763.png": "e8cc864fedd7ccde7925b149f4f1fe05008f241883d336711709885d5b3b0167",
+    "images/site__1259b9684cdd.png": "85fa00d777520167e75683e5213b5239898a18c7066c16d29a899d2ace9d03c2",
+    "images/site__1eb5cac51d51.png": "c140404df985fe30f314ba3716a94f2adc95e96630cc296f45e9a8b46d83233c",
+    "images/site__240a2eedf03b.png": "7c50d2bcce63ded6028379c285590188bf48d51fc3903195dd746343369bae4d",
+    "images/site__27fde2d16a1b.png": "b953d673b627ff4d4b50353bd0334629ba2acb7744d60ae4f080ce5446342481",
+    "images/site__3a4c5465b0a2.png": "dbe0712ed288f40f356fd4e05b9c1d6d49d9722b0ca5a5f9677ac62568ad0273",
+    "images/site__41c477fb424e.png": "5bbbce535bec3ad118160170fd716fadffd4a7765c3f416db1d17ab0dd28dd58",
+    "images/site__48d08a3741d7.png": "57bb37cf9293ccb1f15d4e229fa1a78f97dc49ecbdfd39207739bcc4af6963e6",
+    "images/site__497d23a8fe04.png": "f38457be137a42a0043ac4321fe9d341885a0cb41f41fae551672e075ba40872",
+    "images/site__5b12f716a915.png": "17a0b713b1d95400ed4d32b4195962d7132620ab680504a1b16f39174c5c0295",
+    "images/site__5d748b34c8c0.png": "c839fcc9b9c89fbc480150ed994d32c51f7cfd170bab2934709e049d9ee2b3d4",
+    "images/site__9a99cc4be02d.png": "247d95f150f0dbfdcc8d89a0632ddf26e58bf276d69fb477fd2299fb0c1f3cf6",
+    "images/site__a39ff21fad0c.png": "28136b2211e1c91604fa4959dbbc6821bf6ffd31cf1209843dff457de27f6be2",
+    "images/site__cc2b348268d0.png": "bb470c7eb749516255ff8f4fc4edbffb605085563a5d1282be2032b1dfe71c4a",
+    "images/site__efb5ff266fad.png": "ba953c6e74ecf1d4c777dd7d3a902d30c0e425513acedb7ab1ac305f906a2d73",
+    "images/site__f0a42668ac9b.png": "f8cc704be13d0f7ea8d126fd483a54f166355f341cadc8987356dfe48168fcb3",
+    "truth.json": "9e2dbd55f49dc685e1f1822d36a6eed300bd825624fd5c5afef693265facd1c3"
+   }
+  },
+  "kb-probe": {
+   "description": "X44: 64 multimodal retrieval questions over 10 strata, written from sources as a visitor sees them (seed 71), evidence as nuggets; sealed before any X44 fix is scored",
+   "files": {
+    "draw.json": "01f5057e21de43436633f258c3f53ba323834381d326987c434af47277473a7d",
+    "questions.json": "ea392c58ef638a1aa83b69f14aede757419404e0badfe4b18d58c3ca6f2826de"
+   }
+  },
+  "nearmiss-dev": {
+   "description": "E7 S3: near-miss questions written by the generator from 300 passages of index version 17 (seed 71), answerable and near-miss, each with its quote; kept only where Gemma 4 26B, reading the passage alone, agreed with the label. Evaluation only; never training",
+   "files": {
+    "items.json": "cb9183fcb42a142fc2ba41b61630d21c5e58fdef1a8bc5d977f556da521fc400"
+   }
+  },
+  "nearmiss-readmitted": {
+   "description": "E8 G1 fix: the 139 questions nearmiss-dev's check removed, read blind with their passages by the primary grader (readings.json: 120 answerable, 8 near-miss, 11 unclear); added.json = seeded draw (seed 72) at the G1 sample's own rate per label (44 answerable, 3 near-miss), labelled by the reading",
+   "files": {
+    "added.json": "b0fa44219647aeaa93954664eeba66f2f7ed3427acff7bf698ab0ab8b357a38d",
+    "readings.json": "fd263a538b67b37bdda848ff4fd12699003d356d686836af04b5b62ddcf23e36"
+   }
+  },
+  "picture-probe": {
+   "description": "X44 amendment 1: 16 pictures drawn with seed 72 (none in image-facts, image-text or kb-probe), questions written from the pictures; sealed before the union arm runs",
+   "files": {
+    "questions.json": "a8cf3911269a0adcde5d623755e65bece56e9085eafd36d312091a4916010738"
+   }
+  },
+  "picture-probe-2": {
+   "description": "X45: 16 pictures drawn with seed 73 (none in image-facts, image-text, kb-probe or picture-probe), questions written from the pictures; sealed before any picture-places arm runs",
+   "files": {
+    "questions.json": "a9d151d876ac9cbde51c0f6140476664803590b3a55a4bf498e5e0c00f1cba51"
+   }
+  },
+  "relevance-dev": {
+   "description": "321 verified claims from the S2b C2 run on frozen90, held-out v2 and v3, with the question's parts; each labelled by reading with the part it answers or 0, before any relevance candidate was scored",
+   "files": {
+    "items.json": "6204a0daf568dcc8712cb46c2db7c50ca037d927831aeb4b9aed8ff7f969dfd8",
+    "labels.json": "d1df03a567127eef8c1569a5cfd66db8fe24aa8b93b19397d49e0866486857b8"
+   }
+  },
+  "verify-dev": {
+   "description": "E5 stage D: 177 answers drafted again from the audit records of every evaluation run whose checks removed a claim (410 drafts, 87 removed), each removed draft labelled by reading against the passages given: 76 wrongly removed, 11 rightly removed (labels.json, with the reason for each); development material",
+   "files": {
+    "items.json": "361fb13f03b092a323365072e34e22539d3f7bb4659d86361337be610fdb610d",
+    "labels.json": "975c73e12600f6ac176c3094fa35d12c7af0e00370c44d09c44e1baef184ddb4"
+   }
+  },
+  "web-facts": {
+   "description": "X42 W3: one question per W1 truth paragraph or list, evidence and holder pages",
+   "files": {
+    "questions.json": "d76702d81ce236ef95f109717ddfd48886335a038a1f071dbfec844dccae04e8"
+   }
+  },
+  "web-pages": {
+   "description": "X42 W1: 30 rendered site pages (seed 42), judged outlines over their visible text, truth with section paths",
+   "files": {
+    "outlines/about-lime-green.json": "fa32813ac5097e6de0b3636a168d550b0a45df5ed0412f750d3e486d24f57e21",
+    "outlines/news.json": "84c14c3661fb854a987cf3e3cb8b5f1032ce1cab7edf9685d642ad29f25b897c",
+    "outlines/news__chelsea-flower-show.json": "2f4045675e19d16e0ef7d56c31b07e3022b5d1b94a8791145c21819cc5582509",
+    "outlines/news__internal-wall-insulation-vs-external-wall-insulation.json": "8ee2d774f91d83c8c1779decc2e285b7b0053196e15fcd75155e7acf21b5230d",
+    "outlines/news__lime-green-turns-21.json": "c904b2b14f07ce66761cbaa0db8c7bdac3f83720a48003e6efb2840421b19dcf",
+    "outlines/products-by-colour__autumn.json": "5d7c552a2ea4d618e67e7e3ef7e46a7238d39483a0dff76fb54343a8453221a9",
+    "outlines/products-by-colour__colour-brochure.json": "9a2dcea7a0a6356892e51113d8eb601433b13e5bffb02dae1ce52aca47c2d219",
+    "outlines/products-by-colour__ochre.json": "e3f447cc65ec6c99cf6903e5666c1fe8b3fde797bbac47e5a0807923787ca8ec",
+    "outlines/products-by-colour__salmon.json": "e3f447cc65ec6c99cf6903e5666c1fe8b3fde797bbac47e5a0807923787ca8ec",
+    "outlines/products.json": "88ca144d27a65f19634762cad1a8f3820ff8f1623b39c9c43a8a0102647f5074",
+    "outlines/products__insulation__boardadhesive.json": "eedb0ce9182f9541ad0ad0925b5f58c6ca4f99309f94a3ceacf48d54a6f68035",
+    "outlines/products__insulation__hemp-lime-binder.json": "e466b5290164cd78e357be13dc9e930118c2e5f3847541a4a5772ef35a699467",
+    "outlines/products__lime-mortar__coloured-cement-mortar.json": "9789f2e7d170f6087dd0b2660cde95781bd7e8010c63a943112ec1f0933ef45b",
+    "outlines/products__lime-mortar__natural-lime-mortar.json": "292fef19f7612b5319ba3fa6a95cce080a1ecca5cf4b6af1f2b29deb0d76eea8",
+    "outlines/products__lime-plaster__stipple-coat.json": "1e468a139c6b89d45ffa1959723775c3da9eb6a1747a371648e6b4d2bd63eabe",
+    "outlines/products__lime-render.json": "c6141f4ad8a7e25dcfb30f446e4d9fa87941c946340ac4dbbf764d6b3359f8e3",
+    "outlines/products__primers-and-adhesives__aerogel-adhesive-1.json": "f8379dc381550b41e62859a06feee877097c3f7ca16a311415d543f3ba1d2f26",
+    "outlines/products__stone-repair__pure-lime-grout.json": "72d441e4acaca9199a0196a15a4004d77f6ac39695e1e03908c4fc264633c03c",
+    "outlines/support__case-studies__houlston-manor-bungalow.json": "5dda443337fbf17e332c0b926ce34af0a9c84645e2cb259eac7a438bdcfee59e",
+    "outlines/support__case-studies__project-houlston-manor-shropshire.json": "e409edbdbe6ea823e41d237e62d711a1c98ebe60d455184ee284ebd227d163ff",
+    "outlines/support__case-studies__project-londons-kings-cross-station.json": "fd551e10631bbd37dc3629d3c63e15119aa79652fd6091253a847e8cdb38d8d6",
+    "outlines/support__case-studies__project-the-bomber-command-memorial.json": "c42c9b762d616d40be30afab88207c0cb6a3e25675a63272121db697a6b1887f",
+    "outlines/support__faq.json": "9854888912d75a0413d79f0cd61599e69d6cdfcd2d65a299a151e2614e387701",
+    "outlines/support__knowledgebase__buildingregsinternalwallinsulation.json": "3e91f4b649ce2a8cbe01d8f7f2365f54d860802e0f24d4378ec7f0caf7bf98a0",
+    "outlines/support__knowledgebase__buildingregulationsinternalwallinsulation.json": "e7f420ed949e0a6d09657dcbdc05a59d66a5d4bf5524afe41ba79fab5b7b217b",
+    "outlines/support__knowledgebase__hydraulic_or_hydrated_lime.json": "ecdf9a035e38cdd791df41c0359d994aba8aaa2911d283b6260ab775dfc1d4c6",
+    "outlines/support__knowledgebase__lime-for-new-build.json": "35b34a1ba6189b19411c71d714d25eb9470722a288b0df6a67edc0d7c0c088ca",
+    "outlines/support__knowledgebase__the-importance-of-breathability.json": "b312db520fcd4d25af9bd7cf07ab328be9fcc53186e9190f29a1a4d795f469e3",
+    "outlines/support__knowledgebase__what-is-lime.json": "9bafd7f8f99ae5ddba09633ee0b2fb9508c33a047ae7037047aee86a34ff8af1",
+    "outlines/warmshell-natural-insulation__warmshell-external-insulation.json": "9de3413d7605d1277c3985f4a55cfd17d04134297e8c9a8374aa98ebf666e0d1",
+    "truth.json": "271636d0e4eb486e578b037a9e8febc2b979a8d02cfc2eae629de27ab2f10749",
+    "visible/about-lime-green.txt": "724e827b50d125061b9e007c34ae308d96750a1a75903cc53cac03579fb626a6",
+    "visible/news.txt": "d16964cda431f6da4270378a3675e7862eefd72bfdeea06f2cb5f671cc0edc13",
+    "visible/news__chelsea-flower-show.txt": "7ef5623425ed0b63c67fcee4b33e9d43a58d8c1f55961262d7c9107e01a77b0a",
+    "visible/news__internal-wall-insulation-vs-external-wall-insulation.txt": "81722f475c7988ddb11f760df063b80df2ef04b91d08d97781663759a5c6bdff",
+    "visible/news__lime-green-turns-21.txt": "0cb50d2483a11d35a575216c94ad572c99b00cb42935762cdcf8476f47a1ce61",
+    "visible/products-by-colour__autumn.txt": "39285385e7e2044aa47ba4ca9cb4d03a40d0dd0c0c1d97f97a5b94b1cc5d4248",
+    "visible/products-by-colour__colour-brochure.txt": "c0cffc48ca7024914c4486918190f4e2216c16979ce02a99f4193b01a79b8769",
+    "visible/products-by-colour__ochre.txt": "1247c17854c5b6f4ff3888bbb4bf154d49a445d64f232f2c2ef7220650f0abc5",
+    "visible/products-by-colour__salmon.txt": "4d8dbc1a6324e6fe718f7fbbed64df40e02925b0ae424972fb907106a601cb1d",
+    "visible/products.txt": "c0be2cf7d9791011b497b734fca249f8741cba6b32b31239d315bfcc82aa8fd8",
+    "visible/products__insulation__boardadhesive.txt": "b3d1533e165ae4e343918bda674cd3936d16674e2f90ab0bb65bbadb574aacc5",
+    "visible/products__insulation__hemp-lime-binder.txt": "a53c27de71469068f6321afdd12d0375e2e31224f3da708ff537301421c488f8",
+    "visible/products__lime-mortar__coloured-cement-mortar.txt": "8d7ec6933119a200801218df236f09d8772c1499a65a5434656b559638f945f9",
+    "visible/products__lime-mortar__natural-lime-mortar.txt": "bceb253574d968c78832bf85751288d1f00b04ee9870ca51000ff27a1d7fd5bd",
+    "visible/products__lime-plaster__stipple-coat.txt": "280f814d9381e84f8ffb73631590e67c3d2603b58a8782519dabf65897eb480a",
+    "visible/products__lime-render.txt": "9a452dece689593557fc68fa51b89e5dc65261a6b18ad172dc46fd4ca9728fb1",
+    "visible/products__primers-and-adhesives__aerogel-adhesive-1.txt": "a3f6ccbaf27078e2c78b3e54bb40e9fff4227cdd0c1ef52fd134b1369ccaab6e",
+    "visible/products__stone-repair__pure-lime-grout.txt": "74e30c758d5c6c8a33b1457171916f6a860fb2c3200fdb48bee949ace84e62de",
+    "visible/support__case-studies__houlston-manor-bungalow.txt": "1b53ea873b2a202096802fa9278217438dd488fb41c50aa9e47479ac7bec9ae3",
+    "visible/support__case-studies__project-houlston-manor-shropshire.txt": "4ac6883533c87bd2522c27822970a08d72dee52dbc5bba75b71df59ce2f6daff",
+    "visible/support__case-studies__project-londons-kings-cross-station.txt": "acec9bdab53b588da248f42671409ee2f5299eb0e7f24ff7a5d5d0133cfb2571",
+    "visible/support__case-studies__project-the-bomber-command-memorial.txt": "343e6a824003b083a005593684bf902d9ea2ed0c155062ea61d3ba712b224a1a",
+    "visible/support__faq.txt": "106f8ed3f2afa15bdfe626deb1316c697d2f32a4718e920737a0fd57ff2cbf00",
+    "visible/support__knowledgebase__buildingregsinternalwallinsulation.txt": "7b2f641597489d2b93c734f736454ca2e1663355c6d40b380e112540a3e12aa5",
+    "visible/support__knowledgebase__buildingregulationsinternalwallinsulation.txt": "1ff8aa161a54478026a8dcdefd537ecf3d8e1946fef62b992b92cb0b2aae9e71",
+    "visible/support__knowledgebase__hydraulic_or_hydrated_lime.txt": "62895271c18c2365d3974f0cd3b0d3890b1492ca5a78560eaeff3b77b04e1935",
+    "visible/support__knowledgebase__lime-for-new-build.txt": "6c0c7b7704872f2f601dfa58d8389b5d45714a2fd323d4b4e23e470da60dc09d",
+    "visible/support__knowledgebase__the-importance-of-breathability.txt": "bdd45db3a979ba557eded747c393ce5bc2f63aaf1a20b46aec9f0b4d495df17f",
+    "visible/support__knowledgebase__what-is-lime.txt": "6a14776561ab21cad13d8c18dac2327e644cc889e5df1eb0cf900eeae1712c11",
+    "visible/warmshell-natural-insulation__warmshell-external-insulation.txt": "9740b21e8fe4c6d37ab73741e88a7cb794f2392bdda213173c682fd7dfcdc6e3"
+   }
+  },
+  "web-pages-holdout": {
+   "description": "X42 W2b: 10 rendered site pages outside W1 (seed 43), judged before the fixed reader existed",
+   "files": {
+    "outlines/news__joe-dinsdale-appointment.json": "a12406e8aeed9e47313e770b46835cd0d7154acc6eb8fea5172411ec29ca3df4",
+    "outlines/products-by-colour__york.json": "cb43547f7c491e3859ffcf82253c203dc3e9270152b8d2129c196ca46f5d4294",
+    "outlines/products__insulation__woodfibre.json": "ec6b9f30b2369e69d343c6432021ae25cf671619b9b4ee5135e8985db9e8c041",
+    "outlines/products__lime-plaster__ultra.json": "41fb8da781f83fa9531246936ae33abb7a6332e3cb1cc67ee3ef690f09660db0",
+    "outlines/products__primers-and-adhesives__mpl1.json": "42b7301cb9b044ce757c4205c2d811e2e8bce288c5744ee2faff9a0bf1955e87",
+    "outlines/support__case-studies__newport-street-gallery.json": "c1b34a8328beb94287ea8e0854df6bcff8f846e8ef5895dd1d5bec698acba018",
+    "outlines/support__knowledgebase.json": "7132766db0a0a0735c1004589d86a8ce20546379a96695302e5cbc38a0a7835a",
+    "outlines/support__knowledgebase__conservation.json": "250b8ab046283d746a033a0081365f73d9b0a45cb12ab46af16edb39bf79c377",
+    "outlines/terms-and-conditions.json": "145e4ac5781a977e65d82d8c9758a8925b8db4e23a4a19d625b08f829c1f406c",
+    "outlines/terms.json": "a822ba4a077d2bb934754f64aa738922fcfab0e31534bafcc43edafbeaa6f4f7",
+    "truth.json": "67ab15984d11226f2546fb504893da8bdad8ca5d89ab5efb8a2411919cac44f2",
+    "visible/news__joe-dinsdale-appointment.txt": "b8d920b20599b42ebdbbdd8c1177c890714fd456719aa78943bec4eb0d884a4a",
+    "visible/products-by-colour__york.txt": "89ef8f61967ec03f737159f06897c9aa7a58c1c6c400dcceeb3323e39290ecfc",
+    "visible/products__insulation__woodfibre.txt": "ad059d1db9f9622c429cb5be290c80676b7696892eabb1b570018592e58829cc",
+    "visible/products__lime-plaster__ultra.txt": "6205bdcd6500fbdba833cf4d860270935d31fe1049a1ea670bad7bbc150172b9",
+    "visible/products__primers-and-adhesives__mpl1.txt": "498f8438a38f524a238931197c5704319b67d87bf5201090b667eb1532ff8d49",
+    "visible/support__case-studies__newport-street-gallery.txt": "a89b7e5842ae3433ec3f84e96dbee3842d375e1a3a8c06365cbeb663c133ea67",
+    "visible/support__knowledgebase.txt": "cca7ccc13a0ffdd4548a3f7869133d31a2e098d883f2985528ca2fe1948e2d7c",
+    "visible/support__knowledgebase__conservation.txt": "b66ae4c5de431fd0b88a359413400d32f89d9c22180f9776413fb283577f63cd",
+    "visible/terms-and-conditions.txt": "7b137feb0453522dedc1ca9dfb35ec019288920a0b5ee8529612153cae864ce4",
+    "visible/terms.txt": "20703b53dc3596615b83f28da6818d084458445eed3913644d158ba0546d5a23"
+   }
+  },
+  "web-pages-holdout-v2": {
+   "description": "X44 F3a: web-pages-holdout by the same card rule (0 added)",
+   "files": {
+    "truth.json": "67ab15984d11226f2546fb504893da8bdad8ca5d89ab5efb8a2411919cac44f2"
+   }
+  },
+  "web-pages-v2": {
+   "description": "X44 F3a: web-pages with every link-card description no other page holds marked content (6 added on products), by the rule registered in X44 before the reader change was scored",
+   "files": {
+    "truth.json": "1da30b2025f060f5ac699573ad3f18d963a5ad2f581195cc5174cd6e2763fc65"
+   }
+  },
+  "x8-pages": {
+   "description": "X8 ground truth: 20 sampled born-digital pages of Lime Green PDFs (seed 8), tables, label-value pairs and sentences written from each page's image before either parser ran; images included",
+   "files": {
+    "images/01-p1.png": "2a8b5edd2df3d979ef006352b6df2507acc4a1794af48eab8f28a1062a54f303",
+    "images/02-p1.png": "61471bba97a958d7abff2ff47716f3a3e6a93c1b73a9d8981b1cc633337b3ccf",
+    "images/03-p1.png": "5e0040382d9b76c6ee1999f05f92af3543101541827f24f765cbdedbd3fbe57a",
+    "images/04-p1.png": "44b2b104027a39ac3be359ba2e50485ad03a857f928937a90900a6c7a6457f5c",
+    "images/05-p1.png": "9730c781ebc6cfea504de0d1ccc429c449400072e83035a1454acff466acf57d",
+    "images/06-p1.png": "759e4c48247888d2662207b267ea3679870ab51753f4645bdf8ecb9e989c55cd",
+    "images/07-p1.png": "b41264c5f157c2a7b6bc569ef32ac2dcb369040da56d1229236e4f7ccd39ba8b",
+    "images/08-p1.png": "3dd6ecafea9b6461f9ea8ccd7652929651bf643d5144e8906894db6114f7f9a1",
+    "images/09-p1.png": "b25f22d2ce9c7496c0fd0e567ae136c1e0f2215087d6fbc0c01461d02cbf4524",
+    "images/10-p1.png": "503ea5ea922c1f64422dc4f6dc0d71d1af35b19d43343d3e36057c9580b88252",
+    "images/11-p6.png": "ee022e209ac7a18723e5828065fd00816d6b8b9a2b78c9f3e9cacf99facc8e6e",
+    "images/12-p9.png": "171bdaad7fb33850cd6b35060e9e0fed06f94f23c386f504d16810fdb933d8f5",
+    "images/13-p5.png": "3a46c9fd2ca533c3bb50842596fefad93f7e1e16960b4b66df3e73dd826c1c95",
+    "images/14-p2.png": "7812eea3215ab6652a201b028e880c09e82500154f9957001b96cad16faea24f",
+    "images/15-p11.png": "034cbaee76fef8f493d795d176cd8fde287890f92086743a6a1bccdbbaef6e7b",
+    "images/16-p6.png": "50ce1ba49986450bf43d738fbf7ecd3ae7028593f9ecadd667f68d4bcad2bc62",
+    "images/17-p8.png": "b033a117d31124072754284079d989584b1141e8b81f5b6e5ed87163985c39cd",
+    "images/18-p10.png": "fa2ba631c8a097173fedb380af1b1faa0ff5cb0e007435b333366003e6cd3d95",
+    "images/19-p2.png": "c5971e8eea95f8051c071f081f665ae101b5c163a21ac9e79ead9e911a1326cc",
+    "images/20-p1.png": "031d3e517db6ed438c94c30afabd1100a0fc17c566fa5332b16add12a1d015cb",
+    "truth.json": "e4373563d7678660e010bf61666ad33b6ce5057dc5209779b4ee347efb2d3e41"
+   }
+  },
+  "x8-pages-r2": {
+   "description": "X8 round 2: 20 PDF pages drawn with seed 9 (evaluation sample-pages) and the 8 Lime Green pages under 10 words; truth (tables, pairs, sentences; every legible word on the blank pages) written from each page's image before any parser or model read them",
+   "files": {
+    "images/01-p1.png": "40c18313771125cd0319570fa18f82a72ed09ebc4e19b82384a8381936497866",
+    "images/02-p1.png": "75b4c57b3469ce01f95e987ae42e2e046be594f1f6e0760b552f4c232070c2ce",
+    "images/03-p1.png": "9602056aa1211fb5ff05749c3ddde0be676f0b2b2dcc735d395cf59413136efe",
+    "images/04-p1.png": "ded6f4f8393845384a2705abffc65ecc3470b916542b6ff10e4a5a43226447bb",
+    "images/05-p1.png": "1816d000872f25b286adca658de39dd8156a07513f71282ed0281ad0cd3d3d87",
+    "images/06-p1.png": "7cf67e2a10f2f9e22e205f5106e6f80af84e4ec3431e29df527c4110326a55a7",
+    "images/07-p1.png": "cc0b369577ef9ba77d7eda8a76734b714f4993e60f2cc68eabb12166c1161cb6",
+    "images/08-p1.png": "7f80488291e654a3ef8d1e9cb6113d099ad719ff8241047675d4001dfe256b01",
+    "images/09-p1.png": "713b5a7767f25dd3e8a2a5282d5cce7e8a9c76f88bbb9bf7a5d357262bb3980a",
+    "images/10-p1.png": "41635de2a5d95c30cf9b7b7d4873bbc3e7a6ad8bb374e35b9ea4b175dccba070",
+    "images/11-p2.png": "c92724f4662cc2d1661f9000f24774e836ce59946c9144106399bcd486afdc16",
+    "images/12-p3.png": "c4be7e1d0f01284f8b5b7070566c11a28b4238466bacb99f48914edfbe0df1ab",
+    "images/13-p3.png": "b035d484cf66bd8d57690d86477fdf9c2b7837fa0408c680d866a7deb40b3dd1",
+    "images/14-p1.png": "70283505c7cc959610aef6e3df5b532d350023c3a18b8bea2a6984cea039aec3",
+    "images/15-p2.png": "4630eb02891e82a27ea8c6ae38bbffc6ba55e714ba32afd544a78f2c4ba9987f",
+    "images/16-p8.png": "c09fe49600ac0f378399313cfcb5e280d88985c949a031557722f90a9b133d65",
+    "images/17-p4.png": "c0754fd3b0b38a7f0711d40bef66be2c2516d77674c34941bd787648f5e40faf",
+    "images/18-p2.png": "2f2f387fefd5d69afa001e4d5c617af47e47b54e5b84e5ceb997997728d0c87a",
+    "images/19-p6.png": "9423652a67689ce8654ba88eaa7f48cf4b1b0a633564015dfdbf9513e19c1861",
+    "images/20-p1.png": "d2b0116ac68052297cc42d798bc25c1f7ec4f951a6584a8e3ce21045fb240259",
+    "images/b1-p4.png": "995b8f540466195dbeccd2de4f60c95770f49594c049966870f3b410ece578a0",
+    "images/b2-p1.png": "b3140a4b8f10906c866b789c5c958da82820e3ebf01e7bb72643f8e92f5323cb",
+    "images/b3-p1.png": "e18f4f9f58cf088f92abd7c30e4394bb2e41f7a1fe747973fcd522f191c36481",
+    "images/b4-p23.png": "06f0f631f22a957da0356a15cd5534d15c5e30968c07f03eaa76805be1f27896",
+    "images/b5-p2.png": "5e8ea88ed71defd3e85f5e68cbca4904b90e86be2c0c5949aea3bb2290889482",
+    "images/b6-p1.png": "efb4855dde3e8b7ca8fc23a48efae3b54cc464f493e2eb11768126fcabb00eb6",
+    "images/b7-p3.png": "995b8f540466195dbeccd2de4f60c95770f49594c049966870f3b410ece578a0",
+    "images/b8-p1.png": "9a7ec474684fab934fe01d2df352240a7920261e6cf208e4b71b9eadf7426dc1",
+    "truth.json": "124702c522c27de75b49f0278e9ea75d9b208e560dabdc6105e176342b6c7022"
+   }
+  },
+  "x8-pages-r3": {
+   "description": "X8 round 3: the first 20 table pages among seed-10 candidates not used in rounds 1-2, judged from images; every table written as a full grid with its header rows, plus pairs and sentences, before any parser read them",
+   "files": {
+    "images/01-p7.png": "d99b92510a6d200c3c094d9f9db899f92c6613257126526f0b564adb4ad5fdea",
+    "images/02-p4.png": "ece2e7bec73ab908dec8035861d82401976a5816bf559aa033b007eecc2134bf",
+    "images/03-p11.png": "54544b52cb773f2f76075b537d01a12eccad7af51b00d712ad5de81824299ed0",
+    "images/04-p2.png": "c8fcc88f7c24b8d3b5f6e00d7ab9a4517ea1703c2f4ec2c6f3206640aa6f86e0",
+    "images/05-p1.png": "4847b5442155d2d3a085d6f8e3cf07aee896bd2e5344455e2242493ad1a3cc69",
+    "images/06-p8.png": "ffefa102d1e064ef66a47165e565154d5ff08bf59200e9d43853b7f495de8172",
+    "images/07-p2.png": "976c5b640784aa0b593700c262e4602adb1795fb99abcfe97d3f732268b21ea6",
+    "images/08-p2.png": "374f73de48a0b0b6108a5e3e96ad643478a7e7fa1ce72bccd0aa3514cddcb355",
+    "images/09-p2.png": "64cf2f65647eaeecc308c7f144fe5fd7c72ecdcbd9d4a7ebb3bd3cae5ae7fca1",
+    "images/10-p7.png": "7cc749e813d4e62d5c10dc4a5f31c3bfddff6856daf0ec8e64d7046fc274bde9",
+    "images/11-p2.png": "14af15477a423a4f7277a249e81a6bcc2ab9273e5a4c34800744338ff5f3c6aa",
+    "images/12-p2.png": "8ca3e9bea0eb5d51d342a9acf15129bccdd46e7c9d376fde5177bdf8cb951b5c",
+    "images/13-p7.png": "4105ad978e13769e13e877fcf95280b9d051361bd6d7b5c2515e4c0815207a24",
+    "images/14-p3.png": "908823832f38260fa11945d90f30802b763f02293fad61e208431332d0e1cf21",
+    "images/15-p7.png": "c47d4034074aae44f486ab64fc04e6ced9aad6e3009a6dcc72c73da37c24cc17",
+    "images/16-p8.png": "26de61c6d9585f742030a49b375d2d8bf1d15433f017c4245ba336cffe0788c6",
+    "images/17-p2.png": "79acb5792042b6113fb1f2f136bbff98dc6fac71451e4411472ba3fe2791370d",
+    "images/18-p2.png": "bdbf0ddf3059b665818517a75f51fd6d1e33a44aa3e7ec0d80bf38383dd523b9",
+    "images/19-p2.png": "31b835e30000f879b050c7a0380b33f2cbdfda8fd79cd0315561128e0b613c67",
+    "images/20-p1.png": "d9c00bdd018d95bdeb2c5e36bd8d10260e088bcc99cc0fce588dce1bbf6943d6",
+    "judged.json": "3de2b21007c15cba103541996a3786d355bfe7bc605c9d35cc2a63f76f436069",
+    "truth.json": "83cab04d5a3c0e4bfab38d0b3b2b0318a1808f8d5a02fae0ede9be228e81958d"
+   }
+  },
+  "x9-tables": {
+   "description": "X9 table lookups: one question per usable data cell of the sealed X8 truth grids (x8-pages, x8-pages-r2, x8-pages-r3), generated by evaluation table-questions at 2cfc9f4 before any arm ran",
+   "files": {
+    "questions.json": "1d71ce5600e8a1379062d72574347326491d326ecce47fec300b0c78ab38ce54"
    }
   }
  }

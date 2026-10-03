@@ -7,6 +7,7 @@ exactly the same things. Every step runs, and all failures are listed at the end
 """
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,12 +23,19 @@ ATTRIBUTION = re.compile(
 )
 
 PYTHON = sys.executable
+# The web app's checks run through npm (npm.cmd on Windows); `npm ci` in web/
+# installs what they need from package-lock.json.
+NPM = shutil.which("npm") or "npm"
 STEPS = [
     ("format", [PYTHON, "-m", "ruff", "format", "--check", "src", "tests",
                 "evaluation", "scripts"]),
     ("lint", [PYTHON, "-m", "ruff", "check", "."]),
     ("types", [PYTHON, "-m", "mypy", "src", "tests", "evaluation", "scripts"]),
     ("tests", [PYTHON, "-m", "pytest", "-q"]),
+    ("web lint", [NPM, "--prefix", "web", "run", "lint"]),
+    ("web tests", [NPM, "--prefix", "web", "test"]),
+    ("web build", [NPM, "--prefix", "web", "run", "build"]),
+    ("web e2e", [NPM, "--prefix", "web", "run", "e2e"]),
 ]  # fmt: skip
 
 

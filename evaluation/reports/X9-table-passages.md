@@ -1,0 +1,224 @@
+# X9: passages from PDF readings, and the form of a table passage
+
+Pre-registered on 29 September 2026, before any passage code or run. Plan: PLAN §0f and
+Phase 3 (S2); readings: `data/elements/` from the production reading (X8 report,
+"Production reading").
+
+## Question
+
+The PDF readings hold 18,599 elements: headings, paragraphs, lists, recovered lines,
+figures and 274 tables read with GLM-OCR. Which passage form for a table lets the
+assistant find and quote table evidence best, without losing text evidence? Whole tables,
+one passage per row, both, or whole pages?
+
+## What is known
+
+- **Element-based chunks.** Starting a chunk at each title, merging elements up to 2,048
+  characters and keeping tables apart beat fixed-size chunks on FinanceBench: page
+  accuracy 84.4% vs 68–73%, QA accuracy 53.2% vs at most 41.8%
+  ([Jimeno Yepes et al. 2024](https://arxiv.org/html/2402.05131)).
+- **Page-level chunks** had the best average accuracy in NVIDIA's comparison but varied
+  by document and question
+  ([NVIDIA 2024](https://developer.nvidia.com/blog/finding-the-best-chunking-strategy-for-accurate-ai-responses/)).
+- **Rows as retrieval units.** OTT-QA splits each table into rows, "combined with the
+  headers, metadata … as a table segment", its basic retrieval unit, and notes that such
+  segments "often have incomplete context by themselves"
+  ([Chen et al. 2021](https://arxiv.org/abs/2010.10439)). Structure-aware row chunking
+  raised Recall@1 from 0.37 to 0.75 with BM25 on one legal dataset
+  ([arXiv 2605.00318](https://arxiv.org/abs/2605.00318)).
+- **Whole tables.** TARGET retrieves whole tables written as markdown rows; dense
+  retrievers beat BM25 for tables ([Ji et al. 2025](https://arxiv.org/abs/2505.11545)).
+- **Docling's own chunker** writes each table value as `row label, column header = value`,
+  adds the heading path to a chunk only for embedding, and chunks every content layer
+  (docling-core 2.99, `hierarchical_chunker.py`, `chunker/base.py`).
+- **Context headers** (document and section) in the searched and embedded text cut
+  retrieval failures by 35–67% ([Anthropic 2024](https://www.anthropic.com/news/contextual-retrieval)).
+- **Quoting.** A claim is kept only if its quote appears in the passage with only case and
+  whitespace differing (`verify.find_quote`). Measured on conv-v1: of 40 quotes from PDFs,
+  35 appear in the readings and 5 do not, all of them a table row quoted as the page reads
+  ("Reaction to Fire Class A1 EN998") where the reading puts ` | ` between cells.
+  No conv-v1 quote lies only in a running header or footer.
+- **Links.** `#page=N` is the standard fragment for a PDF page (RFC 8118, §3) and opens
+  the page in Chrome's and Firefox's viewers; text fragments do not work in PDFs.
+
+## Fixed in every arm
+
+1. **Documents.** Every PDF with a reading in `data/elements/` joins the index beside
+   every cached site page (`data/site/`). A PDF's title is the linking product page's
+   title and the site's own link text ("Warmshell Aerogel — SDS"), else the file name.
+2. **Text passages.** On each page, consecutive elements under the same section path form
+   passages of at most 1,500 characters (the existing budget, split as web sections are);
+   a heading starts a new passage; a figure contributes its caption; recovered lines stay
+   where they were placed. Running headers and footers are left out of passages (kept in
+   the readings). A passage never crosses a page.
+3. **Context header.** Each passage has a context of document title › section path (›
+   table caption for a table passage). The context is embedded and searched with the
+   passage, and never quoted or shown as the source's words.
+4. **Page.** Each PDF passage records its page; its link opens the PDF at that page
+   (`url#page=N`).
+5. **Price fence** unchanged: a passage stating a price is stored and never searched.
+6. **Table cells are separated by ` | `, and verification reads that separator as
+   whitespace** (`verify.find_quote`): it is this project's mark, not the document's
+   words, so a row quoted as the page reads it verifies.
+
+## Arms
+
+| Arm | Table passages |
+|---|---|
+| `table` | Each table is one passage: its header rows, then one line per row, cells joined by ` | `. A table over 1,500 characters is split between rows, each part starting with the header rows. |
+| `rows` | Each row is one passage, its cells joined by ` | `; the context adds the column headers. Header rows form one passage. |
+| `both` | The `table` and `rows` passages. |
+| `page` | No section grouping: each page's elements in reading order form passages of at most 1,500 characters, tables inline as in `table`. |
+
+## Data and measures
+
+1. **conv-v1 PDF evidence:** the 40 quotes from PDFs in 30 turns; query = the turn's
+   standalone question. A passage is relevant if it belongs to the quote's document and
+   `find_quote` finds the quote in it.
+2. **Table lookups,** generated by committed code from the sealed truth grids of
+   `x8-pages`, `x8-pages-r2` and `x8-pages-r3` (34 tables): one question per data cell
+   whose row label, column header and value are non-empty and not a dash: "In the
+   {document title}, what is the {column header} for {row label}?". Identical questions
+   are asked once. A passage is relevant if it belongs to that document's page and
+   `find_quote` finds both the row label and the value in it. The questions are
+   registered as set `x9-tables` before any arm runs. They are template questions,
+   derived from truth written for X8, not from any arm.
+
+Each arm is built as an index version beside the live one (`ingest --no-live`) and
+searched by the production pipeline (BM25 and vectors fused, reranked, top 8). Measures
+per set: **Success@8** (a relevant passage in the reranked top 8), MRR@8, and the
+ceiling (the share of evidence any passage of the arm holds). Also reported: passages
+per arm and paired bootstrap intervals (10,000 resamples; table lookups resampled by
+table).
+
+## Selection rule
+
+The baseline arm is `table` (whole tables, as the readings keep them, D82). An arm is
+eligible if its conv-v1 Success@8 is at most one quote below the baseline's. Among
+eligible arms, the highest table-lookup Success@8 wins; within 0.02, the arm with fewer
+passages wins. The winning form goes into the S2 candidate index, whose own gates (keyed
+web sets no worse, guardrails 100%, conv-v1 coverage ≥ 30 answerable follow-ups) are
+written before its run. If no arm beats `table` beyond the 0.02 tie, `table` stays.
+
+**Amendment before any run** (29 September 2026). Built as fixed item 2 says, text
+passages were very small: a median of 117 characters in the `table` form, 629 of 4,938
+under 40, because Docling marks about 9 lines per page as headings and each started a
+passage. The element-based chunking cited above merges elements up to its budget rather
+than cutting at every heading, and Docling's own chunker merges undersized neighbours.
+Item 2 now reads: on each page, consecutive elements under the same section form a
+section (stacked headings stay with the text below them), and consecutive sections are
+packed into passages of at most 1,500 characters. A passage ends only where the next
+section would not fit, and takes its first section's path as its context. Measured on the
+readings: median 671 characters, 102 of 1,461 passages under 40 (`table` form). A row
+passage's context names the table's column headers, or its header lines when no column
+headers were read. The arms, data, measures and selection rule are unchanged.
+
+## Result
+
+Run on 29 September 2026 at `0d6e288`: set `x9-tables` (405 lookups) registered before any
+arm; each arm built with `limespec ingest --no-live --all-pages --pdf-form FORM` from the
+160 cached site pages and the 98 production readings (258 documents), then scored with
+`evaluation quote-retrieval`; `evaluation select-form` applied the rule. Intervals are
+95%, clusters (tables; conv-v1 turns) resampled 10,000 times.
+
+| Arm | Version | Passages | Lookups Success@8 (vs `table`) | MRR@8 | conv-v1 Success@8 (vs `table`) | MRR@8 |
+|---|---|---|---|---|---|---|
+| `table` | 8 | 2,283 | 0.827 | 0.721 | 0.700 | 0.580 |
+| `rows` | 9 | 3,202 | 0.822 (−0.005 [−0.028, +0.010]) | 0.671 | 0.725 (+0.025 [0.000, +0.083]) | 0.597 |
+| `both` | 10 | 3,482 | 0.832 (+0.005 [0.000, +0.015]) | 0.730 | 0.675 (−0.025 [−0.081, 0.000]) | 0.569 |
+| `page` | 11 | 1,845 | **0.859 (+0.032 [+0.002, +0.105])** | 0.761 | 0.725 (+0.025 [0.000, +0.077]) | 0.599 |
+
+Ceilings (evidence quotable from any passage of its document): lookups 0.857 for `table`,
+`rows` and `both` and 0.859 for `page`; conv-v1 0.925 for every arm. In `page`, every lookup
+whose evidence is in the index is found in the top 8 (success equals the ceiling); in
+conv-v1, 8 quotes are in the index but not in the top 8.
+
+**Selected by the rule: `page`.** Every arm is eligible (none loses more than one conv-v1
+quote); only `page` beats `table` on lookups by more than the 0.02 tie, and it holds the
+fewest passages. The lower end of its lookup interval is +0.002, so the gain is real but
+small.
+
+**Where evidence is missing from every arm** (the ceiling): the lookups cluster in a few
+tables (`x8-pages-r3` page 3, about 23; page 2, 10; page 7, 6; page 20, 5; `x8-pages`
+page 1, 4; `x8-pages-r2` pages 10–11, 5) and three conv-v1 quotes (c13t1, c13t2, c17t1,
+labels and values quoted across a layout the reading orders differently). Their causes are
+diagnosed next, before the candidate index: a reading fault is fixed in the reader, not in
+these questions.
+
+**Diagnosis of the ceiling** (29 September 2026, from the readings and the truth images):
+
+| Cause | Where | Lookups |
+|---|---|---|
+| The page's curly quotes and inch marks, straightened by docling-parse's sanitisation (Docling exposes no option for it) | Solo EPD "POCP (“smog”)" row; woodfibre brochure "9” brick wall", "13.5” brick…" | about 29 |
+| Superscripts written with a space before them by Docling ("N/mm 2", "m 2 .min 0.5", "PO4 3 e"); the page and the text layer have none | Eco Render and Ashlar Mortar data sheets, the Coloured Cement DoP water row, the EPD unit | about 16 |
+| A cell GLM-OCR read whose words did not match the PDF's, so it was dropped | EPD ozone row's unit | 1 |
+| Not yet examined | `x8-pages-r2` pages 10–11, `x8-pages-r3` pages 5, 12, 14, 17, 18 | about 11 |
+
+Neither of the two main causes is about search or the passage form: the evidence is present,
+spelt differently from the page. They need different fixes. Typography can be matched: a
+quote and its passage may differ in the form of quotes, apostrophes, primes and dashes,
+which change no meaning, and folding them in `find_quote` also serves answers when a model
+quotes the page's own characters. Superscript spacing cannot be matched safely (letting
+"3 6" match "36" would defeat the number check), so it belongs in the reader: Docling's
+`enforce_same_font` option ("split text cells at font boundaries") is the first candidate,
+to be measured on the X8 pages before any re-reading. Each fix is pre-registered with its
+gate before code. X9's selection stands as run; re-scoring after these fixes is reported
+as a check, not a new selection.
+
+**Measured after the diagnosis:** Docling's spacing before superscripts is common: 199 places on
+40 pages of 29 documents where pdfium's text layer has no space, almost all units ("N/mm 2",
+"kg/m 3", "m 2") and a few footnote markers. Docling's `enforce_same_font=False` changes none
+of them (tested on the Coloured Cement DoP and the Ashlar Mortar sheet): the raised glyph is
+its own word, not a font split. The misses with no spelling of the evidence on the page (9)
+are GLM-OCR structure: a multi-line cell split into rows (Silic8 SDS), dropped cells or rows
+(EPD ozone unit, AMAGEL exposure table), and one "N/mm²" written by the truth as "N/mm2".
+
+## Follow-up: quote matching (pre-registered before code)
+
+Written on 29 September 2026. `verify.find_quote` decides whether a claim's quote is in its
+passage, so this changes answering as well as scoring.
+
+**Rule.** A quote matches a passage when, after folding both, its characters appear in the
+same order with:
+
+1. case ignored (as now);
+2. typographic forms folded: ‘ ’ ‚ ′ as ', “ ” „ ″ as ", – — − ‐ ‑ as -; and Unicode
+   compatibility forms folded (NFKC: ² as 2, ﬁ as fi, a no-break space as a space);
+3. whitespace between two letters, or between two digits, required exactly where the quote
+   has it (so "therapist" never matches "the rapist", nor "36" "3 6"); a number with a
+   decimal point or comma is one unit ("1.5" never matches "1. 5");
+4. whitespace optional where a digit meets a non-digit or at punctuation, the places where
+   Docling adds spaces around superscripts ("N/mm2" matches "N/mm 2");
+5. the table cell mark " | " read as whitespace (as now);
+6. start and end at word edges (as now).
+
+The passage's own wording is what is cited (as now). Checks 3–5 (numbers, regulations,
+prices) are unchanged.
+
+**Gate:**
+
+1. Tests: every positive case above, and these never match: "36"/"3 6", "1.5"/"1. 5",
+   "3 to 6"/"3 to 60 mm", "therapist"/"the rapist", "oints"/"joints".
+2. Re-scoring the four X9 arms (same index versions, no rebuild): the lookup ceiling rises
+   to ≥ 0.95 in every arm, the conv-v1 ceiling is not lower in any arm, and success never
+   falls for an item. Reported as a check of X9, not a new selection.
+3. `scripts/check.py` passes. The effect on answers is judged by the S2 candidate's own
+   gate (keyed sets no worse, guardrails 100%), written before its run.
+
+**Result** (29 September 2026, code `437bd31`, `f123b7f`; the same four versions re-scored,
+nothing rebuilt):
+
+| Arm | Lookups Success@8 | Lookup ceiling | conv-v1 Success@8 | conv-v1 ceiling | Items worse / better |
+|---|---|---|---|---|---|
+| `table` | 0.827 → 0.946 | 0.857 → 0.975 | 0.700 → 0.700 | 0.925 → 0.925 | 0 / 48 |
+| `rows` | 0.822 → 0.941 | 0.857 → 0.975 | 0.725 → 0.725 | 0.925 → 0.925 | 0 / 48 |
+| `both` | 0.832 → 0.951 | 0.857 → 0.975 | 0.675 → 0.675 | 0.925 → 0.925 | 0 / 48 |
+| `page` | 0.859 → 0.978 | 0.859 → 0.978 | 0.725 → 0.725 | 0.925 → 0.925 | 0 / 48 |
+
+Gate: tests pass (item 1), every lookup ceiling is at least 0.95 and no conv-v1 ceiling
+fell, and no item's success fell (item 2), `scripts/check.py` passes (item 3). **The rule is
+adopted.** The same 48 lookups (the typography, superscript and compatibility-form cases)
+turned found in every arm. X9's selection and its differences are unchanged: `page` leads
+`table` by +0.032 [+0.002, +0.105] on lookups. What remains below the ceiling is GLM-OCR
+table structure (cells split into rows, dropped cells) and the three conv-v1 quotes taken
+across a layout the reading orders differently.

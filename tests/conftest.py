@@ -226,7 +226,8 @@ def pg(postgres_url: str) -> Iterator[store.Connection]:
         yield conn
         conn.rollback()
         conn.execute(
-            "TRUNCATE answers, passages, index_versions, documents RESTART IDENTITY"
+            "TRUNCATE answers, conversations, passages, index_versions, documents, "
+            "images RESTART IDENTITY"
         )
         # Each index version has its own BM25 index; the next test starts at version 1.
         for (name,) in conn.execute(

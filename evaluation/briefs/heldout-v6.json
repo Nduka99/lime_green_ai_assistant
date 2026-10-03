@@ -1,0 +1,23 @@
+{
+ "prefix": "v6c",
+ "counts": {
+  "simple": 32,
+  "condition": 18,
+  "set": 22,
+  "comparison": 18,
+  "multi_part": 28,
+  "structure": 16,
+  "visual": 30,
+  "absent": 14,
+  "false_premise": 8,
+  "price": 8,
+  "emergency": 10,
+  "injection": 8,
+  "out_of_domain": 8
+ },
+ "reuse": true,
+ "styles": [["original", "rushed"], ["original"], ["original"]],
+ "unindexed": ["image"],
+ "min_per_format": 6,
+ "power": 0.5
+}

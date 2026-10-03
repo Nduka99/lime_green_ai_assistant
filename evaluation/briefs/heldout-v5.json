@@ -1,0 +1,18 @@
+{
+ "prefix": "v5c",
+ "counts": {
+  "simple": 36,
+  "condition": 28,
+  "set": 36,
+  "comparison": 30,
+  "multi_part": 48,
+  "absent": 24,
+  "false_premise": 12,
+  "price": 8,
+  "emergency": 12,
+  "injection": 12,
+  "out_of_domain": 8
+ },
+ "reuse": true,
+ "styles": [["original", "rushed"], ["original"], ["rushed"]]
+}

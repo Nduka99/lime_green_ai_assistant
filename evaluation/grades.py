@@ -1,7 +1,7 @@
 """Count graded answers per arm: overall, by case type and by wording style.
 
 A grading sitting is a folder holding `grades.json` ({question id: {arm:
-{"verdict": "sound" | "partial" | "wrong", "reason": ...}}}) and one
+{"verdict": "sound" | "partial" | "missing" | "wrong", "reason": ...}}}) and one
 `answers-<arm>.json` per arm, the answers as the endpoint returned them. The
 automatic status match and the median time come from the saved answers, so they
 are reported beside the grades rather than decided by the grader.
@@ -12,11 +12,48 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-VERDICTS = ("sound", "partial", "wrong")
+VERDICTS = ("sound", "partial", "missing", "wrong")
+# CRAG's scores (Yang et al., NeurIPS 2024): an answerable question left unanswered
+# ("missing") costs nothing, a wrong or forbidden answer costs a point, because a
+# customer is better served by a referral than by a confident error.
+SCORES = {"sound": 1.0, "partial": 0.5, "missing": 0.0, "wrong": -1.0}
+
+
+def legacy(verdict: str) -> str:
+    """The verdict on the three-level scale of sittings before "missing" existed,
+    where an answerable question refused counted as wrong."""
+    return "wrong" if verdict == "missing" else verdict
 
 
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def case_wordings(case: dict[str, Any]) -> list[dict[str, str]]:
+    """A case's wordings: `wordings` in the held-out keys, `questions` in frozen90's."""
+    found: list[dict[str, str]] = case.get("wordings") or case.get("questions", [])
+    return found
+
+
+def expected_statuses(case: dict[str, Any]) -> set[str]:
+    """The statuses the key accepts: one in the held-out keys, a list in frozen90's."""
+    expected = case["expected_status"]
+    return set(expected) if isinstance(expected, list) else {expected}
+
+
+def key_cases(key: dict[str, Any]) -> list[dict[str, Any]]:
+    """A key's cases. A conversation key's turns are its cases (X36): each turn's
+    message is its one wording and its situation (`dynamic`) is its type, so every
+    turn is graded on its own, as a single question is."""
+    if "cases" in key:
+        cases: list[dict[str, Any]] = key["cases"]
+        return cases
+    return [
+        {**turn, "type": turn["dynamic"],
+         "wordings": [{"style": "original", "text": turn["message"]}]}
+        for conversation in key["conversations"]
+        for turn in conversation["turns"]
+    ]  # fmt: skip
 
 
 def cases_by_question(
@@ -28,8 +65,8 @@ def cases_by_question(
     depend on how the blind file was shuffled.
     """
     wordings: dict[str, list[tuple[dict[str, Any], str]]] = {}
-    for case in key["cases"]:
-        for wording in case["wordings"]:
+    for case in key_cases(key):
+        for wording in case_wordings(case):
             wordings.setdefault(wording["text"], []).append((case, wording["style"]))
     found = {}
     for row in questions:
@@ -117,7 +154,7 @@ def arm_totals(
     cautions = 0
     for qid in ids:
         record = records[qid]
-        if status(record) == cases[qid][0]["expected_status"]:
+        if status(record) in expected_statuses(cases[qid][0]):
             matched += 1
         if record.get("view", {}).get("notice"):
             cautions += 1
@@ -128,7 +165,8 @@ def arm_totals(
 def markdown(result: dict[str, Any], title: str) -> str:
     arms = result["arms"]
     lines = [
-        f"{title}: {result['questions']} answers per arm, sound / partial / wrong.",
+        f"{title}: {result['questions']} answers per arm, "
+        "sound / partial / missing / wrong.",
         "",
         "| Group | Answers | " + " | ".join(arms) + " |",
         "|---|---|" + "---|" * len(arms),

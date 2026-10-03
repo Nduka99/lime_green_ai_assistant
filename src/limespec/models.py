@@ -10,14 +10,47 @@ Status = Literal["answered", "insufficient_evidence", "safety_referral"]
 
 @dataclass(frozen=True)
 class Passage:
-    """One section of one web page: the unit that is searched and cited."""
+    """One section of a web page or of a PDF page: the unit that is searched and
+    cited."""
 
     id: int
     url: str
-    title: str  # page title
-    heading: str  # section heading; the passage text starts with it
-    text: str
+    title: str  # page or document title
+    heading: str  # section heading; a web passage's text starts with it
+    text: str  # the source's own words: the only part a quote may come from
     fetched_at: str  # when the page was captured, ISO 8601 UTC
+    page: int | None = None  # a PDF passage's page
+    # Searched and embedded with the text, never quoted: a PDF passage's section
+    # path, table caption and column headers (X9); a web passage's section path in
+    # the packed forms (X42 W3), else empty.
+    context: str = ""
+    # A passage made from a picture names it (the SHA-256 of its stored PNG); its text
+    # is the picture's own words (X43). Empty for every other passage.
+    image: str = ""
+
+
+def described(title: str, context: str, text: str) -> str:
+    """What the embedding model and the reranker read for a passage: its title,
+    context and text, one per line (a web passage has no context)."""
+    return "\n".join(part for part in (title, context, text) if part)
+
+
+def as_read(passage: Passage) -> str:
+    """What the answer model reads of a passage, without its markup: its page title,
+    its section and its text, one per line (`answer.user_prompt`). Evidence is looked
+    for here when measuring what reached the model (X44 M1)."""
+    parts = (passage.title, passage.heading, passage.text)
+    return "\n".join(part for part in parts if part)
+
+
+@dataclass(frozen=True)
+class Part:
+    """One thing a question asks, as the first request wrote it: its search question
+    and, when it asks about several things (several products, or several facts about
+    one product), each of them as a search question naming its subject (X48)."""
+
+    question: str
+    items: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -34,14 +67,7 @@ class DraftClaim:
 
     text: str
     evidence: tuple[DraftEvidence, ...]
-
-
-@dataclass(frozen=True)
-class DraftAnswer:
-    """The answer request's reply, after its shape is checked, before verification."""
-
-    claims: tuple[DraftClaim, ...]
-    answers_every_part: bool
+    part: int = 1  # the number of the question part it answers (C2)
 
 
 @dataclass(frozen=True)
@@ -67,6 +93,7 @@ class Claim:
 
     text: str
     evidence: tuple[Evidence, ...]
+    part: int = 1  # the number of the question part it answers (C2)
 
 
 @dataclass(frozen=True)
@@ -87,3 +114,6 @@ class Answer:
     claims: tuple[Claim, ...]
     passages: tuple[Passage, ...]  # the passages the model was given, best first
     rejected: tuple[Rejection, ...]
+    # The search questions the first request wrote, shown as "Understood as" on a
+    # follow-up; empty for a safety referral, which is never searched.
+    understood: tuple[str, ...] = ()
