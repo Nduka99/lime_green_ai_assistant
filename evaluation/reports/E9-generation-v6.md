@@ -129,10 +129,9 @@ more likely to fail the risk bar than to pass it.
 - **Outside graders.**
   - `evaluation grading-bundle --share 1.0 --seed 102` gives every item, with the guide.
   - Two outside graders from other model families grade it, each in a fresh chat, with
-    the guide and the items only: an OpenAI model and a Google model, relayed by the
-    user. The local grader was dropped in E6's amendment, because Gemma would grade its
-    own answers. The Google grader comes from the generator's developer; its κ is read
-    like the other's.
+    the guide and the items only, relayed by the user. The local grader was dropped in
+    E6's amendment, because Gemma would grade its own answers. One outside grader comes
+    from the generator's developer; its κ is read like the other's.
   - Their files are saved as `outside-1.json` and `outside-2.json`.
 - **Settling.** `evaluation settle` gives the majority of three. An item with no majority
   is settled by the guide's steps, with a written reason (`settled.json`).

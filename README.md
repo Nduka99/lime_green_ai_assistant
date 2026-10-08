@@ -12,7 +12,8 @@ below show both successes and remaining failures.
 > developed into a platform: a Postgres index of Lime Green's site, data sheets,
 > declarations, pictures and two GOV.UK documents; conversations with follow-up
 > questions; and a web app. Every change is measured against tag `v5-baseline`, and
-> the platform's results are under *Results*. It is not yet deployed. The submission's
+> the platform's results are under *Results*. It runs locally and is not yet deployed
+> publicly; the screenshots below come from a local run on 8 October 2026. The submission's
 > evaluation notebook and result files stay at commit
 > [`377a4fe`](https://github.com/Nduka99/lime_green_ai_assistant/tree/377a4fe).
 
@@ -22,6 +23,34 @@ question (+ the last 4 turns the reader saw)
   -> keyword + vector search for each, pictures and guidance ranked apart -> reranking
   -> local LLM -> quote, number and regulation checks -> answer with sources
 ```
+
+## Screenshots
+
+The web app on index version 28, with Gemma 4 26B-A4B on an 8 GB laptop GPU.
+
+**An answer with its sources.** Each claim cites passages; each source shows the checked
+quotation, a link that opens the live page at that quote, and when the page was captured.
+
+![An answer with two quoted sources](docs/images/answer-with-sources.png)
+
+**A follow-up in the same conversation.** "It" is resolved from the earlier turn, and the
+reader sees what the question was understood as. The next question shows the stages as they run.
+
+![A follow-up answered from a data sheet, with the next question in progress](docs/images/follow-up.png)
+
+**Several sources in one answer.** Five claims, each tied to the quotations that support it.
+
+![A multi-part answer drawn from nine quoted passages](docs/images/multi-source-answer.png)
+
+**Not enough information.** A price question gets the fixed refusal and the closest pages, never a
+guessed figure.
+
+![The fixed refusal with the closest pages](docs/images/refusal.png)
+
+**Safety referral.** A question describing an exposure gets fixed NHS and vet text; the model writes
+nothing.
+
+![The fixed safety referral](docs/images/safety-referral.png)
 
 ## Example answers
 
@@ -488,23 +517,17 @@ The readable record of these questions and expected answers is
   answer keys, instead of synthetic sets drafted by LLMs without that domain
   context.
 
-## How this was built
-
-Claude and Codex were used as paired coding and review tools. I set the scope
-and made the final decisions. One tool implemented each stage and the other
-reviewed it independently; the roles changed between tasks.
+## How it was evaluated
 
 For the frozen evaluation, the expected answers were written and locked before the
-engine was built and were not opened until all 270 answers had been saved; both
-tools then graded every answer without knowing which model wrote it, and I settled
-their disagreements and applied the locked forbidden-answer rules. For the held-out
-comparison, new chats that had never seen the project judged the answers in pairs,
-with Gemini breaking their disagreements; each held-out answer was then graded
-against the locked key by a Claude chat that did not know which model wrote it.
-This grading was offline and is not part of the running assistant.
-
-The independent reviews led to concrete corrections in passage scoring, safety
-wording, incomplete model replies and reranker response validation.
+engine was built and were not opened until all 270 answers had been saved. Two LLM
+judges from different model families then graded every answer without knowing which
+model wrote it, and I settled their disagreements and applied the locked
+forbidden-answer rules. For the held-out comparison, fresh LLM chats that had never
+seen the project judged the answers in pairs, with a judge from a third model family
+breaking their disagreements; each held-out answer was then graded against the locked
+key by a blind LLM grader that did not know which model wrote it. This grading was
+offline and is not part of the running assistant.
 
 For the platform's evaluations, question sets and keys were written by a separate
 model family, in chats that had never seen the system, and registered
